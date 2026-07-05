@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	stateDir  = "/etc/blocknsfw"
+	stateDir  = "/etc/extension-guard"
 	stateFile = "state.json"
 	unitDir   = "/etc/systemd/system"
 )
@@ -118,7 +118,7 @@ func ClearPasswordHash() error {
 // releases the lock on exit.
 func AcquireSingleton(name string) bool {
 	safe := strings.NewReplacer(`\`, "-", "/", "-").Replace(name)
-	path := filepath.Join(os.TempDir(), "blocknsfw-"+safe+".lock")
+	path := filepath.Join(os.TempDir(), "extension-guard-"+safe+".lock")
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return false

@@ -5,8 +5,9 @@
 /bin/
 /dist/
 
-# Local config copy placed next to the binary at install time
-/extension-ids.json
+# NOTE: /extension-ids.json at the repo root is the tracked source of truth
+# (the multi-extension force-install config). The copies placed next to the
+# binary live under release/ and release-linux/, which are ignored below.
 
 # Throwaway test config (real Web Store ID for lock testing)
 /test-ids.json

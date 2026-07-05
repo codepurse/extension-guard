@@ -1,17 +1,17 @@
 #requires -version 5
 <#
-  Builds all BlockNSFW Guard release artifacts into desktop\release\:
+  Builds all Extension Guard release artifacts into release\:
     - guard.exe              (CLI + service + watchdog)
-    - blocknsfw-status.exe   (Wails status window)
-    - BlockNSFW-Guard-Setup.exe (Inno Setup installer that bundles both)
+    - extension-guard-status.exe   (Wails status window)
+    - Extension-Guard-Setup.exe (Inno Setup installer that bundles both)
 
   Signing is intentionally skipped (see docs/pc-version.md for the SignPath plan).
-  Run from anywhere:  powershell -ExecutionPolicy Bypass -File desktop\build.ps1
+  Run from anywhere:  powershell -ExecutionPolicy Bypass -File build.ps1
 #>
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
-$root    = $PSScriptRoot                       # ...\desktop
+$root    = $PSScriptRoot                       # repo root
 $release = Join-Path $root "release"
 
 function Find-Tool($name, $candidates) {
@@ -45,16 +45,16 @@ Push-Location (Join-Path $root "statusui")
 try { & $wails build; if ($LASTEXITCODE -ne 0) { throw "wails build failed" } } finally { Pop-Location }
 
 Write-Host "== build installer (ISCC) ==" -ForegroundColor Cyan
-& $iscc (Join-Path $root "installer\BlockNSFW-Guard.iss"); if ($LASTEXITCODE -ne 0) { throw "installer build failed" }
+& $iscc (Join-Path $root "installer\Extension-Guard.iss"); if ($LASTEXITCODE -ne 0) { throw "installer build failed" }
 
 Write-Host "== collect release artifacts ==" -ForegroundColor Cyan
 if (Test-Path $release) { Remove-Item $release -Recurse -Force }
 New-Item -ItemType Directory -Path $release | Out-Null
 Copy-Item (Join-Path $root "guard.exe") $release
-Copy-Item (Join-Path $root "statusui\build\bin\blocknsfw-status.exe") $release
-Copy-Item (Join-Path $root "installer\output\BlockNSFW-Guard-Setup.exe") $release
+Copy-Item (Join-Path $root "statusui\build\bin\extension-guard-status.exe") $release
+Copy-Item (Join-Path $root "installer\output\Extension-Guard-Setup.exe") $release
 # Ship the config next to the binaries so they find it without walking the tree.
-Copy-Item (Join-Path (Split-Path $root) "shared\extension-ids.json") $release
+Copy-Item (Join-Path $root "extension-ids.json") $release
 
 Write-Host "`nRelease artifacts in $release :" -ForegroundColor Green
 Get-ChildItem $release | ForEach-Object { "  {0,-32} {1,8:N0} KB" -f $_.Name, ($_.Length / 1KB) }

@@ -1,0 +1,95 @@
+name: Bug report
+description: Report something that isn't working as expected
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report!
+
+        ⚠️ **Do not report security vulnerabilities here.** If you found a way to
+        bypass the guard, defeat the uninstall password, or remove a protected
+        extension without authorization, please follow our
+        [Security Policy](https://github.com/codepurse/extension-guard/security/policy).
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight checklist
+      options:
+        - label: I have searched existing issues and this is not a duplicate.
+          required: true
+        - label: This is a bug, not a security vulnerability (those go through the Security Policy).
+          required: true
+        - label: I can reproduce this against the latest build from `main`.
+          required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+      placeholder: When I run `guard verify`, Chrome shows "not configured" even though the policy was applied…
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The exact commands / clicks that trigger the bug.
+      placeholder: |
+        1. Run `guard apply` from an elevated shell
+        2. Run `guard verify`
+        3. See …
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows 11
+        - Windows 10
+        - Linux (Debian/Ubuntu)
+        - Linux (other)
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: os-version
+    attributes:
+      label: OS version / distro
+      placeholder: "Windows 11 23H2, or Ubuntu 24.04"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: browsers
+    attributes:
+      label: Affected browser(s)
+      multiple: true
+      options:
+        - Chrome
+        - Edge
+        - Brave
+        - Firefox
+        - Not browser-specific
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: Output of `guard detect` and `guard verify` (from an elevated shell). This will be automatically formatted as code.
+      render: shell
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Logs, screenshots, or additional context.

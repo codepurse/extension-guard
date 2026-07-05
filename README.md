@@ -1,12 +1,14 @@
-# BlockNSFW desktop guard (PC version)
+# Extension Guard (PC version)
 
-A small native companion to the BlockNSFW browser extension. Its only job is to
-**lock the extension in place** so it can't be removed from the browser UI. It
-resists tampering (watchdog), requires a password to uninstall, and ships a
-small status window.
+A small native companion that **locks one or more browser extensions in place**
+so they can't be removed from the browser UI. It resists tampering (watchdog),
+requires a password to uninstall, and ships a small status window.
 
-It does **no** content blocking itself — that all stays in the extension. This
-app just plants and guards the browser "force-install" enterprise policy.
+It does **no** content blocking itself — that all stays in the extensions it
+protects. This app just plants and guards the browser "force-install" enterprise
+policy for every extension listed in its config. It's product-neutral: point it
+at any set of store-published extensions (e.g. BlockNSFW and Sieve) and it locks
+them all with one install.
 
 It runs on **Windows** (registry + Service Control Manager) and **Linux**
 (managed policy files + systemd). The OS-specific code is selected automatically
@@ -15,7 +17,7 @@ not two — see the **Linux** section below.
 
 > Why this works: a browser extension can't prevent its own uninstall, but a
 > privileged process *above* the browser can force-install it via policy, which
-> greys out the Remove/Disable buttons. See `../docs/pc-version.md` for the full
+> greys out the Remove/Disable buttons. See `docs/pc-version.md` for the full
 > picture.
 
 ## Status — milestone roadmap
@@ -30,6 +32,7 @@ not two — see the **Linux** section below.
 | 5 | Status **UI** window (Wails, day-to-day screen from the mockup) | ✅ done |
 | 6 | **Temporary disable/enable** toggle + polish (fixed window, app icon) | ✅ done |
 | 7 | **Linux** port (managed-policy files + systemd) | 🟡 code-complete; engine compile-verified, UI/scripts need a Linux box |
+| 8 | **Multi-extension** config (lock several extensions at once) | ✅ done |
 
 ## Prerequisites — Windows build (via winget)
 
@@ -42,33 +45,33 @@ not two — see the **Linux** section below.
 ## Build everything — Windows (release artifacts)
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File desktop\build.ps1
+powershell -ExecutionPolicy Bypass -File build.ps1
 ```
 
-Runs the tests, then builds all three artifacts into `desktop\release\`:
+Runs the tests, then builds all three artifacts into `release\`:
 
 | Artifact | What it is |
 |----------|-----------|
 | `guard.exe` | CLI + Windows service + watchdog |
-| `blocknsfw-status.exe` | the status window (Wails) |
-| `BlockNSFW-Guard-Setup.exe` | installer that bundles both + creates shortcuts |
+| `extension-guard-status.exe` | the status window (Wails) |
+| `Extension-Guard-Setup.exe` | installer that bundles both + creates shortcuts |
 
-Go core only: `go -C desktop test ./...` then `go -C desktop build ./cmd/guard`.
+Go core only: `go test ./...` then `go build ./cmd/guard`.
 
 ## Install the app (end users — Windows)
 
-Run `desktop\release\BlockNSFW-Guard-Setup.exe`. It shows a consent page, asks
+Run `release\Extension-Guard-Setup.exe`. It shows a consent page, asks
 you to **set an uninstall password** (give it to the parent / accountability
 partner, *not* the person being filtered), installs + starts the guard service,
-locks the browsers, and creates a **BlockNSFW Protection** shortcut.
+locks the browsers, and creates an **Extension Guard** shortcut.
 
-To **update** an installed copy: uninstall first (Settings → Apps → *BlockNSFW
+To **update** an installed copy: uninstall first (Settings → Apps → *Extension
 Guard* → Uninstall → enter the password), then run the new setup. Installing
 over a running install fails because the service holds `guard.exe` open.
 
 ### Status window (day-to-day)
 
-`blocknsfw-status.exe` shows whether protection is **Active / Paused / Inactive**,
+`extension-guard-status.exe` shows whether protection is **Active / Paused / Inactive**,
 how many browsers are locked, and the service state. To pause or resume, type the
 password and click **Disable protection** / **Enable protection** — each pops a
 Windows **UAC** prompt, and the guard re-verifies the password itself, so the
@@ -80,7 +83,7 @@ button can't be bypassed from the UI. The window is read-only otherwise.
 
 ```sh
 guard detect       # which browsers are installed
-guard apply        # write the force-install policy
+guard apply        # write the force-install policy for every configured extension
 guard verify       # show lock status per browser
 guard remove       # remove the policy (authorized uninstall)
 ```
@@ -100,11 +103,11 @@ guard stop                                           # stop it (the watchdog wil
 guard run                                            # run in the foreground (Ctrl+C to stop)
 ```
 
-The uninstall password is stored only as a bcrypt hash in `HKLM\SOFTWARE\BlockNSFW`.
+The uninstall password is stored only as a bcrypt hash in `HKLM\SOFTWARE\ExtensionGuard`.
 `uninstall-service` refuses to proceed without it - that's the gate that makes
 removal require the parent/accountability-partner, not just admin rights. (A
 determined admin who knows the internals can still wipe the registry state; see
-the honest ceiling in `../docs/pc-version.md`.)
+the honest ceiling in `docs/pc-version.md`.)
 
 Flags go **before** the command (`guard -config X run`), because Go's flag
 parser stops at the first non-flag argument. The installed service is given the
@@ -120,17 +123,17 @@ absolute config path automatically, since a service's working directory is
   disabled, or its entry deleted, the watchdog re-enables Automatic start,
   restarts it, or re-installs it. A `Local\` named mutex keeps a single watchdog
   instance running.
-- **Disabled sentinel** — `uninstall-service` sets `HKLM\SOFTWARE\BlockNSFW`
+- **Disabled sentinel** — `uninstall-service` sets `HKLM\SOFTWARE\ExtensionGuard`
   `GuardDisabled=1` so the watchdog stops resurrecting during an authorized
   teardown; `install-service` clears it.
 
 This defeats casual/impulsive removal. It does **not** stop a determined admin
-(Safe Mode, killing both processes at once) - see `../docs/pc-version.md` for
+(Safe Mode, killing both processes at once) - see `docs/pc-version.md` for
 the honest ceiling. The two-process respawn pattern is also what antivirus flags
 as malware, so this layer makes code signing mandatory before distribution.
 
-Config comes from `../shared/extension-ids.json` (found automatically by walking
-up from the working directory). Override with `guard -config <path> apply`.
+Config comes from `extension-ids.json` (found automatically next to the binary,
+or by walking up from the working directory). Override with `guard -config <path> apply`.
 
 ## Linux
 
@@ -151,9 +154,9 @@ go install github.com/wailsapp/wails/v2/cmd/wails@latest
 **Build, install, uninstall:**
 
 ```sh
-bash desktop/build-linux.sh               # -> desktop/release-linux/{guard, blocknsfw-status, extension-ids.json}
-sudo desktop/installer/linux/install.sh   # copy to /opt/blocknsfw + register the systemd service (sets the password)
-sudo desktop/installer/linux/uninstall.sh # password-gated removal
+bash build-linux.sh                  # -> release-linux/{guard, extension-guard-status, extension-ids.json}
+sudo installer/linux/install.sh      # copy to /opt/extension-guard + register the systemd service (sets the password)
+sudo installer/linux/uninstall.sh    # password-gated removal
 ```
 
 The CLI is identical to Windows (`guard apply|verify|remove|install-service|
@@ -164,11 +167,11 @@ shell. The status UI elevates via **pkexec** (PolicyKit) instead of UAC.
 
 | Thing | Location |
 |-------|----------|
-| Binaries | `/opt/blocknsfw/` |
-| Chromium force-install | `/etc/opt/chrome/policies/managed/blocknsfw.json` (also `/etc/opt/edge/...`, `/etc/brave/...`) |
+| Binaries | `/opt/extension-guard/` |
+| Chromium force-install | `/etc/opt/chrome/policies/managed/extension-guard.json` (also `/etc/opt/edge/...`, `/etc/brave/...`) |
 | Firefox force-install | `/etc/firefox/policies/policies.json` |
-| Guard state (disabled flag + password hash) | `/etc/blocknsfw/state.json` |
-| Service | systemd unit `BlockNSFWGuard.service` |
+| Guard state (disabled flag + password hash) | `/etc/extension-guard/state.json` |
+| Service | systemd unit `ExtensionGuard.service` |
 
 **Linux caveats:**
 
@@ -182,19 +185,39 @@ shell. The status UI elevates via **pkexec** (PolicyKit) instead of UAC.
   re-apply covers it. macOS is not started (needs an Apple Developer account +
   notarization).
 
-## Per-browser setup (extension-ids.json)
+## Config — extension-ids.json
 
-Each browser force-installs only from **its own store**, so each entry needs that
-browser's ID + update URL. A browser left as a `REPLACE_*` placeholder is skipped
-(`not configured` in `verify`). Current state:
+The guard reads a single `extension-ids.json`. It lists **every extension** to
+force-install; each extension carries a per-browser target, because each browser
+force-installs only from **its own store**. A browser left as a `REPLACE_*`
+placeholder (or omitted) is skipped (`not configured` in `verify`).
 
-| Browser | Entry | Status |
-|---------|-------|--------|
-| Edge | `imccb…` + Edge Add-ons URL | ✅ real (published) |
-| Firefox | `blocknsfw@extension.local` + AMO `latest.xpi` | ✅ real (published) |
-| Chrome | placeholder | ⬜ needs Chrome Web Store ID |
-| Brave | placeholder | ⬜ reuses the Chrome Web Store ID once available |
+```json
+{
+  "extensions": [
+    {
+      "name": "blocknsfw",
+      "chrome":  { "extensionId": "ekdegpeejlidlkofccgakfdbiegmicmj", "updateUrl": "https://clients2.google.com/service/update2/crx" },
+      "edge":    { "extensionId": "imccbmfplknoadpaoopicfdpnnimgdab", "updateUrl": "https://edge.microsoft.com/extensionwebstorebase/v1/crx" },
+      "brave":   { "extensionId": "ekdegpeejlidlkofccgakfdbiegmicmj", "updateUrl": "https://clients2.google.com/service/update2/crx" },
+      "firefox": { "addonId": "blocknsfw@extension.local", "installUrl": "https://addons.mozilla.org/firefox/downloads/latest/blocknsfw-porn-adult-content/latest.xpi" }
+    },
+    {
+      "name": "sieve",
+      "chrome":  { "extensionId": "REPLACE_WITH_SIEVE_CHROME_ID", "updateUrl": "https://clients2.google.com/service/update2/crx" }
+    }
+  ]
+}
+```
 
-See `../docs/pc-version.md` for the full per-browser publishing rules — including
-Edge's "unmanaged devices can only force-install from the Edge Add-ons store"
-restriction, which is why Edge needs its own store listing.
+The config is the full **catalog** of extensions the guard *can* lock. At install
+time the setup wizard shows a **Select Components** page, and only the chosen
+extensions are kept — the installer runs `guard -extensions <chosen> select` to
+trim the installed `extension-ids.json` before the service starts. So one
+installer can lock BlockNSFW, Sieve, or both, per the user's choice.
+
+`verify` reports each browser as locked when **all** configured extensions for
+that browser are force-installed. See `docs/pc-version.md` for the full
+per-browser publishing rules — including Edge's "unmanaged devices can only
+force-install from the Edge Add-ons store" restriction, which is why Edge needs
+its own store listing.

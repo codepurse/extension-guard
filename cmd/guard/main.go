@@ -1,4 +1,4 @@
-// Command guard is the BlockNSFW desktop enforcement tool.
+// Command guard is the Extension Guard enforcement tool.
 //
 //   - milestone 1: apply / verify / remove the browser force-install policy.
 //   - milestone 2: run as a Windows service that re-applies the policy on tamper.
@@ -10,6 +10,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -19,15 +20,16 @@ import (
 	"github.com/kardianos/service"
 	"golang.org/x/term"
 
-	"github.com/codepurse/BlockNSFW/desktop/internal/auth"
-	"github.com/codepurse/BlockNSFW/desktop/internal/guardsvc"
-	"github.com/codepurse/BlockNSFW/desktop/internal/policy"
-	"github.com/codepurse/BlockNSFW/desktop/internal/scm"
+	"github.com/codepurse/extension-guard/internal/auth"
+	"github.com/codepurse/extension-guard/internal/guardsvc"
+	"github.com/codepurse/extension-guard/internal/policy"
+	"github.com/codepurse/extension-guard/internal/scm"
 )
 
 func main() {
 	cfgPath := flag.String("config", defaultConfigPath(), "path to extension-ids.json")
 	password := flag.String("password", "", "uninstall password (install-service / uninstall-service / set-password)")
+	extensions := flag.String("extensions", "", "comma-separated extension names to keep (used by 'select'); default keeps all")
 	flag.Usage = usage
 	flag.Parse()
 
@@ -62,6 +64,8 @@ func main() {
 		for _, k := range []policy.Kind{policy.Chrome, policy.Edge, policy.Brave, policy.Firefox} {
 			fmt.Printf("  %-8s %v\n", k, detected[k])
 		}
+	case "select":
+		selectConfig(cfg, *extensions, *cfgPath)
 	case "set-password":
 		setPassword(*password)
 	case "run", "watchdog", "install-service", "uninstall-service", "start", "stop", "disable", "enable":
@@ -200,6 +204,37 @@ func printStatus(cfg policy.Config) {
 	}
 }
 
+// selectConfig rewrites the config file so it lists only the chosen extensions.
+// The installer calls this after the user picks components, so the service,
+// watchdog, and status window (which all read this file) enforce just those.
+func selectConfig(cfg policy.Config, extensions, outPath string) {
+	names := splitAndTrim(extensions)
+	sel := cfg.Select(names)
+	if len(sel.Extensions) == 0 {
+		fmt.Fprintln(os.Stderr, "error: no extensions matched -extensions; refusing to write an empty config")
+		os.Exit(1)
+	}
+	data, err := json.MarshalIndent(sel, "", "  ")
+	must(err)
+	must(os.WriteFile(outPath, append(data, '\n'), 0o644))
+	kept := make([]string, 0, len(sel.Extensions))
+	for _, e := range sel.Extensions {
+		kept = append(kept, e.Name)
+	}
+	fmt.Printf("config now enforces: %s\n", strings.Join(kept, ", "))
+}
+
+// splitAndTrim turns "a, b ,c" into ["a","b","c"], dropping blanks.
+func splitAndTrim(csv string) []string {
+	var out []string
+	for _, p := range strings.Split(csv, ",") {
+		if s := strings.TrimSpace(p); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 func must(err error) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -216,9 +251,9 @@ func mustService(err error, action string) {
 	}
 }
 
-// defaultConfigPath finds shared/extension-ids.json: first next to the binary
-// (where the installer will place a copy), then by walking up from the working
-// directory (so `go run ./cmd/guard` works from anywhere in the repo).
+// defaultConfigPath finds extension-ids.json: first next to the binary (where
+// the installer places a copy), then by walking up from the working directory
+// (so `go run ./cmd/guard` works from anywhere in the repo).
 func defaultConfigPath() string {
 	if exe, err := os.Executable(); err == nil {
 		if p := filepath.Join(filepath.Dir(exe), "extension-ids.json"); fileExists(p) {
@@ -227,7 +262,7 @@ func defaultConfigPath() string {
 	}
 	if dir, err := os.Getwd(); err == nil {
 		for i := 0; i < 6; i++ {
-			if p := filepath.Join(dir, "shared", "extension-ids.json"); fileExists(p) {
+			if p := filepath.Join(dir, "extension-ids.json"); fileExists(p) {
 				return p
 			}
 			parent := filepath.Dir(dir)
@@ -246,7 +281,7 @@ func fileExists(p string) bool {
 }
 
 func usage() {
-	fmt.Println(`BlockNSFW guard
+	fmt.Println(`Extension Guard
 
 usage: guard [flags] <command>
 
@@ -255,6 +290,7 @@ policy commands (admin):
   verify             show the lock status of each browser (alias: status)
   remove             delete the force-install policy
   detect             list which supported browsers are installed
+  select             rewrite the config to keep only -extensions (used by the installer)
 
 service commands (admin):
   install-service    install + harden + start the guard service (sets password)

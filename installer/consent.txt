@@ -1,9 +1,9 @@
-BlockNSFW Guard - what this installs and what it does
+Extension Guard - what this installs and what it does
 
-BlockNSFW Guard is a parental-control / accountability tool. By installing it you
+Extension Guard is a parental-control / accountability tool. By installing it you
 acknowledge and agree to the following:
 
-1. This software keeps the BlockNSFW browser extension force-installed in your
+1. This software keeps the configured browser extension(s) force-installed in your
    web browsers using Windows enterprise policy. While it is active, the
    extension cannot be removed from the browser's normal Remove/Disable buttons.
 

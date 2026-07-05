@@ -1,0 +1,43 @@
+{
+  "_comment": "Single source of truth for the browser force-install policy. Extension Guard reads this to lock every listed extension in place. Each extension needs, per browser, that browser's own store ID + update/install URL (a browser only force-installs from its own store). Leave a browser out, or as a REPLACE_* placeholder, and the guard skips it ('not configured' in `verify`). The installer/build scripts copy this file next to the binaries.",
+  "extensions": [
+    {
+      "name": "blocknsfw",
+      "chrome": {
+        "extensionId": "ekdegpeejlidlkofccgakfdbiegmicmj",
+        "updateUrl": "https://clients2.google.com/service/update2/crx"
+      },
+      "edge": {
+        "extensionId": "imccbmfplknoadpaoopicfdpnnimgdab",
+        "updateUrl": "https://edge.microsoft.com/extensionwebstorebase/v1/crx"
+      },
+      "brave": {
+        "extensionId": "ekdegpeejlidlkofccgakfdbiegmicmj",
+        "updateUrl": "https://clients2.google.com/service/update2/crx"
+      },
+      "firefox": {
+        "addonId": "blocknsfw@extension.local",
+        "installUrl": "https://addons.mozilla.org/firefox/downloads/latest/blocknsfw-porn-adult-content/latest.xpi"
+      }
+    },
+    {
+      "name": "sieve",
+      "chrome": {
+        "extensionId": "ipdgekalafnmgejbgapendbhdidjgdeg",
+        "updateUrl": "https://clients2.google.com/service/update2/crx"
+      },
+      "edge": {
+        "extensionId": "flboopfbcclogcdpialeimionkkjliok",
+        "updateUrl": "https://edge.microsoft.com/extensionwebstorebase/v1/crx"
+      },
+      "brave": {
+        "extensionId": "ipdgekalafnmgejbgapendbhdidjgdeg",
+        "updateUrl": "https://clients2.google.com/service/update2/crx"
+      },
+      "firefox": {
+        "addonId": "sieve@extension.local",
+        "installUrl": "https://addons.mozilla.org/firefox/downloads/latest/sieve-site-content-blocker/latest.xpi"
+      }
+    }
+  ]
+}

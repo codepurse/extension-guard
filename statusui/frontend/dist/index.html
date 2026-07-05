@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>BlockNSFW Protection</title>
+<title>Extension Guard</title>
 <style>
   :root {
     --bg: #0e0e11; --surface: #17171c; --surface2: #1f1f26; --border: #2a2a33;
@@ -80,7 +80,7 @@
 
   <div class="topbar">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7f77dd" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-    <span class="name">BlockNSFW Protection</span>
+    <span class="name">Extension Guard</span>
     <span id="pill" class="pill inactive">…</span>
   </div>
 
@@ -112,7 +112,7 @@
   </div>
 
   <div class="foot">
-    <span id="ver">BlockNSFW Guard</span>
+    <span id="ver">Extension Guard</span>
     <button class="ghost" id="refresh">Refresh</button>
   </div>
 
@@ -176,7 +176,7 @@
   async function refresh() {
     if (!bound()) {
       document.getElementById('hero-title').textContent = 'Run inside the app';
-      document.getElementById('hero-sub').textContent = 'This window must be launched by BlockNSFW Guard.';
+      document.getElementById('hero-sub').textContent = 'This window must be launched by Extension Guard.';
       return;
     }
     render(await window.go.main.App.GetStatus());

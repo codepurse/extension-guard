@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	stateKeyPath  = `SOFTWARE\BlockNSFW`
+	stateKeyPath  = `SOFTWARE\ExtensionGuard`
 	disabledValue = "GuardDisabled"
 	passwordValue = "PasswordHash"
 	resetPeriod   = uint32(24 * 60 * 60) // recovery failure-count reset window (seconds)
@@ -167,7 +167,9 @@ func isDisabledIn(root registry.Key) bool {
 
 // SetPasswordHash stores the bcrypt hash of the uninstall password. GetPasswordHash
 // reads it (ok=false when none is set); ClearPasswordHash removes it.
-func SetPasswordHash(hash string) error { return setStringIn(registry.LOCAL_MACHINE, passwordValue, hash) }
+func SetPasswordHash(hash string) error {
+	return setStringIn(registry.LOCAL_MACHINE, passwordValue, hash)
+}
 
 // GetPasswordHash returns the stored hash and whether one is set.
 func GetPasswordHash() (string, bool) { return getStringIn(registry.LOCAL_MACHINE, passwordValue) }

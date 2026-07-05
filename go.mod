@@ -1,4 +1,4 @@
-module github.com/codepurse/BlockNSFW/desktop
+module github.com/codepurse/extension-guard
 
 go 1.25.0
 

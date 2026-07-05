@@ -21,7 +21,7 @@ var chromiumManagedDir = map[Kind]string{
 }
 
 const (
-	policyFileName = "blocknsfw.json"
+	policyFileName = "extension-guard.json"
 	forcelistKey   = "ExtensionInstallForcelist"
 
 	// Firefox reads a single policies.json; we merge our ExtensionSettings entry
@@ -39,16 +39,17 @@ var linuxBrowserBins = map[Kind][]string{
 	Firefox: {"firefox", "firefox-esr"},
 }
 
-// Apply writes the force-install policy for every configured browser. Writing
-// for a browser that isn't installed is harmless. Requires root.
+// Apply writes the force-install policy for every configured extension, across
+// every browser. Writing for a browser that isn't installed is harmless.
+// Requires root.
 func Apply(cfg Config) error {
 	var errs []string
 	for _, k := range ChromiumKinds {
-		if err := applyChromium(k, cfg.Target(k)); err != nil {
+		if err := applyChromium(k, cfg.Targets(k)); err != nil {
 			errs = append(errs, fmt.Sprintf("%s: %v", k, err))
 		}
 	}
-	if err := applyFirefox(cfg.Firefox); err != nil {
+	if err := applyFirefox(cfg.Targets(Firefox)); err != nil {
 		errs = append(errs, fmt.Sprintf("firefox: %v", err))
 	}
 	if len(errs) > 0 {
@@ -57,16 +58,16 @@ func Apply(cfg Config) error {
 	return nil
 }
 
-func applyChromium(k Kind, t Target) error {
-	val, err := chromiumForcelistValue(t)
-	if err != nil {
+func applyChromium(k Kind, targets []Target) error {
+	vals := chromiumForcelistValues(targets)
+	if len(vals) == 0 {
 		return nil // not configured - skip quietly
 	}
 	dir := chromiumManagedDir[k]
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	doc := map[string]any{forcelistKey: []string{val}}
+	doc := map[string]any{forcelistKey: vals}
 	data, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
 		return err
@@ -74,8 +75,9 @@ func applyChromium(k Kind, t Target) error {
 	return os.WriteFile(filepath.Join(dir, policyFileName), data, 0o644)
 }
 
-func applyFirefox(t Target) error {
-	if !firefoxConfigured(t) {
+func applyFirefox(targets []Target) error {
+	configured := configuredFirefox(targets)
+	if len(configured) == 0 {
 		return nil // not configured - skip quietly
 	}
 	if err := os.MkdirAll(firefoxPoliciesDir, 0o755); err != nil {
@@ -83,9 +85,11 @@ func applyFirefox(t Target) error {
 	}
 	doc := readFirefoxDoc()
 	extSettings := childMap(childMap(doc, "policies"), "ExtensionSettings")
-	extSettings[t.AddonID] = map[string]any{
-		"installation_mode": "force_installed",
-		"install_url":       t.InstallURL,
+	for _, t := range configured {
+		extSettings[t.AddonID] = map[string]any{
+			"installation_mode": "force_installed",
+			"install_url":       t.InstallURL,
+		}
 	}
 	data, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
@@ -94,85 +98,85 @@ func applyFirefox(t Target) error {
 	return os.WriteFile(firefoxPoliciesPath(), data, 0o644)
 }
 
-// Verify reports the lock status of each configured browser.
+// Verify reports the lock status of each browser. A browser is Locked only when
+// every extension configured for it is force-installed.
 func Verify(cfg Config) []Status {
 	installed := DetectBrowsers()
 	out := make([]Status, 0, len(ChromiumKinds)+1)
 	for _, k := range ChromiumKinds {
-		out = append(out, verifyChromium(k, cfg.Target(k), installed[k]))
+		out = append(out, verifyChromium(k, cfg.Targets(k), installed[k]))
 	}
-	out = append(out, verifyFirefox(cfg.Firefox, installed[Firefox]))
+	out = append(out, verifyFirefox(cfg.Targets(Firefox), installed[Firefox]))
 	return out
 }
 
-func verifyChromium(k Kind, t Target, installed bool) Status {
-	s := Status{Kind: k, Installed: installed, Detail: "missing"}
-	want, err := chromiumForcelistValue(t)
-	if err != nil {
-		s.Detail = "not configured"
-		return s
+func verifyChromium(k Kind, targets []Target, installed bool) Status {
+	s := Status{Kind: k, Installed: installed}
+	wants := chromiumForcelistValues(targets)
+	if len(wants) == 0 {
+		return lockStatus(s, 0, 0)
 	}
-	data, err := os.ReadFile(filepath.Join(chromiumManagedDir[k], policyFileName))
-	if err != nil {
-		return s // file absent -> not locked
-	}
-	var doc struct {
-		Forcelist []string `json:"ExtensionInstallForcelist"`
-	}
-	if json.Unmarshal(data, &doc) != nil {
-		s.Detail = "tampered"
-		return s
-	}
-	for _, v := range doc.Forcelist {
-		if v == want {
-			s.Locked, s.Detail = true, "ok"
-			return s
+	present := map[string]bool{}
+	if data, err := os.ReadFile(filepath.Join(chromiumManagedDir[k], policyFileName)); err == nil {
+		var doc struct {
+			Forcelist []string `json:"ExtensionInstallForcelist"`
+		}
+		if json.Unmarshal(data, &doc) == nil {
+			for _, v := range doc.Forcelist {
+				present[v] = true
+			}
 		}
 	}
-	s.Detail = "tampered"
-	return s
+	matched := 0
+	for _, w := range wants {
+		if present[w] {
+			matched++
+		}
+	}
+	return lockStatus(s, matched, len(wants))
 }
 
-func verifyFirefox(t Target, installed bool) Status {
-	s := Status{Kind: Firefox, Installed: installed, Detail: "missing"}
-	if !firefoxConfigured(t) {
-		s.Detail = "not configured"
-		return s
+func verifyFirefox(targets []Target, installed bool) Status {
+	s := Status{Kind: Firefox, Installed: installed}
+	configured := configuredFirefox(targets)
+	if len(configured) == 0 {
+		return lockStatus(s, 0, 0)
 	}
-	data, err := os.ReadFile(firefoxPoliciesPath())
-	if err != nil {
-		return s
+	settings := map[string]struct {
+		InstallationMode string `json:"installation_mode"`
+		InstallURL       string `json:"install_url"`
+	}{}
+	if data, err := os.ReadFile(firefoxPoliciesPath()); err == nil {
+		var doc struct {
+			Policies struct {
+				ExtensionSettings map[string]struct {
+					InstallationMode string `json:"installation_mode"`
+					InstallURL       string `json:"install_url"`
+				} `json:"ExtensionSettings"`
+			} `json:"policies"`
+		}
+		if json.Unmarshal(data, &doc) == nil {
+			settings = doc.Policies.ExtensionSettings
+		}
 	}
-	var doc struct {
-		Policies struct {
-			ExtensionSettings map[string]struct {
-				InstallationMode string `json:"installation_mode"`
-				InstallURL       string `json:"install_url"`
-			} `json:"ExtensionSettings"`
-		} `json:"policies"`
+	matched := 0
+	for _, t := range configured {
+		if e, ok := settings[t.AddonID]; ok && e.InstallationMode == "force_installed" && e.InstallURL == t.InstallURL {
+			matched++
+		}
 	}
-	if json.Unmarshal(data, &doc) != nil {
-		s.Detail = "tampered"
-		return s
-	}
-	if e, ok := doc.Policies.ExtensionSettings[t.AddonID]; ok &&
-		e.InstallationMode == "force_installed" && e.InstallURL == t.InstallURL {
-		s.Locked, s.Detail = true, "ok"
-	} else {
-		s.Detail = "tampered"
-	}
-	return s
+	return lockStatus(s, matched, len(configured))
 }
 
-// Remove deletes the force-install policy for the configured extension.
+// Remove deletes the force-install policy for every configured extension.
 func Remove(cfg Config) error {
 	var errs []string
 	for _, k := range ChromiumKinds {
-		if err := removeChromium(k, cfg.Target(k)); err != nil {
+		if err := removeChromium(k, cfg.Targets(k)); err != nil {
 			errs = append(errs, fmt.Sprintf("%s: %v", k, err))
 		}
 	}
-	if err := removeFirefox(cfg.Firefox); err != nil {
+	if err := removeFirefox(cfg.Targets(Firefox)); err != nil {
 		errs = append(errs, fmt.Sprintf("firefox: %v", err))
 	}
 	if len(errs) > 0 {
@@ -181,18 +185,23 @@ func Remove(cfg Config) error {
 	return nil
 }
 
-func removeChromium(k Kind, t Target) error {
-	if t.ExtensionID == "" {
-		return nil
-	}
+func removeChromium(k Kind, targets []Target) error {
+	// We own the whole policyFileName in the managed dir, so removing it clears
+	// every extension we force-installed for this browser at once.
 	if err := os.Remove(filepath.Join(chromiumManagedDir[k], policyFileName)); err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	return nil
 }
 
-func removeFirefox(t Target) error {
-	if t.AddonID == "" {
+func removeFirefox(targets []Target) error {
+	var addonIDs []string
+	for _, t := range targets {
+		if t.AddonID != "" {
+			addonIDs = append(addonIDs, t.AddonID)
+		}
+	}
+	if len(addonIDs) == 0 {
 		return nil
 	}
 	data, err := os.ReadFile(firefoxPoliciesPath())
@@ -211,7 +220,9 @@ func removeFirefox(t Target) error {
 	if ext == nil {
 		return nil
 	}
-	delete(ext, t.AddonID)
+	for _, id := range addonIDs {
+		delete(ext, id)
+	}
 	out, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
 		return err

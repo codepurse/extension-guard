@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/codepurse/BlockNSFW/desktop/internal/auth"
-	"github.com/codepurse/BlockNSFW/desktop/internal/guardsvc"
-	"github.com/codepurse/BlockNSFW/desktop/internal/policy"
-	"github.com/codepurse/BlockNSFW/desktop/internal/scm"
+	"github.com/codepurse/extension-guard/internal/auth"
+	"github.com/codepurse/extension-guard/internal/guardsvc"
+	"github.com/codepurse/extension-guard/internal/policy"
+	"github.com/codepurse/extension-guard/internal/scm"
 )
 
 // App is the Wails-bound backend. Its exported methods are callable from the
@@ -136,8 +136,8 @@ func (a *App) guardPath() (string, error) {
 	return p, nil
 }
 
-// defaultConfigPath finds shared/extension-ids.json next to the binary (where
-// the installer places a copy) or by walking up from the working directory.
+// defaultConfigPath finds extension-ids.json next to the binary (where the
+// installer places a copy) or by walking up from the working directory.
 func defaultConfigPath() string {
 	if exe, err := os.Executable(); err == nil {
 		if p := filepath.Join(filepath.Dir(exe), "extension-ids.json"); fileExists(p) {
@@ -146,7 +146,7 @@ func defaultConfigPath() string {
 	}
 	if dir, err := os.Getwd(); err == nil {
 		for i := 0; i < 6; i++ {
-			if p := filepath.Join(dir, "shared", "extension-ids.json"); fileExists(p) {
+			if p := filepath.Join(dir, "extension-ids.json"); fileExists(p) {
 				return p
 			}
 			parent := filepath.Dir(dir)

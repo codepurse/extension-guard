@@ -46,9 +46,58 @@ func TestFirefoxConfigured(t *testing.T) {
 	}
 }
 
-func TestLoadConfig(t *testing.T) {
+func TestChromiumForcelistValues(t *testing.T) {
+	targets := []Target{
+		{ExtensionID: "aaa", UpdateURL: "https://u/crx"},           // ok
+		{ExtensionID: "REPLACE_WITH_ID", UpdateURL: "https://u/c"}, // placeholder -> skipped
+		{ExtensionID: "bbb"},                             // incomplete -> skipped
+		{ExtensionID: "ccc", UpdateURL: "https://u/crx"}, // ok
+	}
+	got := chromiumForcelistValues(targets)
+	if len(got) != 2 || got[0] != "aaa;https://u/crx" || got[1] != "ccc;https://u/crx" {
+		t.Fatalf("chromiumForcelistValues = %v, want [aaa..., ccc...]", got)
+	}
+}
+
+func TestLoadConfigMultiExtension(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "extension-ids.json")
+	content := `{
+	  "extensions": [
+	    { "name": "blocknsfw",
+	      "chrome":  {"extensionId": "cid1", "updateUrl": "curl"},
+	      "firefox": {"addonId": "fid1", "installUrl": "furl"} },
+	    { "name": "sieve",
+	      "chrome":  {"extensionId": "cid2", "updateUrl": "curl2"} }
+	  ]
+	}`
+	if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig(p)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if len(cfg.Extensions) != 2 {
+		t.Fatalf("got %d extensions, want 2", len(cfg.Extensions))
+	}
+	chromeTargets := cfg.Targets(Chrome)
+	if len(chromeTargets) != 2 || chromeTargets[0].ExtensionID != "cid1" || chromeTargets[1].ExtensionID != "cid2" {
+		t.Errorf("chrome targets = %+v, want cid1/cid2", chromeTargets)
+	}
+	if got := cfg.Extensions[0].Target(Firefox).InstallURL; got != "furl" {
+		t.Errorf("firefox installUrl = %q, want %q", got, "furl")
+	}
+	// sieve has no firefox target
+	if got := cfg.Extensions[1].Target(Firefox); got != (Target{}) {
+		t.Errorf("sieve firefox target = %+v, want empty", got)
+	}
+}
+
+func TestLoadConfigLegacyFlat(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "ids.json")
+	// The pre-multi-extension flat shape must still load, wrapped as one extension.
 	content := `{
 	  "chrome":  {"extensionId": "cid", "updateUrl": "curl"},
 	  "firefox": {"addonId": "fid", "installUrl": "furl"}
@@ -60,11 +109,14 @@ func TestLoadConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
-	if got := cfg.Target(Chrome).ExtensionID; got != "cid" {
-		t.Errorf("chrome extensionId = %q, want %q", got, "cid")
+	if len(cfg.Extensions) != 1 {
+		t.Fatalf("got %d extensions, want 1 (legacy wrapped)", len(cfg.Extensions))
 	}
-	if got := cfg.Target(Firefox).InstallURL; got != "furl" {
-		t.Errorf("firefox installUrl = %q, want %q", got, "furl")
+	if got := cfg.Targets(Chrome); len(got) != 1 || got[0].ExtensionID != "cid" {
+		t.Errorf("chrome targets = %+v, want [cid]", got)
+	}
+	if got := cfg.Targets(Firefox); len(got) != 1 || got[0].InstallURL != "furl" {
+		t.Errorf("firefox targets = %+v, want [furl]", got)
 	}
 }
 

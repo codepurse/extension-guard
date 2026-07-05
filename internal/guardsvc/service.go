@@ -1,4 +1,4 @@
-// Package guardsvc hosts the BlockNSFW guard as a long-running service and its
+// Package guardsvc hosts the Extension Guard as a long-running service and its
 // watchdog companion. The service applies the force-install policy on start,
 // re-applies it on registry tamper (via the watcher) and on a backstop timer,
 // and spawns a watchdog process. The watchdog re-asserts service recovery,
@@ -15,19 +15,19 @@ import (
 
 	"github.com/kardianos/service"
 
-	"github.com/codepurse/BlockNSFW/desktop/internal/policy"
-	"github.com/codepurse/BlockNSFW/desktop/internal/scm"
-	"github.com/codepurse/BlockNSFW/desktop/internal/watcher"
+	"github.com/codepurse/extension-guard/internal/policy"
+	"github.com/codepurse/extension-guard/internal/scm"
+	"github.com/codepurse/extension-guard/internal/watcher"
 )
 
 const (
 	// ServiceName is the SCM service name; the watchdog references it too.
-	ServiceName = "BlockNSFWGuard"
+	ServiceName = "ExtensionGuard"
 
 	backstop         = 30 * time.Second
 	watchdogInterval = 5 * time.Second
 	watchdogRespawn  = 2 * time.Second
-	watchdogMutex    = `Local\BlockNSFWGuardWatchdog`
+	watchdogMutex    = `Local\ExtensionGuardWatchdog`
 )
 
 type program struct {
@@ -51,8 +51,8 @@ func New(cfg policy.Config, configPath string) (service.Service, error) {
 	prg := &program{cfg: cfg, configPath: configPath, quit: make(chan struct{})}
 	conf := &service.Config{
 		Name:        ServiceName,
-		DisplayName: "BlockNSFW Guard",
-		Description: "Keeps the BlockNSFW extension force-installed and re-applies the policy if it is tampered with.",
+		DisplayName: "Extension Guard",
+		Description: "Keeps the configured browser extensions force-installed and re-applies the policy if it is tampered with.",
 		Arguments:   []string{"-config", configPath, "run"},
 		// systemd: auto-restart the daemon if it dies. Ignored on Windows, where
 		// SCM recovery actions are configured separately by scm.Harden.
@@ -166,13 +166,13 @@ func RunWatchdog(cfg policy.Config, configPath string) error {
 }
 
 func (p *program) Start(s service.Service) error {
-	p.logger.Info("BlockNSFW Guard starting")
+	p.logger.Info("Extension Guard starting")
 	go p.loop()
 	return nil
 }
 
 func (p *program) Stop(s service.Service) error {
-	p.logger.Info("BlockNSFW Guard stopping")
+	p.logger.Info("Extension Guard stopping")
 	close(p.quit)
 	if p.w != nil {
 		p.w.Stop()

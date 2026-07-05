@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# Removes BlockNSFW Guard on Linux. uninstall-service prompts for the uninstall
+# Removes Extension Guard on Linux. uninstall-service prompts for the uninstall
 # password, stops + removes the systemd unit, and lifts the browser lock.
 #
-# Run:  sudo desktop/installer/linux/uninstall.sh
+# Run:  sudo installer/linux/uninstall.sh
 set -euo pipefail
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -11,9 +11,9 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
-dest=/opt/blocknsfw
+dest=/opt/extension-guard
 if [ ! -x "$dest/guard" ]; then
-  echo "BlockNSFW Guard does not appear to be installed at $dest." >&2
+  echo "Extension Guard does not appear to be installed at $dest." >&2
   exit 1
 fi
 

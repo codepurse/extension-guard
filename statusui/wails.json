@@ -1,11 +1,11 @@
 {
   "$schema": "https://wails.io/schemas/config.v2.json",
-  "name": "blocknsfw-status",
-  "outputfilename": "blocknsfw-status",
+  "name": "extension-guard-status",
+  "outputfilename": "extension-guard-status",
   "frontend:dir": "frontend",
   "frontend:install": "",
   "frontend:build": "",
   "author": {
-    "name": "BlockNSFW"
+    "name": "codepurse"
   }
 }

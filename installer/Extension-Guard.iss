@@ -1,4 +1,4 @@
-; Inno Setup script for the BlockNSFW Guard (PC version).
+; Inno Setup script for the Extension Guard (PC version).
 ;
 ; Builds a double-click installer that:
 ;   - shows a consent page (LicenseFile),
@@ -7,22 +7,22 @@
 ;   - runs `guard install-service` to install + harden + start the service,
 ;   - and on uninstall, requires that password via `guard uninstall-service`.
 ;
-; Build with: ISCC.exe BlockNSFW-Guard.iss   (see README.md in this folder)
+; Build with: ISCC.exe Extension-Guard.iss   (see README.md in this folder)
 ; NOTE: unsigned until a code-signing certificate is available (SignPath).
 
-#define AppName "BlockNSFW Guard"
+#define AppName "Extension Guard"
 #define AppVersion "1.0.0"
 
 [Setup]
 AppId={{6B2C9E4A-3F71-4B8E-9C2D-5A1E7F0D9C34}
 AppName={#AppName}
 AppVersion={#AppVersion}
-AppPublisher=BlockNSFW
-DefaultDirName={autopf}\BlockNSFW Guard
+AppPublisher=codepurse
+DefaultDirName={autopf}\Extension Guard
 DisableProgramGroupPage=yes
 PrivilegesRequired=admin
 OutputDir=output
-OutputBaseFilename=BlockNSFW-Guard-Setup
+OutputBaseFilename=Extension-Guard-Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -30,20 +30,28 @@ LicenseFile=consent.txt
 SetupIconFile=..\statusui\build\windows\icon.ico
 UninstallDisplayName={#AppName}
 
+[Types]
+Name: "full"; Description: "Lock all available extensions"
+Name: "custom"; Description: "Choose which extensions to lock"; Flags: iscustom
+
+[Components]
+Name: "blocknsfw"; Description: "BlockNSFW - blocks pornography & adult content"; Types: full custom
+Name: "sieve"; Description: "Sieve - blocks gambling, dark patterns & doomscrolling"; Types: full custom
+
 [Files]
 Source: "..\guard.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\statusui\build\bin\blocknsfw-status.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\..\shared\extension-ids.json"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\statusui\build\bin\extension-guard-status.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\extension-ids.json"; DestDir: "{app}"; Flags: ignoreversion
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut for the status window"; GroupDescription: "Additional shortcuts:"
 
 [Icons]
-Name: "{autoprograms}\BlockNSFW Protection"; Filename: "{app}\blocknsfw-status.exe"
-Name: "{autodesktop}\BlockNSFW Protection"; Filename: "{app}\blocknsfw-status.exe"; Tasks: desktopicon
+Name: "{autoprograms}\Extension Guard"; Filename: "{app}\extension-guard-status.exe"
+Name: "{autodesktop}\Extension Guard"; Filename: "{app}\extension-guard-status.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\blocknsfw-status.exe"; Description: "Open the BlockNSFW status window"; Flags: postinstall nowait skipifsilent
+Filename: "{app}\extension-guard-status.exe"; Description: "Open the Extension Guard status window"; Flags: postinstall nowait skipifsilent
 
 [Code]
 var
@@ -55,7 +63,7 @@ begin
     'Set uninstall password',
     'Choose the password required to remove this protection',
     'Give this password to the parent or accountability partner - NOT the person being filtered. ' +
-    'It will be required to uninstall BlockNSFW Guard.');
+    'It will be required to uninstall Extension Guard.');
   PwPage.Add('Password:', True);          { True = masked }
   PwPage.Add('Confirm password:', True);
 end;
@@ -78,12 +86,37 @@ begin
   end;
 end;
 
+{ Comma-separated list of the extension names the user chose to lock. }
+function SelectedExtensions(): String;
+var
+  sel: String;
+begin
+  sel := '';
+  if WizardIsComponentSelected('blocknsfw') then
+    sel := 'blocknsfw';
+  if WizardIsComponentSelected('sieve') then
+  begin
+    if sel <> '' then sel := sel + ',';
+    sel := sel + 'sieve';
+  end;
+  Result := sel;
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   resultCode: Integer;
+  sel: String;
 begin
   if CurStep = ssPostInstall then
   begin
+    { Filter the installed config down to the chosen extensions before the
+      service reads it, so only those get force-installed and locked. }
+    sel := SelectedExtensions();
+    if sel <> '' then
+      Exec(ExpandConstant('{app}\guard.exe'),
+        '-config "' + ExpandConstant('{app}\extension-ids.json') + '" -extensions "' + sel + '" select',
+        '', SW_HIDE, ewWaitUntilTerminated, resultCode);
+
     if not Exec(ExpandConstant('{app}\guard.exe'),
       '-config "' + ExpandConstant('{app}\extension-ids.json') + '" -password "' + PwPage.Values[0] + '" install-service',
       '', SW_HIDE, ewWaitUntilTerminated, resultCode) then
@@ -106,7 +139,7 @@ begin
   Result := '';
   Form := CreateCustomForm(ScaleX(380), ScaleY(140), False, True);
   try
-    Form.Caption := 'BlockNSFW Guard';
+    Form.Caption := 'Extension Guard';
 
     Lbl := TNewStaticText.Create(Form);
     Lbl.Parent := Form;

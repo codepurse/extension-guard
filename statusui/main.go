@@ -1,4 +1,4 @@
-// Command statusui is the BlockNSFW Guard status window - the day-to-day screen
+// Command statusui is the Extension Guard status window - the day-to-day screen
 // from the mockup. It is a Wails app: a Go backend (app.go) bound to an HTML/CSS
 // frontend (frontend/dist) rendered via WebView2. It only reads state and
 // verifies the password; all enforcement lives in the guard service.
@@ -18,7 +18,7 @@ var assets embed.FS
 func main() {
 	app := NewApp()
 	err := wails.Run(&options.App{
-		Title:            "BlockNSFW Protection",
+		Title:            "Extension Guard",
 		Width:            908,
 		Height:           654,
 		DisableResize:    true, // fixed size; also greys out the maximize button on Windows

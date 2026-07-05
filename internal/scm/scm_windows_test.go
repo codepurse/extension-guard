@@ -34,7 +34,7 @@ func TestDisabledSentinelRoundTrip(t *testing.T) {
 // TestAcquireSingleton verifies a second acquire of the same name fails while
 // the first handle is held.
 func TestAcquireSingleton(t *testing.T) {
-	const name = `Local\BlockNSFWGuardWatchdogTest`
+	const name = `Local\ExtensionGuardWatchdogTest`
 	if !AcquireSingleton(name) {
 		t.Fatal("first acquire should succeed")
 	}

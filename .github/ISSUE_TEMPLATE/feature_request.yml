@@ -1,0 +1,58 @@
+name: Feature request
+description: Suggest an idea or improvement
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion! Please describe the use case before proposing
+        an implementation, so we can agree on the approach first.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight checklist
+      options:
+        - label: I have searched existing issues and this hasn't been requested.
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: The use case or pain point, not the solution yet.
+      placeholder: As a parent, I want to lock extensions across multiple user profiles because…
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How you'd like it to work. CLI flags, config, or UI changes welcome.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you thought about and why you set them aside.
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Which platform(s) does this affect?
+      multiple: true
+      options:
+        - Windows
+        - Linux
+        - Both
+        - Not platform-specific
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Mockups, links, or additional context.

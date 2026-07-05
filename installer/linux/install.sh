@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
-# Installs BlockNSFW Guard on Linux: copies the binaries to /opt/blocknsfw and
+# Installs Extension Guard on Linux: copies the binaries to /opt/extension-guard and
 # registers + starts the systemd service. install-service prompts for the
 # uninstall password (held by the parent / accountability partner).
 #
-# Build first:  bash desktop/build-linux.sh
-# Then run:     sudo desktop/installer/linux/install.sh
+# Build first:  bash build-linux.sh
+# Then run:     sudo installer/linux/install.sh
 set -euo pipefail
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -14,16 +14,16 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 src="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../release-linux" && pwd)"
-dest=/opt/blocknsfw
+dest=/opt/extension-guard
 
 if [ ! -x "$src/guard" ]; then
-  echo "Build artifacts not found in $src - run desktop/build-linux.sh first." >&2
+  echo "Build artifacts not found in $src - run build-linux.sh first." >&2
   exit 1
 fi
 
 install -d "$dest"
 install -m 0755 "$src/guard" "$dest/guard"
-install -m 0755 "$src/blocknsfw-status" "$dest/blocknsfw-status"
+install -m 0755 "$src/extension-guard-status" "$dest/extension-guard-status"
 install -m 0644 "$src/extension-ids.json" "$dest/extension-ids.json"
 
 # Registers the systemd unit (Restart=always), enables boot start, sets the
@@ -32,4 +32,4 @@ install -m 0644 "$src/extension-ids.json" "$dest/extension-ids.json"
 
 echo
 echo "Installed to $dest"
-echo "Open the status window with: $dest/blocknsfw-status"
+echo "Open the status window with: $dest/extension-guard-status"
