@@ -38,12 +38,21 @@ type Target struct {
 // Extension is one extension to force-install, with a per-browser target (each
 // browser force-installs only from its own store, so IDs/URLs differ per
 // browser). A browser left empty or as a REPLACE_* placeholder is skipped.
+//
+// Disabled keeps the extension in the catalog but stops the guard enforcing it,
+// so the status window can list it and let the user turn it back on. It defaults
+// to false (enabled), so a config without the field enforces every extension.
 type Extension struct {
-	Name    string `json:"name,omitempty"`
-	Chrome  Target `json:"chrome"`
-	Edge    Target `json:"edge"`
-	Brave   Target `json:"brave"`
-	Firefox Target `json:"firefox"`
+	// Name is the stable identifier used by select / enable-extension /
+	// disable-extension. Label is the friendly display name shown in the status
+	// window (falls back to Name when empty).
+	Name     string `json:"name,omitempty"`
+	Label    string `json:"label,omitempty"`
+	Disabled bool   `json:"disabled,omitempty"`
+	Chrome   Target `json:"chrome"`
+	Edge     Target `json:"edge"`
+	Brave    Target `json:"brave"`
+	Firefox  Target `json:"firefox"`
 }
 
 // Target returns the extension's target for a browser kind.
@@ -62,29 +71,61 @@ func (e Extension) Target(k Kind) Target {
 }
 
 // Config is the parsed extension-ids.json: the full set of extensions the guard
-// force-installs and locks.
+// force-installs and locks, plus app-level settings.
 type Config struct {
 	Extensions []Extension `json:"extensions"`
+	// AutoUpdate controls how the service reacts to a newer release:
+	// "notify" (default) logs availability, "apply" downloads and installs it
+	// silently, "off" disables the periodic check. See UpdateMode. Silent "apply"
+	// should wait until the binaries are code-signed (see docs/pc-version.md).
+	AutoUpdate string `json:"autoUpdate,omitempty"`
 }
 
-// Targets returns every configured target for a browser kind, one per extension
-// (including empty/placeholder targets; callers skip those via
-// chromiumForcelistValue / firefoxConfigured).
+// Update modes for Config.AutoUpdate.
+const (
+	UpdateNotify = "notify"
+	UpdateApply  = "apply"
+	UpdateOff    = "off"
+)
+
+// UpdateMode returns the normalized auto-update mode, defaulting to "notify" when
+// unset or unrecognized.
+func (c Config) UpdateMode() string {
+	switch strings.ToLower(strings.TrimSpace(c.AutoUpdate)) {
+	case UpdateApply:
+		return UpdateApply
+	case UpdateOff:
+		return UpdateOff
+	default:
+		return UpdateNotify
+	}
+}
+
+// Targets returns every enforced target for a browser kind, one per enabled
+// extension (including empty/placeholder targets; callers skip those via
+// chromiumForcelistValue / firefoxConfigured). Disabled extensions are omitted,
+// so apply/verify/remove never touch an extension the user turned off.
 func (c Config) Targets(k Kind) []Target {
 	out := make([]Target, 0, len(c.Extensions))
 	for _, e := range c.Extensions {
+		if e.Disabled {
+			continue
+		}
 		out = append(out, e.Target(k))
 	}
 	return out
 }
 
-// Select returns a copy of the config keeping only the extensions whose Name is
-// listed in names (case-insensitive). An empty names slice returns the config
-// unchanged, so callers that don't filter get every extension. The installer
-// uses this to lock only the extensions the user chose to install.
-func (c Config) Select(names []string) Config {
+// EnableOnly enables exactly the extensions whose Name is in names
+// (case-insensitive) and disables the rest, keeping every extension in the
+// catalog. An empty names slice enables all. The installer's component picker
+// uses this so unchosen extensions stay listed and can be turned on later.
+func (c *Config) EnableOnly(names []string) {
 	if len(names) == 0 {
-		return c
+		for i := range c.Extensions {
+			c.Extensions[i].Disabled = false
+		}
+		return
 	}
 	want := make(map[string]bool, len(names))
 	for _, n := range names {
@@ -92,13 +133,46 @@ func (c Config) Select(names []string) Config {
 			want[n] = true
 		}
 	}
+	for i := range c.Extensions {
+		c.Extensions[i].Disabled = !want[strings.ToLower(c.Extensions[i].Name)]
+	}
+}
+
+// SetEnabled flips one extension by name (case-insensitive). Returns false if no
+// extension has that name.
+func (c *Config) SetEnabled(name string, enabled bool) bool {
+	name = strings.TrimSpace(strings.ToLower(name))
+	for i := range c.Extensions {
+		if strings.ToLower(c.Extensions[i].Name) == name {
+			c.Extensions[i].Disabled = !enabled
+			return true
+		}
+	}
+	return false
+}
+
+// Only returns a copy containing just the named extension, forced enabled. Used
+// to lift a single extension's browser lock without touching the others.
+func (c Config) Only(name string) Config {
+	name = strings.TrimSpace(strings.ToLower(name))
 	var out Config
 	for _, e := range c.Extensions {
-		if want[strings.ToLower(e.Name)] {
+		if strings.ToLower(e.Name) == name {
+			e.Disabled = false
 			out.Extensions = append(out.Extensions, e)
 		}
 	}
 	return out
+}
+
+// AnyEnabled reports whether at least one extension is enabled.
+func (c Config) AnyEnabled() bool {
+	for _, e := range c.Extensions {
+		if !e.Disabled {
+			return true
+		}
+	}
+	return false
 }
 
 // UnmarshalJSON accepts both the current multi-extension shape
@@ -108,12 +182,14 @@ func (c Config) Select(names []string) Config {
 func (c *Config) UnmarshalJSON(data []byte) error {
 	var multi struct {
 		Extensions []Extension `json:"extensions"`
+		AutoUpdate string      `json:"autoUpdate"`
 	}
 	if err := json.Unmarshal(data, &multi); err != nil {
 		return err
 	}
 	if len(multi.Extensions) > 0 {
 		c.Extensions = multi.Extensions
+		c.AutoUpdate = multi.AutoUpdate
 		return nil
 	}
 	var legacy Extension

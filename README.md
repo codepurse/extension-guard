@@ -33,6 +33,7 @@ not two — see the **Linux** section below.
 | 6 | **Temporary disable/enable** toggle + polish (fixed window, app icon) | ✅ done |
 | 7 | **Linux** port (managed-policy files + systemd) | 🟡 code-complete; engine compile-verified, UI/scripts need a Linux box |
 | 8 | **Multi-extension** config (lock several extensions at once) | ✅ done |
+| 9 | **In-app updater** (GitHub Releases: auto-check + one-click update) | ✅ done (silent auto-apply gated on signing) |
 
 ## Prerequisites — Windows build (via winget)
 
@@ -65,9 +66,56 @@ you to **set an uninstall password** (give it to the parent / accountability
 partner, *not* the person being filtered), installs + starts the guard service,
 locks the browsers, and creates an **Extension Guard** shortcut.
 
-To **update** an installed copy: uninstall first (Settings → Apps → *Extension
-Guard* → Uninstall → enter the password), then run the new setup. Installing
-over a running install fails because the service holds `guard.exe` open.
+> Windows will likely warn that this is from an **"unknown publisher,"** and some
+> antivirus may flag it. That's expected for now — see
+> [Is it safe? Why Windows and antivirus warn you](#is-it-safe-why-windows-and-antivirus-warn-you)
+> for why, and how to verify it yourself.
+
+To **update** an installed copy, use the built-in updater (status window →
+**Update now**, or `guard update` from an elevated shell) — it swaps the
+binaries in place and restarts the service, no uninstall or password needed. See
+[Updates](#updates) below. (Reinstalling over a running install via the setup
+still fails, because the service holds `guard.exe` open — that's what the
+in-place updater works around.)
+
+### Is it safe? Why Windows and antivirus warn you
+
+When you run the installer, Windows SmartScreen will likely show **"Windows
+protected your PC — unknown publisher,"** and some antivirus tools may warn or
+quarantine it. Here's the honest *why*, and how to check for yourself.
+
+**Why it happens (two reasons, neither is malware):**
+
+1. **It isn't code-signed yet.** Code-signing certificates normally cost money;
+   we're getting a **free certificate for open-source projects** via the
+   [SignPath Foundation](https://about.signpath.io/product/open-source). Until
+   that's in place, releases are unsigned, so Windows can't display a verified
+   publisher — hence "unknown publisher." *A cert is on the way; once it's in
+   place these warnings go away.*
+2. **It's deliberately tamper-resistant.** Extension Guard runs a service with a
+   watchdog that restarts itself if it's killed — that's the entire point (it
+   stops the filtered user from simply uninstalling it). That "won't stay dead"
+   behavior is *also* what some malware does, so heuristic antivirus occasionally
+   flags it. It only installs after you tick the **consent** box, and only the
+   person holding the uninstall password can remove it.
+
+**What it does — and doesn't:** it only writes the browsers' enterprise
+"force-install" policy and keeps it applied. It does **no** content filtering
+itself (the extensions do that), collects **no** personal data, and makes **no**
+network calls except checking GitHub for updates.
+
+**Don't take our word for it — verify:**
+
+- The **full source is public** in this repo — read every line, and build it
+  yourself with `build.ps1`.
+- Every release ships a **`manifest.json`** listing the SHA-256 of each binary.
+  Confirm your download matches:
+  ```powershell
+  (Get-FileHash .\guard.exe -Algorithm SHA256).Hash
+  ```
+- Scan the binaries yourself on [VirusTotal](https://www.virustotal.com/).
+
+**To install past the SmartScreen prompt:** click **More info → Run anyway**.
 
 ### Status window (day-to-day)
 
@@ -75,7 +123,14 @@ over a running install fails because the service holds `guard.exe` open.
 how many browsers are locked, and the service state. To pause or resume, type the
 password and click **Disable protection** / **Enable protection** — each pops a
 Windows **UAC** prompt, and the guard re-verifies the password itself, so the
-button can't be bypassed from the UI. The window is read-only otherwise.
+button can't be bypassed from the UI.
+
+The **Protected extensions** list lets you turn each configured extension on or
+off after install: turning one **on** is free (it only adds protection), turning
+one **off** requires the password. Each toggle runs the guard elevated (UAC) and
+rewrites the config; the service picks the change up on its next cycle. This is
+how you add a second extension (e.g. Sieve) to a guard you first installed for
+just one — no reinstall needed.
 
 ## Try it (Windows, Administrator shell required)
 
@@ -134,6 +189,50 @@ as malware, so this layer makes code signing mandatory before distribution.
 
 Config comes from `extension-ids.json` (found automatically next to the binary,
 or by walking up from the working directory). Override with `guard -config <path> apply`.
+
+## Updates
+
+The app can update itself from **GitHub Releases**, in place, without an
+uninstall. Because the guard is a self-healing service (the watchdog fights any
+restart and the service holds `guard.exe` open), the update is *cooperative*: it
+sets an `updating` sentinel so the watchdog stands down, stops the service,
+renames the old binaries aside and the new ones into place (Windows lets you
+rename a running `.exe`), then restarts the service — which spawns a fresh
+watchdog from the new binary. The old binaries are cleared on the next reboot.
+
+Because updating only *strengthens* protection, it needs **admin (UAC)** but
+**not** the uninstall password — same gate as enabling an extension.
+
+**Two ways it triggers:**
+
+- **Manual** — the status window shows an **Update available** banner with an
+  **Update now** button (and a **Check for updates** button in the footer). Or
+  run `guard update` from an elevated shell. `guard check-update` just reports.
+- **Automatic** — the service polls GitHub every 6h and reacts per the
+  `autoUpdate` setting in `extension-ids.json`:
+
+  | `autoUpdate` | Behaviour |
+  |--------------|-----------|
+  | `notify` (default) | logs that an update is available; the user applies it from the status window |
+  | `apply` | downloads + installs it silently in the background |
+  | `off` | no periodic check |
+
+> **Keep `autoUpdate` at `notify` until the binaries are code-signed.** Integrity
+> today rests on a SHA-256 manifest (it catches corruption, not a compromised
+> release); only Authenticode proves authenticity, and silently running unsigned
+> downloads from a tamper-resistant service is exactly what antivirus quarantines.
+> The manual path stays fully usable in the meantime. See `docs/pc-version.md`.
+
+### Publishing a release
+
+`build.ps1` reads the repo-root `VERSION` file, stamps it into both binaries
+(`internal/buildinfo.Version` via `-ldflags`) and the installer, and writes
+`release\manifest.json` with the SHA-256 of each binary. To publish: bump
+`VERSION`, run `build.ps1`, then create a **GitHub release tagged `v<version>`**
+(on the repo in `internal/updater.Repo`) and attach `guard.exe`,
+`extension-guard-status.exe`, and `manifest.json`. The updater reads
+`manifest.json` to learn the version + expected hashes and downloads the
+matching assets.
 
 ## Linux
 
@@ -210,11 +309,13 @@ placeholder (or omitted) is skipped (`not configured` in `verify`).
 }
 ```
 
-The config is the full **catalog** of extensions the guard *can* lock. At install
-time the setup wizard shows a **Select Components** page, and only the chosen
-extensions are kept — the installer runs `guard -extensions <chosen> select` to
-trim the installed `extension-ids.json` before the service starts. So one
-installer can lock BlockNSFW, Sieve, or both, per the user's choice.
+The config is the full **catalog** of extensions the guard *can* lock; each
+extension carries a `disabled` flag. At install time the setup wizard shows a
+**Select Components** page, and the installer runs `guard -extensions <chosen> select`
+to enable the chosen extensions and disable the rest (all stay in the file). So
+one installer can lock BlockNSFW, Sieve, or both. After install, the **status
+window** (or `guard enable-extension <name>` / `guard disable-extension <name>`)
+flips those flags, so you can add or drop an extension without reinstalling.
 
 `verify` reports each browser as locked when **all** configured extensions for
 that browser are force-installed. See `docs/pc-version.md` for the full

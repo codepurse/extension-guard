@@ -10,20 +10,25 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"time"
 
 	"github.com/kardianos/service"
 	"golang.org/x/term"
 
 	"github.com/codepurse/extension-guard/internal/auth"
+	"github.com/codepurse/extension-guard/internal/buildinfo"
 	"github.com/codepurse/extension-guard/internal/guardsvc"
 	"github.com/codepurse/extension-guard/internal/policy"
 	"github.com/codepurse/extension-guard/internal/scm"
+	"github.com/codepurse/extension-guard/internal/updater"
 )
 
 func main() {
@@ -39,6 +44,17 @@ func main() {
 		if cmd == "" {
 			os.Exit(2)
 		}
+		return
+	}
+
+	// version / check-update don't need the config (and version must work even
+	// when the config is missing), so handle them before LoadConfig.
+	switch cmd {
+	case "version":
+		fmt.Println(buildinfo.Version)
+		return
+	case "check-update":
+		checkUpdateCmd()
 		return
 	}
 
@@ -66,8 +82,15 @@ func main() {
 		}
 	case "select":
 		selectConfig(cfg, *extensions, *cfgPath)
+	case "enable-extension":
+		toggleExtension(cfg, *cfgPath, flag.Arg(1), true)
+	case "disable-extension":
+		requirePassword(*password)
+		toggleExtension(cfg, *cfgPath, flag.Arg(1), false)
 	case "set-password":
 		setPassword(*password)
+	case "update":
+		updateCmd(cfg, *cfgPath)
 	case "run", "watchdog", "install-service", "uninstall-service", "start", "stop", "disable", "enable":
 		runService(cmd, cfg, *cfgPath, *password)
 	default:
@@ -204,24 +227,55 @@ func printStatus(cfg policy.Config) {
 	}
 }
 
-// selectConfig rewrites the config file so it lists only the chosen extensions.
-// The installer calls this after the user picks components, so the service,
-// watchdog, and status window (which all read this file) enforce just those.
+// selectConfig marks the chosen extensions enabled and the rest disabled,
+// keeping every extension in the file (the catalog). The installer calls this
+// after the user picks components; the service, watchdog, and status window all
+// read this file, and disabled entries stay listed so they can be turned on
+// later from the status window.
 func selectConfig(cfg policy.Config, extensions, outPath string) {
-	names := splitAndTrim(extensions)
-	sel := cfg.Select(names)
-	if len(sel.Extensions) == 0 {
-		fmt.Fprintln(os.Stderr, "error: no extensions matched -extensions; refusing to write an empty config")
+	cfg.EnableOnly(splitAndTrim(extensions))
+	if !cfg.AnyEnabled() {
+		fmt.Fprintln(os.Stderr, "error: -extensions matched no known extension; refusing to disable them all")
 		os.Exit(1)
 	}
-	data, err := json.MarshalIndent(sel, "", "  ")
+	writeConfig(cfg, outPath)
+	var enabled []string
+	for _, e := range cfg.Extensions {
+		if !e.Disabled {
+			enabled = append(enabled, e.Name)
+		}
+	}
+	fmt.Printf("config now enforces: %s\n", strings.Join(enabled, ", "))
+}
+
+// toggleExtension enables or disables one extension by name, rewrites the config
+// (the source of truth the service re-reads each cycle), and applies or lifts
+// just that extension's browser lock.
+func toggleExtension(cfg policy.Config, cfgPath, name string, enable bool) {
+	if strings.TrimSpace(name) == "" {
+		fmt.Fprintln(os.Stderr, "error: name required, e.g. `guard enable-extension sieve`")
+		os.Exit(2)
+	}
+	if !cfg.SetEnabled(name, enable) {
+		fmt.Fprintf(os.Stderr, "error: no extension named %q in the config\n", name)
+		os.Exit(1)
+	}
+	writeConfig(cfg, cfgPath)
+	if enable {
+		must(policy.Apply(cfg))
+		fmt.Printf("enabled: %s is now force-installed\n", name)
+	} else {
+		must(policy.Remove(cfg.Only(name)))
+		fmt.Printf("disabled: %s is no longer locked\n", name)
+	}
+	printStatus(cfg)
+}
+
+// writeConfig serializes the config back to disk (pretty-printed).
+func writeConfig(cfg policy.Config, outPath string) {
+	data, err := json.MarshalIndent(cfg, "", "  ")
 	must(err)
 	must(os.WriteFile(outPath, append(data, '\n'), 0o644))
-	kept := make([]string, 0, len(sel.Extensions))
-	for _, e := range sel.Extensions {
-		kept = append(kept, e.Name)
-	}
-	fmt.Printf("config now enforces: %s\n", strings.Join(kept, ", "))
 }
 
 // splitAndTrim turns "a, b ,c" into ["a","b","c"], dropping blanks.
@@ -280,6 +334,127 @@ func fileExists(p string) bool {
 	return err == nil
 }
 
+// checkUpdateCmd reports whether a newer release is available on GitHub. It is
+// read-only and needs no admin rights, so the status window and users can run it
+// freely.
+func checkUpdateCmd() {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	rel, err := updater.CheckLatest(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	if !rel.Newer(buildinfo.Version) {
+		fmt.Printf("up to date (running %s, latest %s)\n", buildinfo.Version, rel.Version)
+		return
+	}
+	fmt.Printf("update available: %s (running %s)\n", rel.Version, buildinfo.Version)
+	if strings.TrimSpace(rel.Notes) != "" {
+		fmt.Printf("\n%s\n", rel.Notes)
+	}
+}
+
+// updateCmd downloads the latest release (if newer) and swaps its binaries in,
+// restarting the service so the new image loads. It needs admin rights (it
+// writes into the install dir and controls the service) but NOT the uninstall
+// password: like enabling an extension, updating only strengthens protection, so
+// it is gated on admin/UAC alone.
+//
+// The swap is cooperative with the self-healing loop: set the "updating"
+// sentinel so the watchdog stands down, give it a moment to observe that, stop
+// the service, rename the old binaries aside and the new ones in, clear the
+// sentinel, and start the service (which spawns a fresh watchdog from the new
+// binary). The sentinel is cleared on every exit path so a failure never leaves
+// the guard un-watched.
+func updateCmd(cfg policy.Config, cfgPath string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	rel, err := updater.CheckLatest(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: check for update: %v\n", err)
+		os.Exit(1)
+	}
+	if !rel.Newer(buildinfo.Version) {
+		fmt.Printf("already up to date (running %s, latest %s)\n", buildinfo.Version, rel.Version)
+		return
+	}
+	fmt.Printf("updating %s -> %s\n", buildinfo.Version, rel.Version)
+
+	exe, err := os.Executable()
+	must(err)
+	dir := filepath.Dir(exe)
+
+	staged, err := rel.Stage(ctx, dir, updateAssetNames()...)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	absCfg, err := filepath.Abs(cfgPath)
+	if err != nil {
+		absCfg = cfgPath
+	}
+	svc, err := guardsvc.New(cfg, absCfg)
+	must(err)
+
+	// Pause the watchdog, then let it observe the sentinel before we stop the
+	// service (mirrors the uninstall teardown wait, which closes the same race).
+	_ = scm.SetUpdating(true)
+	running := scm.IsRunning(guardsvc.ServiceName)
+	if running {
+		time.Sleep(watchdogStandDownWait)
+		if err := service.Control(svc, "stop"); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: stop service: %v\n", err)
+		}
+		waitForStop(guardsvc.ServiceName, 15*time.Second)
+	}
+
+	if err := updater.SwapFiles(dir, staged); err != nil {
+		_ = scm.SetUpdating(false)
+		if running {
+			_ = service.Control(svc, "start") // best-effort: bring the old one back up
+		}
+		fmt.Fprintf(os.Stderr, "error: swap binaries: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Clear the sentinel before (re)starting so the fresh service arms its
+	// watchdog from the new binary.
+	_ = scm.SetUpdating(false)
+	if running {
+		if err := service.Control(svc, "start"); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: start service: %v\n", err)
+		}
+	}
+	fmt.Printf("updated to %s. Restart the status window to load the new UI.\n", rel.Version)
+}
+
+// updateAssetNames is the set of binaries an update replaces, matching the
+// release asset (and manifest) names for this platform.
+func updateAssetNames() []string {
+	if runtime.GOOS == "windows" {
+		return []string{"guard.exe", "extension-guard-status.exe"}
+	}
+	return []string{"guard", "extension-guard-status"}
+}
+
+// watchdogStandDownWait is how long to wait after setting the updating sentinel
+// for the watchdog to notice and exit before we stop the service.
+const watchdogStandDownWait = 7 * time.Second
+
+// waitForStop blocks until the named service is no longer running, or timeout.
+func waitForStop(name string, timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if !scm.IsRunning(name) {
+			return
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+}
+
 func usage() {
 	fmt.Println(`Extension Guard
 
@@ -290,7 +465,9 @@ policy commands (admin):
   verify             show the lock status of each browser (alias: status)
   remove             delete the force-install policy
   detect             list which supported browsers are installed
-  select             rewrite the config to keep only -extensions (used by the installer)
+  select             enable only -extensions, disable the rest (used by the installer)
+  enable-extension   <name>   start locking an extension (adds protection)
+  disable-extension  <name>   stop locking an extension (requires the password)
 
 service commands (admin):
   install-service    install + harden + start the guard service (sets password)
@@ -302,6 +479,12 @@ service commands (admin):
   stop               stop the service
   run                run in the foreground (also used by the service manager)
   watchdog           run the watchdog loop (internal; spawned by the service)
+
+update commands:
+  check-update       report whether a newer release is available (no admin)
+  update             download + install the latest release, then restart the
+                     service (admin; no password - updating strengthens protection)
+  version            print the build version
 
   help               show this help
 

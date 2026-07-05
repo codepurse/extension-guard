@@ -7,16 +7,20 @@
 package guardsvc
 
 import (
+	"context"
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/kardianos/service"
 
+	"github.com/codepurse/extension-guard/internal/buildinfo"
 	"github.com/codepurse/extension-guard/internal/policy"
 	"github.com/codepurse/extension-guard/internal/scm"
+	"github.com/codepurse/extension-guard/internal/updater"
 	"github.com/codepurse/extension-guard/internal/watcher"
 )
 
@@ -28,6 +32,13 @@ const (
 	watchdogInterval = 5 * time.Second
 	watchdogRespawn  = 2 * time.Second
 	watchdogMutex    = `Local\ExtensionGuardWatchdog`
+
+	// updateCheckInterval is how often the service polls GitHub for a newer
+	// release; updateStartupDelay staggers the first check so it doesn't race
+	// service startup. updateCheckTimeout bounds a single check.
+	updateCheckInterval = 6 * time.Hour
+	updateStartupDelay  = 2 * time.Minute
+	updateCheckTimeout  = 30 * time.Second
 )
 
 type program struct {
@@ -146,6 +157,14 @@ func RunWatchdog(cfg policy.Config, configPath string) error {
 			log.Println("guard disabled by an authorized uninstall; watchdog exiting")
 			return nil
 		}
+		if scm.IsUpdating() {
+			// An update is swapping the binaries and restarting the service. Stand
+			// down and exit so we neither fight the restart nor keep an old-binary
+			// watchdog alive: releasing the singleton lets the freshly started
+			// service spawn a watchdog from the updated binary.
+			log.Println("update in progress; watchdog standing down")
+			return nil
+		}
 		if scm.Exists(ServiceName) {
 			if err := scm.Harden(ServiceName); err != nil {
 				log.Printf("re-harden: %v", err)
@@ -191,6 +210,14 @@ func (p *program) Stop(s service.Service) error {
 }
 
 func (p *program) loop() {
+	// A running service means any update handoff is complete: clear a stale
+	// "updating" flag (in case an updater died mid-swap) and remove leftover
+	// ".old" binaries the reboot-delete may not have reached.
+	_ = scm.SetUpdating(false)
+	if exe, err := os.Executable(); err == nil {
+		updater.CleanupOld(filepath.Dir(exe))
+	}
+
 	p.reapply("startup")
 
 	if w, err := watcher.New(); err != nil {
@@ -204,20 +231,67 @@ func (p *program) loop() {
 		}()
 	}
 
-	if !scm.IsDisabled() {
+	if !scm.IsDisabled() && !scm.IsUpdating() {
 		p.spawnWatchdog()
 	}
 
 	ticker := time.NewTicker(backstop)
 	defer ticker.Stop()
+	updateTicker := time.NewTicker(updateCheckInterval)
+	defer updateTicker.Stop()
+	firstUpdate := time.NewTimer(updateStartupDelay)
+	defer firstUpdate.Stop()
 	for {
 		select {
 		case <-p.quit:
 			return
 		case <-ticker.C:
 			p.reapply("periodic")
+		case <-firstUpdate.C:
+			p.checkForUpdate()
+		case <-updateTicker.C:
+			p.checkForUpdate()
 		}
 	}
+}
+
+// checkForUpdate polls GitHub for a newer release and reacts per the configured
+// AutoUpdate mode: "off" skips the check, "notify" logs availability, and
+// "apply" launches `guard update` in a separate process to perform the
+// cooperative swap (it must outlive this service, which it stops and restarts).
+// Dev builds never auto-apply.
+func (p *program) checkForUpdate() {
+	mode := p.cfg.UpdateMode()
+	if mode == policy.UpdateOff {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), updateCheckTimeout)
+	defer cancel()
+	rel, err := updater.CheckLatest(ctx)
+	if err != nil {
+		p.logger.Infof("update check failed: %v", err)
+		return
+	}
+	if !rel.Newer(buildinfo.Version) {
+		return
+	}
+	if mode != policy.UpdateApply || buildinfo.Version == "dev" {
+		p.logger.Infof("update available: %s (running %s); auto-apply off (mode=%q)", rel.Version, buildinfo.Version, mode)
+		return
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		p.logger.Errorf("update: locate executable: %v", err)
+		return
+	}
+	p.logger.Infof("applying update %s -> %s", buildinfo.Version, rel.Version)
+	cmd := exec.Command(exe, "-config", p.configPath, "update")
+	if err := cmd.Start(); err != nil {
+		p.logger.Errorf("update: launch updater: %v", err)
+		return
+	}
+	// Detach: the updater stops this service shortly, so we must not wait on it.
+	_ = cmd.Process.Release()
 }
 
 // spawnWatchdog launches the watchdog child and respawns it if it exits while
@@ -244,8 +318,8 @@ func (p *program) spawnWatchdog() {
 			return // service stopping; do not respawn
 		default:
 		}
-		if scm.IsDisabled() {
-			return
+		if scm.IsDisabled() || scm.IsUpdating() {
+			return // authorized teardown or in-progress update; leave it down
 		}
 		time.Sleep(watchdogRespawn)
 		p.spawnWatchdog()
@@ -253,8 +327,14 @@ func (p *program) spawnWatchdog() {
 }
 
 // reapply writes the policy and logs only when it actually fixed something (the
-// locked-browser count changed), keeping the log quiet in steady state.
+// locked-browser count changed), keeping the log quiet in steady state. It
+// reloads the config from disk first, so enabling/disabling an extension at
+// runtime (which rewrites the config file) takes effect without a restart - and
+// a just-disabled extension is not re-applied on the next tick.
 func (p *program) reapply(reason string) {
+	if cfg, err := policy.LoadConfig(p.configPath); err == nil {
+		p.cfg = cfg
+	}
 	before := lockedCount(policy.Verify(p.cfg))
 	if err := policy.Apply(p.cfg); err != nil {
 		p.logger.Errorf("apply (%s): %v", reason, err)

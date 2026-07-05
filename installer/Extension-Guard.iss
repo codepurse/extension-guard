@@ -11,7 +11,12 @@
 ; NOTE: unsigned until a code-signing certificate is available (SignPath).
 
 #define AppName "Extension Guard"
-#define AppVersion "1.0.0"
+; AppVersion is normally passed by build.ps1 (ISCC /DAppVersion=x.y.z from the
+; repo-root VERSION file). The fallback keeps a bare `ISCC Extension-Guard.iss`
+; working.
+#ifndef AppVersion
+  #define AppVersion "1.0.0"
+#endif
 
 [Setup]
 AppId={{6B2C9E4A-3F71-4B8E-9C2D-5A1E7F0D9C34}
@@ -29,6 +34,9 @@ WizardStyle=modern
 LicenseFile=consent.txt
 SetupIconFile=..\statusui\build\windows\icon.ico
 UninstallDisplayName={#AppName}
+; Icon shown in Windows "Installed apps" / Apps & Features (the status exe carries
+; the app icon; guard.exe is a console binary with no icon resource).
+UninstallDisplayIcon={app}\extension-guard-status.exe
 
 [Types]
 Name: "full"; Description: "Lock all available extensions"

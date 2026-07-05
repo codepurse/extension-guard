@@ -125,3 +125,62 @@ func TestLoadConfigMissingFile(t *testing.T) {
 		t.Fatal("expected error for missing config file")
 	}
 }
+
+func sampleCatalog() Config {
+	return Config{Extensions: []Extension{
+		{Name: "blocknsfw", Chrome: Target{ExtensionID: "b", UpdateURL: "https://u/crx"}},
+		{Name: "sieve", Chrome: Target{ExtensionID: "s", UpdateURL: "https://u/crx"}},
+	}}
+}
+
+func TestTargetsSkipsDisabled(t *testing.T) {
+	c := sampleCatalog()
+	if got := c.Targets(Chrome); len(got) != 2 {
+		t.Fatalf("all enabled: got %d chrome targets, want 2", len(got))
+	}
+	if !c.SetEnabled("sieve", false) {
+		t.Fatal("SetEnabled(sieve,false) returned false; name not found")
+	}
+	got := c.Targets(Chrome)
+	if len(got) != 1 || got[0].ExtensionID != "b" {
+		t.Fatalf("after disabling sieve: chrome targets = %+v, want just blocknsfw", got)
+	}
+	if !c.AnyEnabled() {
+		t.Fatal("AnyEnabled should be true (blocknsfw still on)")
+	}
+}
+
+func TestSetEnabledUnknown(t *testing.T) {
+	c := sampleCatalog()
+	if c.SetEnabled("nope", false) {
+		t.Fatal("SetEnabled on an unknown name should return false")
+	}
+}
+
+func TestEnableOnly(t *testing.T) {
+	c := sampleCatalog()
+	c.EnableOnly([]string{"sieve"})
+	if !c.Extensions[0].Disabled {
+		t.Error("blocknsfw should be disabled after EnableOnly(sieve)")
+	}
+	if c.Extensions[1].Disabled {
+		t.Error("sieve should be enabled after EnableOnly(sieve)")
+	}
+	// empty list re-enables everything
+	c.EnableOnly(nil)
+	if c.Extensions[0].Disabled || c.Extensions[1].Disabled {
+		t.Error("EnableOnly(nil) should enable all extensions")
+	}
+}
+
+func TestOnly(t *testing.T) {
+	c := sampleCatalog()
+	c.SetEnabled("blocknsfw", false)
+	only := c.Only("blocknsfw")
+	if len(only.Extensions) != 1 || only.Extensions[0].Name != "blocknsfw" {
+		t.Fatalf("Only(blocknsfw) = %+v, want just blocknsfw", only.Extensions)
+	}
+	if only.Extensions[0].Disabled {
+		t.Error("Only() should force the returned extension enabled so its policy can be removed")
+	}
+}

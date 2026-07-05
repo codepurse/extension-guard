@@ -51,6 +51,12 @@
   .badge.locked { color: var(--ok); background: var(--ok-bg); }
   .badge.unlocked { color: var(--faint); background: var(--surface2); }
   .row.absent { opacity: .45; }
+  .row .toggle { margin-left: auto; padding: 3px 12px; font-size: 11px; font-weight: 600; border-radius: 999px; }
+  .row .toggle.on, .row .toggle.on:hover { background: var(--ok-bg); color: var(--ok); }
+  .row .toggle.off, .row .toggle.off:hover { background: var(--surface2); color: var(--muted); }
+  .row .toggle:hover { filter: brightness(1.2); }
+  .exthint { font-size: 12px; color: var(--muted); margin: -6px 0 0; }
+  .row .extname { text-transform: none; }
   .lockbox { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
   .lockbox .hint { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
   .lockrow { display: flex; gap: 8px; }
@@ -79,7 +85,7 @@
 <div class="wrap">
 
   <div class="topbar">
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7f77dd" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+    <img src="logo.png" width="20" height="20" alt="" />
     <span class="name">Extension Guard</span>
     <span id="pill" class="pill inactive">…</span>
   </div>
@@ -99,8 +105,20 @@
     <div class="card"><div class="lbl">Browsers locked</div><div class="val" id="locked-val">—</div></div>
   </div>
 
+  <div id="update-banner" class="lockbox" style="display:none; border-color: var(--accent-dim);">
+    <div class="hint" id="update-text">An update is available.</div>
+    <div class="lockrow">
+      <button id="update-btn">Update now</button>
+    </div>
+    <div id="update-msg" class="msg"></div>
+  </div>
+
   <div class="section-title">Browsers</div>
   <div class="rows" id="rows"></div>
+
+  <div class="section-title">Protected extensions</div>
+  <p class="exthint">Turning one on adds protection (free). Turning one off needs the password below.</p>
+  <div class="rows" id="ext-rows"></div>
 
   <div class="lockbox">
     <div class="hint" id="lock-hint">Turning protection off requires the password held by the parent or accountability partner.</div>
@@ -113,6 +131,7 @@
 
   <div class="foot">
     <span id="ver">Extension Guard</span>
+    <button class="ghost" id="check-updates">Check for updates</button>
     <button class="ghost" id="refresh">Refresh</button>
   </div>
 
@@ -171,6 +190,57 @@
       row.appendChild(badge);
       rows.appendChild(row);
     });
+
+    const extRows = document.getElementById('ext-rows');
+    extRows.innerHTML = '';
+    (s.extensions || []).forEach(function (e) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      const name = document.createElement('span');
+      name.className = 'bname extname';
+      name.textContent = e.label || e.name;
+      const tog = document.createElement('button');
+      tog.className = 'toggle ' + (e.enabled ? 'on' : 'off');
+      tog.textContent = e.enabled ? 'On' : 'Off';
+      tog.addEventListener('click', function () { toggleExt(e.name, e.label || e.name, e.enabled); });
+      row.appendChild(name);
+      row.appendChild(tog);
+      extRows.appendChild(row);
+    });
+  }
+
+  // toggleExt turns one extension's protection on (free) or off (password-gated),
+  // via an elevated guard call. It reuses the password field for turning off.
+  async function toggleExt(name, label, enabled) {
+    const msg = document.getElementById('msg');
+    if (!bound()) { return; }
+    let res;
+    try {
+      if (enabled) {
+        const pw = document.getElementById('pw').value;
+        if (!pw) {
+          msg.className = 'msg err';
+          msg.textContent = 'Enter the password below, then turn "' + label + '" off.';
+          return;
+        }
+        msg.className = 'msg'; msg.textContent = 'Approve the Windows permission prompt…';
+        res = await window.go.main.App.DisableExtension(name, pw);
+      } else {
+        msg.className = 'msg'; msg.textContent = 'Approve the Windows permission prompt…';
+        res = await window.go.main.App.EnableExtension(name);
+      }
+    } catch (e) {
+      res = { ok: false, message: String(e) };
+    }
+    document.getElementById('pw').value = '';
+    if (res.ok) {
+      msg.className = 'msg ok';
+      msg.textContent = label + (enabled ? ' is no longer locked.' : ' is now protected.');
+    } else {
+      msg.className = 'msg err';
+      msg.textContent = res.message;
+    }
+    await refresh();
   }
 
   async function refresh() {
@@ -211,10 +281,82 @@
     await refresh();
   }
 
+  // loadVersion shows the running build in the footer, e.g. "Extension Guard v1.2.0".
+  async function loadVersion() {
+    if (!bound() || !window.go.main.App.GetVersion) { return; }
+    try {
+      const v = await window.go.main.App.GetVersion();
+      document.getElementById('ver').textContent = 'Extension Guard v' + v;
+    } catch (e) { /* leave the default label */ }
+  }
+
+  // checkUpdates asks the backend whether a newer release exists and shows the
+  // banner when one does. When triggered manually it also reports "up to date"
+  // and check failures; the automatic on-open check stays silent unless there's
+  // an update to offer.
+  async function checkUpdates(manual) {
+    if (!bound() || !window.go.main.App.CheckForUpdate) { return; }
+    const banner = document.getElementById('update-banner');
+    const text = document.getElementById('update-text');
+    const umsg = document.getElementById('update-msg');
+    const btn = document.getElementById('update-btn');
+    const checkBtn = document.getElementById('check-updates');
+    if (manual) { checkBtn.disabled = true; checkBtn.textContent = 'Checking…'; }
+    let res;
+    try { res = await window.go.main.App.CheckForUpdate(); }
+    catch (e) { res = { error: String(e) }; }
+    if (manual) { checkBtn.disabled = false; checkBtn.textContent = 'Check for updates'; }
+
+    if (res.error) {
+      if (manual) {
+        banner.style.display = '';
+        btn.style.display = 'none';
+        text.textContent = res.error;
+        umsg.textContent = '';
+      }
+      return;
+    }
+    if (res.available) {
+      banner.style.display = '';
+      btn.style.display = '';
+      text.textContent = 'Update available: v' + res.latest + ' (you have v' + res.current + ').';
+      umsg.className = 'msg';
+      umsg.textContent = res.notes || '';
+    } else if (manual) {
+      banner.style.display = '';
+      btn.style.display = 'none';
+      text.textContent = "You're on the latest version (v" + res.current + ').';
+      umsg.textContent = '';
+    }
+  }
+
+  // applyUpdate runs the elevated updater (a UAC prompt); no password needed.
+  async function applyUpdate() {
+    const btn = document.getElementById('update-btn');
+    const umsg = document.getElementById('update-msg');
+    if (!bound()) { return; }
+    btn.disabled = true;
+    umsg.className = 'msg';
+    umsg.textContent = 'Approve the Windows permission prompt…';
+    let res;
+    try { res = await window.go.main.App.ApplyUpdate(); }
+    catch (e) { res = { ok: false, message: String(e) }; }
+    btn.disabled = false;
+    umsg.className = 'msg ' + (res.ok ? 'ok' : 'err');
+    umsg.textContent = res.message;
+    if (res.ok) { btn.style.display = 'none'; }
+  }
+
   document.getElementById('refresh').addEventListener('click', refresh);
+  document.getElementById('check-updates').addEventListener('click', function () { checkUpdates(true); });
+  document.getElementById('update-btn').addEventListener('click', applyUpdate);
   document.getElementById('action-btn').addEventListener('click', toggle);
   document.getElementById('pw').addEventListener('keydown', function (e) { if (e.key === 'Enter') toggle(); });
-  window.addEventListener('DOMContentLoaded', refresh);
+  window.addEventListener('DOMContentLoaded', function () {
+    refresh();
+    loadVersion();
+    checkUpdates(false);
+  });
 </script>
 </body>
 </html>

@@ -23,6 +23,7 @@ const (
 
 type state struct {
 	GuardDisabled bool   `json:"guardDisabled"`
+	GuardUpdating bool   `json:"guardUpdating"`
 	PasswordHash  string `json:"passwordHash"`
 }
 
@@ -90,6 +91,17 @@ func SetDisabled(v bool) error {
 
 // IsDisabled reports whether the disabled sentinel is set.
 func IsDisabled() bool { return loadState().GuardDisabled }
+
+// SetUpdating writes the sentinel that tells the watchdog to stand down while an
+// update swaps the binaries and restarts the service. IsUpdating reads it.
+func SetUpdating(v bool) error {
+	s := loadState()
+	s.GuardUpdating = v
+	return saveState(s)
+}
+
+// IsUpdating reports whether an update is currently in progress.
+func IsUpdating() bool { return loadState().GuardUpdating }
 
 // SetPasswordHash stores the bcrypt hash of the uninstall password.
 func SetPasswordHash(hash string) error {

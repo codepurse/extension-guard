@@ -26,6 +26,12 @@ func SetDisabled(v bool) error { return errWindowsOnly }
 // IsDisabled reports false on non-Windows platforms.
 func IsDisabled() bool { return false }
 
+// SetUpdating is a no-op stub on non-Windows platforms.
+func SetUpdating(v bool) error { return errWindowsOnly }
+
+// IsUpdating reports false on non-Windows platforms.
+func IsUpdating() bool { return false }
+
 // AcquireSingleton always succeeds on non-Windows platforms.
 func AcquireSingleton(name string) bool { return true }
 

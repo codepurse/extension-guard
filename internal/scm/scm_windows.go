@@ -22,6 +22,7 @@ import (
 const (
 	stateKeyPath  = `SOFTWARE\ExtensionGuard`
 	disabledValue = "GuardDisabled"
+	updatingValue = "GuardUpdating"
 	passwordValue = "PasswordHash"
 	resetPeriod   = uint32(24 * 60 * 60) // recovery failure-count reset window (seconds)
 )
@@ -162,6 +163,35 @@ func isDisabledIn(root registry.Key) bool {
 	}
 	defer key.Close()
 	d, _, err := key.GetIntegerValue(disabledValue)
+	return err == nil && d != 0
+}
+
+// SetUpdating writes the sentinel that tells the watchdog to stand down while an
+// update swaps the binaries and restarts the service, so the self-healing loop
+// doesn't fight the restart. IsUpdating reads it. Distinct from the disabled
+// sentinel: an update is a transient, protection-preserving operation, not a
+// teardown.
+func SetUpdating(v bool) error {
+	key, _, err := registry.CreateKey(registry.LOCAL_MACHINE, stateKeyPath, registry.SET_VALUE)
+	if err != nil {
+		return err
+	}
+	defer key.Close()
+	var d uint32
+	if v {
+		d = 1
+	}
+	return key.SetDWordValue(updatingValue, d)
+}
+
+// IsUpdating reports whether an update is currently in progress.
+func IsUpdating() bool {
+	key, err := registry.OpenKey(registry.LOCAL_MACHINE, stateKeyPath, registry.QUERY_VALUE)
+	if err != nil {
+		return false
+	}
+	defer key.Close()
+	d, _, err := key.GetIntegerValue(updatingValue)
 	return err == nil && d != 0
 }
 

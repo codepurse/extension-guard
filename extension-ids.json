@@ -1,8 +1,11 @@
 {
   "_comment": "Single source of truth for the browser force-install policy. Extension Guard reads this to lock every listed extension in place. Each extension needs, per browser, that browser's own store ID + update/install URL (a browser only force-installs from its own store). Leave a browser out, or as a REPLACE_* placeholder, and the guard skips it ('not configured' in `verify`). The installer/build scripts copy this file next to the binaries.",
+  "_autoUpdateComment": "How the service reacts to a newer GitHub release: 'notify' (default) logs availability, 'apply' downloads + installs it silently, 'off' disables the periodic check. Keep at 'notify' until the binaries are code-signed. The status window's 'Update now' button and `guard update` work regardless of this setting.",
+  "autoUpdate": "notify",
   "extensions": [
     {
       "name": "blocknsfw",
+      "label": "BlockNSFW – Porn & Adult Content Filter",
       "chrome": {
         "extensionId": "ekdegpeejlidlkofccgakfdbiegmicmj",
         "updateUrl": "https://clients2.google.com/service/update2/crx"
@@ -22,6 +25,7 @@
     },
     {
       "name": "sieve",
+      "label": "Sieve - Site & Content Blocker",
       "chrome": {
         "extensionId": "ipdgekalafnmgejbgapendbhdidjgdeg",
         "updateUrl": "https://clients2.google.com/service/update2/crx"
