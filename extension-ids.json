@@ -7,7 +7,7 @@
       "name": "blocknsfw",
       "label": "BlockNSFW – Porn & Adult Content Filter",
       "chrome": {
-        "extensionId": "ekdegpeejlidlkofccgakfdbiegmicmj",
+        "extensionId": "fiecjgpoilkhmoieaboolkfmgbnhlhop",
         "updateUrl": "https://clients2.google.com/service/update2/crx"
       },
       "edge": {
@@ -15,7 +15,7 @@
         "updateUrl": "https://edge.microsoft.com/extensionwebstorebase/v1/crx"
       },
       "brave": {
-        "extensionId": "ekdegpeejlidlkofccgakfdbiegmicmj",
+        "extensionId": "fiecjgpoilkhmoieaboolkfmgbnhlhop",
         "updateUrl": "https://clients2.google.com/service/update2/crx"
       },
       "firefox": {
