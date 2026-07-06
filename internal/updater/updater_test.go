@@ -62,6 +62,9 @@ func TestCheckLatestAndStage(t *testing.T) {
 			Notes:   "release notes",
 			Files:   []FileHash{{Name: "guard.exe", SHA256: guardSHA}},
 		}
+		// Prepend a UTF-8 BOM (as PowerShell's Out-File does) to prove getJSON
+		// strips it - a raw json decode would fail on this.
+		_, _ = w.Write([]byte{0xEF, 0xBB, 0xBF})
 		_ = json.NewEncoder(w).Encode(m)
 	})
 	mux.HandleFunc("/dl/guard.exe", func(w http.ResponseWriter, r *http.Request) {

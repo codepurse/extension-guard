@@ -85,7 +85,12 @@ func main() {
 	case "enable-extension":
 		toggleExtension(cfg, *cfgPath, flag.Arg(1), true)
 	case "disable-extension":
-		requirePassword(*password)
+		// Disabling an extension weakens protection, so it needs the password -
+		// unless protection is already in the authorized paused state, where there
+		// is no active lock to bypass.
+		if !scm.IsDisabled() {
+			requirePassword(*password)
+		}
 		toggleExtension(cfg, *cfgPath, flag.Arg(1), false)
 	case "set-password":
 		setPassword(*password)
@@ -136,7 +141,7 @@ func runService(cmd string, cfg policy.Config, cfgPath, password string) {
 		mustService(guardsvc.Disable(cfg, absCfg), "disable")
 		fmt.Println("protection disabled")
 	case "enable":
-		requirePassword(password)
+		// Enabling only strengthens protection, so it needs admin but no password.
 		mustService(guardsvc.Enable(cfg, absCfg), "enable")
 		fmt.Println("protection enabled")
 	case "start":
@@ -466,14 +471,14 @@ policy commands (admin):
   remove             delete the force-install policy
   detect             list which supported browsers are installed
   select             enable only -extensions, disable the rest (used by the installer)
-  enable-extension   <name>   start locking an extension (adds protection)
-  disable-extension  <name>   stop locking an extension (requires the password)
+  enable-extension   <name>   start locking an extension (adds protection; no password)
+  disable-extension  <name>   stop locking an extension (password, unless already paused)
 
 service commands (admin):
   install-service    install + harden + start the guard service (sets password)
   uninstall-service  remove the service (requires the password)
   disable            temporarily turn protection off (requires the password)
-  enable             turn protection back on after a disable (requires the password)
+  enable             turn protection back on after a disable (no password; only strengthens)
   set-password       set or change the uninstall password
   start              start the service
   stop               stop the service

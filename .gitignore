@@ -5,6 +5,10 @@
 /bin/
 /dist/
 
+# Generated Windows version-info resource (built from cmd/guard/versioninfo.json
+# by goversioninfo during build.ps1); linked automatically by `go build`.
+/cmd/guard/resource_windows.syso
+
 # NOTE: /extension-ids.json at the repo root is the tracked source of truth
 # (the multi-extension force-install config). The copies placed next to the
 # binary live under release/ and release-linux/, which are ignored below.

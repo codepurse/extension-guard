@@ -95,9 +95,12 @@ quarantine it. Here's the honest *why*, and how to check for yourself.
 2. **It's deliberately tamper-resistant.** Extension Guard runs a service with a
    watchdog that restarts itself if it's killed — that's the entire point (it
    stops the filtered user from simply uninstalling it). That "won't stay dead"
-   behavior is *also* what some malware does, so heuristic antivirus occasionally
-   flags it. It only installs after you tick the **consent** box, and only the
-   person holding the uninstall password can remove it.
+   behavior is *also* what some malware does, so a **small number** of heuristic /
+   machine-learning antivirus engines (e.g. Bkav, Elastic) may flag it as a
+   generic false positive — not a named-threat signature. It only installs after
+   you tick the **consent** box, and only the person holding the uninstall
+   password can remove it. See [docs/signing.md](docs/signing.md) for the full
+   story, the signing plan, and how false positives are reported.
 
 **What it does — and doesn't:** it only writes the browsers' enterprise
 "force-install" policy and keeps it applied. It does **no** content filtering

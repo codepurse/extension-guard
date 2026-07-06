@@ -108,14 +108,12 @@ func (a *App) GetStatus() Status {
 	}
 }
 
-// Disable temporarily turns protection off. Enable turns it back on. Both verify
-// the password locally for instant feedback, then hand the actual work to an
-// elevated guard.exe (a UAC prompt) - the binary re-verifies the password so the
-// gate can't be bypassed from the renderer.
-func (a *App) Disable(password string) ActionResult { return a.runGuard("disable", password) }
-func (a *App) Enable(password string) ActionResult  { return a.runGuard("enable", password) }
-
-func (a *App) runGuard(action, password string) ActionResult {
+// Disable temporarily turns protection off - the one action that *weakens*
+// protection, so it requires the uninstall password (verified locally for
+// instant feedback, then re-verified by the elevated guard so the gate can't be
+// bypassed from the renderer). Enable turns it back on; because that only
+// strengthens protection it needs admin (a UAC prompt) but no password.
+func (a *App) Disable(password string) ActionResult {
 	hash, ok := scm.GetPasswordHash()
 	if !ok {
 		return ActionResult{Message: "No uninstall password is set. Install protection with the installer (or `guard install-service`) first."}
@@ -123,44 +121,35 @@ func (a *App) runGuard(action, password string) ActionResult {
 	if !auth.Verify(hash, password) {
 		return ActionResult{Message: "Incorrect password."}
 	}
-	guardExe, err := a.guardPath()
-	if err != nil {
-		return ActionResult{Message: err.Error()}
-	}
-	code, err := runElevatedAndWait(guardExe, []string{"-config", a.cfgPath, "-password", password, action})
-	if err != nil {
-		if errors.Is(err, errElevationCancelled) {
-			return ActionResult{Message: "Cancelled at the Windows permission prompt."}
-		}
-		return ActionResult{Message: "Could not run the guard: " + err.Error()}
-	}
-	if code != 0 {
-		return ActionResult{Message: fmt.Sprintf("The guard reported an error (exit code %d).", code)}
-	}
-	if action == "disable" {
-		return ActionResult{OK: true, Message: "Protection disabled."}
-	}
-	return ActionResult{OK: true, Message: "Protection enabled."}
+	return a.execGuard([]string{"-config", a.cfgPath, "-password", password, "disable"}, "Protection disabled.")
 }
 
-// EnableExtension starts locking an extension. Turning protection ON is free
-// (no password) - it only strengthens protection - but still needs admin, so it
-// runs the guard elevated (a UAC prompt). DisableExtension stops locking one and
-// requires the password, like turning protection off.
+// Enable restores protection. Free (no password) - it only strengthens - but
+// still elevated (UAC).
+func (a *App) Enable() ActionResult {
+	return a.execGuard([]string{"-config", a.cfgPath, "enable"}, "Protection enabled.")
+}
+
+// EnableExtension starts locking an extension. Free (no password) since it only
+// strengthens protection; still needs admin (UAC).
 func (a *App) EnableExtension(name string) ActionResult {
-	return a.runGuardExt("enable-extension", name, "")
+	if name == "" {
+		return ActionResult{Message: "No extension selected."}
+	}
+	return a.execGuard([]string{"-config", a.cfgPath, "enable-extension", name}, name+" is now protected.")
 }
 
+// DisableExtension stops locking an extension. That weakens protection, so it
+// requires the password - EXCEPT while protection is in the authorized paused
+// state (scm.IsDisabled), where there is no active lock to bypass. The check
+// keys off the authorized-pause sentinel, not a transient "service not running",
+// so a momentary stop can't be exploited to strip extensions without the password.
 func (a *App) DisableExtension(name, password string) ActionResult {
-	return a.runGuardExt("disable-extension", name, password)
-}
-
-func (a *App) runGuardExt(action, name, password string) ActionResult {
 	if name == "" {
 		return ActionResult{Message: "No extension selected."}
 	}
 	args := []string{"-config", a.cfgPath}
-	if action == "disable-extension" {
+	if !scm.IsDisabled() {
 		hash, ok := scm.GetPasswordHash()
 		if !ok {
 			return ActionResult{Message: "No password is set. Install protection first."}
@@ -170,11 +159,17 @@ func (a *App) runGuardExt(action, name, password string) ActionResult {
 		}
 		args = append(args, "-password", password)
 	}
+	args = append(args, "disable-extension", name)
+	return a.execGuard(args, name+" is no longer locked.")
+}
+
+// execGuard runs guard.exe elevated (a UAC prompt), waits, and maps the outcome
+// to an ActionResult, returning okMsg on success.
+func (a *App) execGuard(args []string, okMsg string) ActionResult {
 	guardExe, err := a.guardPath()
 	if err != nil {
 		return ActionResult{Message: err.Error()}
 	}
-	args = append(args, action, name)
 	code, err := runElevatedAndWait(guardExe, args)
 	if err != nil {
 		if errors.Is(err, errElevationCancelled) {
@@ -185,10 +180,7 @@ func (a *App) runGuardExt(action, name, password string) ActionResult {
 	if code != 0 {
 		return ActionResult{Message: fmt.Sprintf("The guard reported an error (exit code %d).", code)}
 	}
-	if action == "enable-extension" {
-		return ActionResult{OK: true, Message: name + " is now protected."}
-	}
-	return ActionResult{OK: true, Message: name + " is no longer locked."}
+	return ActionResult{OK: true, Message: okMsg}
 }
 
 // GetVersion returns the running build version, shown in the footer.

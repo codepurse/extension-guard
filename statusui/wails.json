@@ -6,6 +6,13 @@
   "frontend:install": "",
   "frontend:build": "",
   "author": {
-    "name": "codepurse"
+    "name": "monolab"
+  },
+  "info": {
+    "companyName": "monolab",
+    "productName": "Extension Guard",
+    "productVersion": "1.0.0",
+    "copyright": "Copyright (c) monolab. MIT License.",
+    "comments": "Extension Guard status window - github.com/codepurse/extension-guard"
   }
 }

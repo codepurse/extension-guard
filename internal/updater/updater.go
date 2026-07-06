@@ -20,6 +20,7 @@
 package updater
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -194,7 +195,15 @@ func getJSON(ctx context.Context, url string, v any) error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("GET %s: %s", url, resp.Status)
 	}
-	return json.NewDecoder(io.LimitReader(resp.Body, maxJSON)).Decode(v)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxJSON))
+	if err != nil {
+		return err
+	}
+	// Strip a leading UTF-8 BOM before decoding: PowerShell's Out-File and many
+	// editors prepend one, and encoding/json rejects a BOM-prefixed document.
+	// GitHub's own API responses have none, so this only helps the manifest.
+	data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
+	return json.Unmarshal(data, v)
 }
 
 // downloadTo streams url into dest, returning the lower-case hex SHA-256 of the

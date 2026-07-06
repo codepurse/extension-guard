@@ -22,7 +22,7 @@
 AppId={{6B2C9E4A-3F71-4B8E-9C2D-5A1E7F0D9C34}
 AppName={#AppName}
 AppVersion={#AppVersion}
-AppPublisher=codepurse
+AppPublisher=monolab
 DefaultDirName={autopf}\Extension Guard
 DisableProgramGroupPage=yes
 PrivilegesRequired=admin

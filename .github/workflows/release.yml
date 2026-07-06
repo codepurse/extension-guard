@@ -1,0 +1,127 @@
+name: Release
+
+# Builds the Windows artifacts and publishes a GitHub release when you push a
+# tag like "v1.2.0". Code signing via SignPath is wired in but OFF until you set
+# the repo variable SIGNPATH_ENABLED=true (plus the org/project/policy vars and
+# the SIGNPATH_API_TOKEN secret) - see docs/signing.md. Until then this produces
+# working UNSIGNED releases with a hash manifest, which the in-app updater can
+# still verify for integrity.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: # manual run: builds + uploads artifacts, but does not publish a release
+
+permissions:
+  contents: write # needed to create the release
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: ver
+        shell: pwsh
+        run: |
+          $v = (Get-Content VERSION -Raw).Trim()
+          "version=$v" >> $env:GITHUB_OUTPUT
+          # On a tag push, the tag must equal v<VERSION> so the release tag and
+          # manifest.json agree (the updater compares the release tag to the build).
+          if ($env:GITHUB_REF -like 'refs/tags/*') {
+            $tag = $env:GITHUB_REF -replace '^refs/tags/',''
+            if ($tag -ne "v$v") { throw "tag '$tag' does not match VERSION (expected 'v$v'). Bump VERSION or retag." }
+          }
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build binaries (unsigned)
+        shell: pwsh
+        run: ./build.ps1 binaries
+
+      # ---------- Code signing (SignPath) ----------
+      # These steps only run when the repo variable SIGNPATH_ENABLED == 'true'.
+      # Fill in vars.SIGNPATH_ORG_ID / SIGNPATH_PROJECT_SLUG / SIGNPATH_POLICY_SLUG
+      # and secret SIGNPATH_API_TOKEN after your SignPath project is approved.
+      # NOTE: verify the action's input names against the version you pin - SignPath
+      # has changed them across releases. See docs/signing.md.
+      - name: Stage binaries for signing
+        if: vars.SIGNPATH_ENABLED == 'true'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force to-sign | Out-Null
+          Copy-Item guard.exe to-sign\
+          Copy-Item statusui\build\bin\extension-guard-status.exe to-sign\
+
+      - name: Upload unsigned binaries
+        if: vars.SIGNPATH_ENABLED == 'true'
+        id: unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-binaries
+          path: to-sign/
+
+      - name: Sign binaries via SignPath
+        if: vars.SIGNPATH_ENABLED == 'true'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORG_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed/
+
+      - name: Put signed binaries back
+        if: vars.SIGNPATH_ENABLED == 'true'
+        shell: pwsh
+        run: |
+          Copy-Item signed\guard.exe guard.exe -Force
+          Copy-Item signed\extension-guard-status.exe statusui\build\bin\extension-guard-status.exe -Force
+
+      # ---------- Installer + manifest ----------
+      # Installer bundles the (now signed, if signing ran) binaries; manifest.json
+      # hashes exactly the bytes that ship, so it must come AFTER signing.
+      # To also sign Extension-Guard-Setup.exe, repeat the SignPath pattern here
+      # against release\Extension-Guard-Setup.exe before writing the manifest.
+      - name: Build installer + collect artifacts
+        shell: pwsh
+        run: ./build.ps1 installer
+
+      - name: Write update manifest
+        shell: pwsh
+        run: ./build.ps1 manifest
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-guard-${{ steps.ver.outputs.version }}
+          path: release/
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ steps.ver.outputs.version }}" `
+            "release/guard.exe" `
+            "release/extension-guard-status.exe" `
+            "release/Extension-Guard-Setup.exe" `
+            "release/manifest.json" `
+            --title "Extension Guard v${{ steps.ver.outputs.version }}" `
+            --notes "Automated release built by CI. Verify downloads against manifest.json (see docs/verify or the README)."

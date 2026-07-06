@@ -1,0 +1,24 @@
+{
+  "_comment": "Windows version-info resource for guard.exe, compiled to resource_windows.syso by goversioninfo and linked automatically by `go build`. build.ps1 overwrites the version numbers from the repo-root VERSION file, so the values here are just defaults. Giving the unsigned binary a real publisher name + description lowers antivirus heuristic false positives and populates the file's Properties -> Details tab. See docs/signing.md.",
+  "FixedFileInfo": {
+    "FileVersion":    { "Major": 1, "Minor": 0, "Patch": 0, "Build": 0 },
+    "ProductVersion": { "Major": 1, "Minor": 0, "Patch": 0, "Build": 0 },
+    "FileFlagsMask": "3f",
+    "FileFlags": "00",
+    "FileOS": "040004",
+    "FileType": "01",
+    "FileSubType": "00"
+  },
+  "StringFileInfo": {
+    "CompanyName": "monolab",
+    "FileDescription": "Extension Guard - browser extension force-install enforcement service",
+    "InternalName": "guard",
+    "LegalCopyright": "Copyright (c) monolab. MIT License. https://github.com/codepurse/extension-guard",
+    "OriginalFilename": "guard.exe",
+    "ProductName": "Extension Guard",
+    "ProductVersion": "1.0.0"
+  },
+  "VarFileInfo": {
+    "Translation": { "LangID": "0409", "CharsetID": "04B0" }
+  }
+}
