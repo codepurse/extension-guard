@@ -120,6 +120,14 @@ network calls except checking GitHub for updates.
 
 **To install past the SmartScreen prompt:** click **More info → Run anyway**.
 
+**Code signing:** free code signing for this project is provided by
+[SignPath.io](https://signpath.io), with a certificate issued by the
+[SignPath Foundation](https://signpath.org). (Application in progress — until it
+is active, release binaries are unsigned, which is why the warnings above appear.)
+
+**Privacy:** Extension Guard collects no personal data — see
+[PRIVACY.md](PRIVACY.md).
+
 ### Status window (day-to-day)
 
 `extension-guard-status.exe` shows whether protection is **Active / Paused / Inactive**,
