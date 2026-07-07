@@ -1,0 +1,10 @@
+{
+  "id": "2026-07-beta-notice",
+  "active": true,
+  "level": "info",
+  "title": "Beta version 🚧",
+  "message": "This is a beta release of Extension Guard. If you run into a bug, let me know at support@monolab.dev or open an issue on GitHub.",
+  "url": "https://github.com/codepurse/extension-guard/issues",
+  "urlFirefox": "",
+  "linkText": "Open a GitHub issue"
+}

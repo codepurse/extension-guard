@@ -79,6 +79,19 @@
   .foot { display: flex; align-items: center; gap: 10px; color: var(--faint); font-size: 11px; }
   .foot button { margin-left: auto; }
   .foot button + button { margin-left: 0; }
+  /* Remote announcement banner - a dismissible promo/notice fetched from GitHub. */
+  .announce { position: relative; }
+  .announce.info { border-color: var(--accent-dim); }
+  .announce.warn { border-color: var(--warn); }
+  .announce.danger { border-color: var(--danger-hi); }
+  .announce-title { font-weight: 600; font-size: 13px; color: var(--text); padding-right: 22px; }
+  .announce-msg { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .announce-link { margin-top: 10px; padding: 6px 12px; font-size: 12px; }
+  .announce-x {
+    position: absolute; top: 8px; right: 10px; background: transparent; color: var(--faint);
+    border: none; font-size: 18px; line-height: 1; padding: 0 4px; cursor: pointer; font-weight: 400;
+  }
+  .announce-x:hover { color: var(--text); background: transparent; }
   /* Password prompt modal - shown only for actions that weaken protection. */
   .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; z-index: 50; }
   .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; width: 340px; max-width: 90%; }
@@ -120,6 +133,13 @@
       <button id="update-btn">Update now</button>
       <span id="update-msg" class="msg"></span>
     </div>
+  </div>
+
+  <div id="announce-banner" class="card announce" style="display:none;">
+    <button id="announce-close" class="announce-x" title="Dismiss" aria-label="Dismiss">&times;</button>
+    <div class="announce-title" id="announce-title"></div>
+    <div class="announce-msg" id="announce-msg"></div>
+    <button id="announce-link" class="announce-link" style="display:none;"></button>
   </div>
 
   <div class="section-title">Browsers</div>
@@ -371,6 +391,45 @@
     if (res.ok) { btn.style.display = 'none'; }
   }
 
+  // loadAnnouncement fetches the remote announcement and shows a dismissible
+  // banner. Dismissals are remembered per-id in localStorage, so a message shows
+  // once until its id changes. Failures and inactive messages show nothing.
+  async function loadAnnouncement() {
+    if (!bound() || !window.go.main.App.GetAnnouncement) { return; }
+    let a;
+    try { a = await window.go.main.App.GetAnnouncement(); }
+    catch (e) { return; }
+    if (!a || !a.active || !a.id) { return; }
+    if (localStorage.getItem('announce-dismissed') === a.id) { return; }
+
+    const banner = document.getElementById('announce-banner');
+    const title = document.getElementById('announce-title');
+    const msg = document.getElementById('announce-msg');
+    const link = document.getElementById('announce-link');
+
+    const level = a.level === 'warn' ? 'warn' : (a.level === 'danger' || a.level === 'error') ? 'danger' : 'info';
+    banner.className = 'card announce ' + level;
+    title.textContent = a.title || '';
+    title.style.display = a.title ? '' : 'none';
+    msg.textContent = a.message || '';
+    msg.style.display = a.message ? '' : 'none';
+
+    const href = a.url || a.urlFirefox || '';
+    if (href) {
+      link.textContent = a.linkText || 'Learn more';
+      link.style.display = '';
+      link.onclick = function () { window.go.main.App.OpenURL(href); };
+    } else {
+      link.style.display = 'none';
+    }
+
+    document.getElementById('announce-close').onclick = function () {
+      localStorage.setItem('announce-dismissed', a.id);
+      banner.style.display = 'none';
+    };
+    banner.style.display = '';
+  }
+
   document.getElementById('protection-btn').addEventListener('click', toggleProtection);
   document.getElementById('refresh').addEventListener('click', refresh);
   document.getElementById('check-updates').addEventListener('click', function () { checkUpdates(true); });
@@ -379,6 +438,7 @@
     refresh();
     loadVersion();
     checkUpdates(false);
+    loadAnnouncement();
   });
 </script>
 </body>

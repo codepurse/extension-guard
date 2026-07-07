@@ -7,14 +7,17 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
+	"github.com/codepurse/extension-guard/internal/announce"
 	"github.com/codepurse/extension-guard/internal/auth"
 	"github.com/codepurse/extension-guard/internal/buildinfo"
 	"github.com/codepurse/extension-guard/internal/guardsvc"
 	"github.com/codepurse/extension-guard/internal/policy"
 	"github.com/codepurse/extension-guard/internal/scm"
 	"github.com/codepurse/extension-guard/internal/updater"
+	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App is the Wails-bound backend. Its exported methods are callable from the
@@ -233,6 +236,29 @@ func (a *App) ApplyUpdate() ActionResult {
 		return ActionResult{Message: fmt.Sprintf("The updater reported an error (exit code %d).", code)}
 	}
 	return ActionResult{OK: true, Message: "Update installed. Close and reopen Extension Guard to use the new version."}
+}
+
+// GetAnnouncement fetches the remote announcement shown as a dismissible banner.
+// Best-effort and read-only; on any error it returns an inactive announcement so
+// the frontend simply shows nothing. The frontend remembers dismissed IDs
+// locally, so a message is shown once until its ID changes.
+func (a *App) GetAnnouncement() announce.Announcement {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	ann, err := announce.Fetch(ctx)
+	if err != nil {
+		return announce.Announcement{} // inactive: show nothing
+	}
+	return ann
+}
+
+// OpenURL opens a link in the user's default browser (used by the announcement
+// banner). Restricted to http(s) so a compromised renderer can't ask the shell to
+// launch arbitrary schemes or local paths.
+func (a *App) OpenURL(url string) {
+	if strings.HasPrefix(url, "https://") || strings.HasPrefix(url, "http://") {
+		wruntime.BrowserOpenURL(a.ctx, url)
+	}
 }
 
 // guardPath locates guard.exe next to this status binary, where the installer
