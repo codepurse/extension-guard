@@ -149,10 +149,29 @@ just one — no reinstall needed.
 
 ```sh
 guard detect       # which browsers are installed
-guard apply        # write the force-install policy for every configured extension
-guard verify       # show lock status per browser
-guard remove       # remove the policy (authorized uninstall)
+guard apply        # enforce everything the config asks for
+guard verify       # show what is enforced, per area and target
+guard remove       # lift it all (authorized uninstall)
 ```
+
+`verify` reports one row per target with the columns `area`, `target`,
+`present`, `enforced`, `detail`. Today the only area is `extensions` and every
+target is a browser; the columns are general so blocked applications can appear
+alongside them without a second command.
+
+### Enforcement backends
+
+`internal/enforce` is the seam between *what* the guard should enforce and *how*
+each kind of thing is enforced. An `Enforcer` applies, verifies, and removes one
+kind of rule; `enforce.Default()` is the set the service drives, and the service
+knows only that set - not what is in it. Locking browser extensions is currently
+the only member, a thin adapter over `internal/policy`, which still owns the
+registry and managed-policy-file work.
+
+`Apply` and `Remove` fan out across the whole set and join errors rather than
+stopping at the first failure, so one backend failing cannot silently leave the
+others unenforced. Adding application blocking means writing an `Enforcer` and
+putting it in `Default()`, not threading a second code path through the service.
 
 ### Run it as a service (milestone 2)
 

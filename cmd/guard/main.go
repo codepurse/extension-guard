@@ -24,6 +24,7 @@ import (
 
 	"github.com/codepurse/extension-guard/internal/auth"
 	"github.com/codepurse/extension-guard/internal/buildinfo"
+	"github.com/codepurse/extension-guard/internal/enforce"
 	"github.com/codepurse/extension-guard/internal/guardsvc"
 	"github.com/codepurse/extension-guard/internal/policy"
 	"github.com/codepurse/extension-guard/internal/scm"
@@ -75,14 +76,14 @@ func main() {
 
 	switch cmd {
 	case "apply":
-		must(policy.Apply(cfg))
-		fmt.Println("force-install policy applied")
+		must(enforce.Default().Apply(cfg))
+		fmt.Println("policy applied")
 		printStatus(cfg)
 	case "verify", "status":
 		printStatus(cfg)
 	case "remove":
-		must(policy.Remove(cfg))
-		fmt.Println("force-install policy removed")
+		must(enforce.Default().Remove(cfg))
+		fmt.Println("policy removed")
 	case "detect":
 		detected := policy.DetectBrowsers()
 		for _, k := range []policy.Kind{policy.Chrome, policy.Edge, policy.Brave, policy.Firefox} {
@@ -232,10 +233,14 @@ func prompt(label string) string {
 	return strings.TrimSpace(string(b))
 }
 
+// printStatus lists what every enforcer reports. The columns are the general
+// ones rather than browser-specific: "target" is a browser today and an
+// executable once app blocking lands, and "present" means the target exists on
+// this machine.
 func printStatus(cfg policy.Config) {
-	fmt.Printf("  %-8s %-10s %-7s %s\n", "browser", "installed", "locked", "detail")
-	for _, s := range policy.Verify(cfg) {
-		fmt.Printf("  %-8s %-10v %-7v %s\n", s.Kind, s.Installed, s.Locked, s.Detail)
+	fmt.Printf("  %-11s %-8s %-8s %-9s %s\n", "area", "target", "present", "enforced", "detail")
+	for _, s := range enforce.Default().Verify(cfg) {
+		fmt.Printf("  %-11s %-8s %-8v %-9v %s\n", s.Enforcer, s.Target, s.Present, s.Enforced, s.Detail)
 	}
 }
 
@@ -287,7 +292,7 @@ func toggleExtension(cfg policy.Config, cfgPath, name string, enable bool) {
 	}
 	writeConfig(cfg, cfgPath)
 	if enable {
-		must(policy.Apply(cfg))
+		must(enforce.Default().Apply(cfg))
 		fmt.Printf("enabled: %s is now force-installed\n", name)
 	} else {
 		must(policy.Remove(cfg.Only(name)))
@@ -487,9 +492,9 @@ func usage() {
 usage: guard [flags] <command>
 
 policy commands (admin):
-  apply              write the force-install policy now
-  verify             show the lock status of each browser (alias: status)
-  remove             delete the force-install policy
+  apply              enforce everything the config asks for now
+  verify             show what is enforced, per area and target (alias: status)
+  remove             lift everything the guard enforces
   detect             list which supported browsers are installed
   select             enable only -extensions, disable the rest (used by the installer)
   enable-extension   <name>   start locking an extension (adds protection; no password)

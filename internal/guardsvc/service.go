@@ -18,6 +18,7 @@ import (
 	"github.com/kardianos/service"
 
 	"github.com/codepurse/extension-guard/internal/buildinfo"
+	"github.com/codepurse/extension-guard/internal/enforce"
 	"github.com/codepurse/extension-guard/internal/policy"
 	"github.com/codepurse/extension-guard/internal/scm"
 	"github.com/codepurse/extension-guard/internal/updater"
@@ -121,10 +122,10 @@ func Uninstall(cfg policy.Config, configPath string) error {
 	if err := service.Control(s, "uninstall"); err != nil {
 		return err
 	}
-	// Lift the browser force-install lock too, so an authorized uninstall fully
-	// restores the browsers - otherwise the extension stays locked with no
-	// service left to manage it.
-	return policy.Remove(cfg)
+	// Lift what every enforcer holds too, so an authorized uninstall fully
+	// restores the machine - otherwise the extensions stay locked with no service
+	// left to manage the lock.
+	return enforce.Default().Remove(cfg)
 }
 
 // Disable temporarily turns protection off. It performs the same teardown as an
@@ -348,22 +349,13 @@ func (p *program) reapply(reason string) {
 		}
 		p.cfg = cfg
 	}
-	before := lockedCount(policy.Verify(p.cfg))
-	if err := policy.Apply(p.cfg); err != nil {
+	set := enforce.Default()
+	before := enforce.EnforcedCount(set.Verify(p.cfg))
+	if err := set.Apply(p.cfg); err != nil {
 		p.logger.Errorf("apply (%s): %v", reason, err)
 		return
 	}
-	if after := lockedCount(policy.Verify(p.cfg)); after != before {
-		p.logger.Infof("re-applied policy after %s: locked browsers %d -> %d", reason, before, after)
+	if after := enforce.EnforcedCount(set.Verify(p.cfg)); after != before {
+		p.logger.Infof("re-applied after %s: enforced %d -> %d", reason, before, after)
 	}
-}
-
-func lockedCount(st []policy.Status) int {
-	n := 0
-	for _, s := range st {
-		if s.Locked {
-			n++
-		}
-	}
-	return n
 }
