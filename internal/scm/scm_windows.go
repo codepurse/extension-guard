@@ -24,6 +24,7 @@ const (
 	disabledValue = "GuardDisabled"
 	updatingValue = "GuardUpdating"
 	passwordValue = "PasswordHash"
+	trustedValue  = "TrustedConfig"
 	resetPeriod   = uint32(24 * 60 * 60) // recovery failure-count reset window (seconds)
 )
 
@@ -206,6 +207,36 @@ func GetPasswordHash() (string, bool) { return getStringIn(registry.LOCAL_MACHIN
 
 // ClearPasswordHash removes the stored hash (called after a verified uninstall).
 func ClearPasswordHash() error { return deleteValueIn(registry.LOCAL_MACHINE, passwordValue) }
+
+// SetTrustedConfig stores the config the guard considers authoritative. Only
+// authorized mutations (the installer's component pick, the password-gated
+// toggles, an install) write here, so the copy in this key is the one the
+// service enforces - not whatever happens to be sitting in the JSON file on
+// disk, which any admin can edit in Notepad.
+//
+// This key is SYSTEM-owned but still Administrator-writable: the CLI paths that
+// legitimately update it (install-service, set-password, disable) run elevated
+// rather than as SYSTEM, so locking Administrators out would break the product.
+// On a machine where the user is a local admin no store is truly tamper-proof;
+// what raises the bar is that the service re-asserts this copy over the file
+// every cycle, so an edit has to survive continuous correction rather than just
+// be saved once.
+func SetTrustedConfig(data []byte) error {
+	return setStringIn(registry.LOCAL_MACHINE, trustedValue, string(data))
+}
+
+// GetTrustedConfig returns the trusted config and whether one is stored.
+func GetTrustedConfig() ([]byte, bool) {
+	s, ok := getStringIn(registry.LOCAL_MACHINE, trustedValue)
+	if !ok {
+		return nil, false
+	}
+	return []byte(s), true
+}
+
+// ClearTrustedConfig removes the trusted copy (called after a verified
+// uninstall, alongside the password hash).
+func ClearTrustedConfig() error { return deleteValueIn(registry.LOCAL_MACHINE, trustedValue) }
 
 func setStringIn(root registry.Key, name, val string) error {
 	key, _, err := registry.CreateKey(root, stateKeyPath, registry.SET_VALUE)

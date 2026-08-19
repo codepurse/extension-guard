@@ -66,3 +66,45 @@ func TestPasswordHashStorage(t *testing.T) {
 		t.Fatal("expected no hash after delete")
 	}
 }
+
+// TestTrustedConfigStorage exercises the real registry path used by the trusted
+// config store, against HKCU (writable without admin) rather than production
+// HKLM. The payload is a realistic multi-line JSON document rather than a token
+// string: the value has to survive newlines and grow well past a hash.
+func TestTrustedConfigStorage(t *testing.T) {
+	root := registry.CURRENT_USER
+	t.Cleanup(func() { registry.DeleteKey(root, stateKeyPath) })
+
+	const cfg = `{
+  "extensions": [
+    {
+      "name": "sieve",
+      "chrome": {
+        "extensionId": "abcdefghijklmnopabcdefghijklmnop",
+        "updateUrl": "https://clients2.google.com/service/update2/crx"
+      }
+    }
+  ]
+}
+`
+
+	if _, ok := getStringIn(root, trustedValue); ok {
+		t.Fatal("expected no trusted config initially")
+	}
+	if err := setStringIn(root, trustedValue, cfg); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	got, ok := getStringIn(root, trustedValue)
+	if !ok {
+		t.Fatal("trusted config missing after set")
+	}
+	if got != cfg {
+		t.Errorf("round-trip altered the document:\ngot:  %q\nwant: %q", got, cfg)
+	}
+	if err := deleteValueIn(root, trustedValue); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if _, ok := getStringIn(root, trustedValue); ok {
+		t.Fatal("expected no trusted config after delete")
+	}
+}

@@ -130,7 +130,10 @@ func Uninstall(cfg policy.Config, configPath string) error {
 // Disable temporarily turns protection off. It performs the same teardown as an
 // uninstall - stop and remove the service and lift the browser lock so browsing
 // is unfiltered - but the caller deliberately keeps the stored uninstall
-// password so Enable can restore protection later. The disabled sentinel it
+// password, and the trusted config, so Enable can restore protection later. Both
+// outlive a pause on purpose: clearing the trusted config here would let someone
+// pause protection, edit extension-ids.json, and have the edit adopted as
+// authoritative when they enable again. The disabled sentinel it
 // sets also stops the watchdog from resurrecting anything, and because the
 // service entry is removed nothing auto-starts on reboot.
 func Disable(cfg policy.Config, configPath string) error {
@@ -327,12 +330,22 @@ func (p *program) spawnWatchdog() {
 }
 
 // reapply writes the policy and logs only when it actually fixed something (the
-// locked-browser count changed), keeping the log quiet in steady state. It
-// reloads the config from disk first, so enabling/disabling an extension at
-// runtime (which rewrites the config file) takes effect without a restart - and
-// a just-disabled extension is not re-applied on the next tick.
+// locked-browser count changed), keeping the log quiet in steady state.
+//
+// It reloads the config each cycle, so an authorized enable/disable takes effect
+// without a restart. The reload goes through policy.LoadTrusted rather than
+// reading the file directly: an unauthorized edit to extension-ids.json - the
+// obvious way to switch enforcement off without knowing the password - loses to
+// the trusted copy and gets rewritten, the same way registry tamper loses to the
+// policy we re-apply below.
 func (p *program) reapply(reason string) {
-	if cfg, err := policy.LoadConfig(p.configPath); err == nil {
+	cfg, trust, err := policy.LoadTrusted(p.configPath)
+	if err != nil {
+		p.logger.Errorf("load config (%s): %v", reason, err)
+	} else {
+		if trust == policy.TrustRepaired {
+			p.logger.Warningf("config was modified outside the guard; restored the trusted copy (%s)", reason)
+		}
 		p.cfg = cfg
 	}
 	before := lockedCount(policy.Verify(p.cfg))

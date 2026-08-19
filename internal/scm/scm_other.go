@@ -43,3 +43,13 @@ func GetPasswordHash() (string, bool) { return "", false }
 
 // ClearPasswordHash is a no-op stub on non-Windows platforms.
 func ClearPasswordHash() error { return errWindowsOnly }
+
+// SetTrustedConfig is a no-op stub on unsupported platforms.
+func SetTrustedConfig(data []byte) error { return errWindowsOnly }
+
+// GetTrustedConfig reports no trusted config on unsupported platforms, so the
+// on-disk file is used as-is.
+func GetTrustedConfig() ([]byte, bool) { return nil, false }
+
+// ClearTrustedConfig is a no-op stub on unsupported platforms.
+func ClearTrustedConfig() error { return errWindowsOnly }

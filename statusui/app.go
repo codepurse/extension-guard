@@ -64,7 +64,7 @@ type BrowserRow struct {
 // The resolved path is kept so disable/enable can hand it to the elevated guard.
 func NewApp() *App {
 	p := defaultConfigPath()
-	cfg, _ := policy.LoadConfig(p)
+	cfg, _, _ := policy.LoadTrusted(p)
 	return &App{cfg: cfg, cfgPath: p}
 }
 
@@ -74,8 +74,14 @@ func (a *App) startup(ctx context.Context) {
 
 // GetStatus returns the current protection status. Read-only and admin-free.
 // It reloads the config each call so a just-toggled extension is reflected.
+//
+// The reload goes through policy.LoadTrusted for the same reason the service
+// does: if extension-ids.json has been edited by hand, the service keeps
+// enforcing the trusted copy, and this window must report that rather than
+// repeat the file's claim back to the user. LoadTrusted's repair writes are
+// best-effort, so running unprivileged here is fine.
 func (a *App) GetStatus() Status {
-	if cfg, err := policy.LoadConfig(a.cfgPath); err == nil {
+	if cfg, _, err := policy.LoadTrusted(a.cfgPath); err == nil {
 		a.cfg = cfg
 	}
 	verified := policy.Verify(a.cfg)

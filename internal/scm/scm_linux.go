@@ -25,6 +25,7 @@ type state struct {
 	GuardDisabled bool   `json:"guardDisabled"`
 	GuardUpdating bool   `json:"guardUpdating"`
 	PasswordHash  string `json:"passwordHash"`
+	TrustedConfig string `json:"trustedConfig,omitempty"`
 }
 
 func statePath() string { return filepath.Join(stateDir, stateFile) }
@@ -122,6 +123,30 @@ func GetPasswordHash() (string, bool) {
 func ClearPasswordHash() error {
 	s := loadState()
 	s.PasswordHash = ""
+	return saveState(s)
+}
+
+// SetTrustedConfig stores the config the guard considers authoritative, in the
+// root-owned (0600) state file rather than the world-readable JSON next to the
+// binary. See the Windows implementation for what this does and does not buy.
+func SetTrustedConfig(data []byte) error {
+	s := loadState()
+	s.TrustedConfig = string(data)
+	return saveState(s)
+}
+
+// GetTrustedConfig returns the trusted config and whether one is stored.
+func GetTrustedConfig() ([]byte, bool) {
+	if c := loadState().TrustedConfig; c != "" {
+		return []byte(c), true
+	}
+	return nil, false
+}
+
+// ClearTrustedConfig removes the trusted copy (after a verified uninstall).
+func ClearTrustedConfig() error {
+	s := loadState()
+	s.TrustedConfig = ""
 	return saveState(s)
 }
 

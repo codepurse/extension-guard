@@ -11,7 +11,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -47,8 +46,10 @@ func main() {
 		return
 	}
 
-	// version / check-update don't need the config (and version must work even
-	// when the config is missing), so handle them before LoadConfig.
+	// Handled before the config is reconciled below. version / check-update don't
+	// need a config at all (and version must work even when it is missing), and
+	// select must see the file as shipped - reconciling first would revert a
+	// freshly installed catalog before select could adopt it.
 	switch cmd {
 	case "version":
 		fmt.Println(buildinfo.Version)
@@ -56,9 +57,16 @@ func main() {
 	case "check-update":
 		checkUpdateCmd()
 		return
+	case "select":
+		selectConfig(*cfgPath, *extensions)
+		return
 	}
 
-	cfg, err := policy.LoadConfig(*cfgPath)
+	// LoadTrusted, not LoadConfig: an edited extension-ids.json loses to the
+	// trusted copy here exactly as it does in the service, so status tells the
+	// truth and a toggle applies on top of the enforced set rather than on top of
+	// whatever someone typed into the file.
+	cfg, _, err := policy.LoadTrusted(*cfgPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		fmt.Fprintf(os.Stderr, "(looked for config at %s - pass -config to override)\n", *cfgPath)
@@ -80,8 +88,6 @@ func main() {
 		for _, k := range []policy.Kind{policy.Chrome, policy.Edge, policy.Brave, policy.Firefox} {
 			fmt.Printf("  %-8s %v\n", k, detected[k])
 		}
-	case "select":
-		selectConfig(cfg, *extensions, *cfgPath)
 	case "enable-extension":
 		toggleExtension(cfg, *cfgPath, flag.Arg(1), true)
 	case "disable-extension":
@@ -135,6 +141,7 @@ func runService(cmd string, cfg policy.Config, cfgPath, password string) {
 		requirePassword(password)
 		mustService(guardsvc.Uninstall(cfg, absCfg), "uninstall")
 		_ = scm.ClearPasswordHash()
+		_ = scm.ClearTrustedConfig()
 		fmt.Println("service uninstalled")
 	case "disable":
 		requirePassword(password)
@@ -237,7 +244,20 @@ func printStatus(cfg policy.Config) {
 // after the user picks components; the service, watchdog, and status window all
 // read this file, and disabled entries stay listed so they can be turned on
 // later from the status window.
-func selectConfig(cfg policy.Config, extensions, outPath string) {
+//
+// It reads the file directly rather than going through the trusted copy the rest
+// of main.go works from, and runs before main reconciles the two. This is the one
+// path where the file legitimately wins: the installer has just laid down a
+// freshly shipped extension-ids.json, and an upgrade that widens the catalog or
+// corrects an extension ID (as 29ce5c8 did) must be adopted, not reverted as
+// tamper. Every other authorized change is an incremental edit to what the
+// trusted copy already says.
+func selectConfig(outPath, extensions string) {
+	cfg, err := policy.LoadConfig(outPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
 	cfg.EnableOnly(splitAndTrim(extensions))
 	if !cfg.AnyEnabled() {
 		fmt.Fprintln(os.Stderr, "error: -extensions matched no known extension; refusing to disable them all")
@@ -276,11 +296,12 @@ func toggleExtension(cfg policy.Config, cfgPath, name string, enable bool) {
 	printStatus(cfg)
 }
 
-// writeConfig serializes the config back to disk (pretty-printed).
+// writeConfig persists an authorized config change: it records the config as the
+// trusted copy and then writes the file. Nothing else may write the config file -
+// a plain file write would be reverted by the service on its next cycle, which is
+// exactly the protection that makes hand-editing extension-ids.json ineffective.
 func writeConfig(cfg policy.Config, outPath string) {
-	data, err := json.MarshalIndent(cfg, "", "  ")
-	must(err)
-	must(os.WriteFile(outPath, append(data, '\n'), 0o644))
+	must(policy.Commit(cfg, outPath))
 }
 
 // splitAndTrim turns "a, b ,c" into ["a","b","c"], dropping blanks.

@@ -203,8 +203,11 @@ or by walking up from the working directory). Override with `guard -config <path
 
 ## Updates
 
-The app can update itself from **GitHub Releases**, in place, without an
-uninstall. Because the guard is a self-healing service (the watchdog fights any
+The app can update itself in place, without an uninstall. It resolves releases
+from the endpoint configured in `internal/endpoint` when one is set, and from
+**GitHub Releases** otherwise - the indirection is what keeps the repository's
+name from being permanently load-bearing for installs already in the field. See
+`docs/endpoints.md`. Because the guard is a self-healing service (the watchdog fights any
 restart and the service holds `guard.exe` open), the update is *cooperative*: it
 sets an `updating` sentinel so the watchdog stands down, stops the service,
 renames the old binaries aside and the new ones into place (Windows lets you
@@ -219,8 +222,8 @@ Because updating only *strengthens* protection, it needs **admin (UAC)** but
 - **Manual** — the status window shows an **Update available** banner with an
   **Update now** button (and a **Check for updates** button in the footer). Or
   run `guard update` from an elevated shell. `guard check-update` just reports.
-- **Automatic** — the service polls GitHub every 6h and reacts per the
-  `autoUpdate` setting in `extension-ids.json`:
+- **Automatic** — the service polls for a new release every 6h and reacts per
+  the `autoUpdate` setting in `extension-ids.json`:
 
   | `autoUpdate` | Behaviour |
   |--------------|-----------|
@@ -327,6 +330,27 @@ to enable the chosen extensions and disable the rest (all stay in the file). So
 one installer can lock BlockNSFW, Sieve, or both. After install, the **status
 window** (or `guard enable-extension <name>` / `guard disable-extension <name>`)
 flips those flags, so you can add or drop an extension without reinstalling.
+
+**Editing the file by hand does nothing.** The flags are what decide whether an
+extension is enforced, so a file anyone could edit would have made the password
+gate on `disable-extension` pointless - `"disabled": true` in Notepad and the
+lock is off. Every authorized change instead records the config in SYSTEM-owned
+state (the registry on Windows, the root-owned state file on Linux), and the
+service reconciles the file against that copy on every cycle: a change made any
+other way loses and the file is rewritten, the same way registry tamper loses to
+the policy the guard re-applies. The status window reports the enforced config,
+not the file's claim, so the two never silently disagree.
+
+This is not a claim that the config is beyond a determined local admin - the
+state store is Administrator-writable, because the elevated CLI paths that
+legitimately update it are not running as SYSTEM. What it means is that tampering
+has to survive continuous correction by a service instead of persisting the
+moment it is saved. That is the same ceiling described in `docs/pc-version.md`,
+and the floor the scheduled-block work depends on.
+
+The one exception is the installer: `guard select` adopts the freshly shipped
+`extension-ids.json`, so an upgrade that widens the catalog or corrects an
+extension ID takes effect instead of being reverted.
 
 `verify` reports each browser as locked when **all** configured extensions for
 that browser are force-installed. See `docs/pc-version.md` for the full
