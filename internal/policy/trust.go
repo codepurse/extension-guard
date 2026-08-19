@@ -139,6 +139,21 @@ func LoadTrusted(path string) (Config, Trust, error) {
 	return trustedCfg, TrustRepaired, nil
 }
 
+// TrustedConfig returns the recorded config and whether one exists. Callers that
+// need to compare a proposed change against what is currently enforced use this
+// rather than reading the file, which is only a mirror.
+func TrustedConfig() (Config, bool) {
+	data, ok := getTrusted()
+	if !ok {
+		return Config{}, false
+	}
+	var cfg Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return Config{}, false
+	}
+	return cfg, true
+}
+
 // Commit records cfg as the trusted copy and writes it to path. Every authorized
 // mutation - the installer's component pick, the extension toggles, an install -
 // goes through here, and nothing else should write the config file.

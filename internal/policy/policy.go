@@ -74,6 +74,12 @@ func (e Extension) Target(k Kind) Target {
 // force-installs and locks, plus app-level settings.
 type Config struct {
 	Extensions []Extension `json:"extensions"`
+	// Blocks schedule enforcement and can lock it against early release. Empty
+	// means what it always meant: every enabled extension is enforced around the
+	// clock. It is omitempty so a config without blocks encodes byte-identically
+	// to one written before schedules existed, which keeps trusted copies stable
+	// across the upgrade. See schedule.go.
+	Blocks []Block `json:"blocks,omitempty"`
 	// AutoUpdate controls how the service reacts to a newer release:
 	// "notify" (default) logs availability, "apply" downloads and installs it
 	// silently, "off" disables the periodic check. See UpdateMode. Silent "apply"
@@ -182,6 +188,7 @@ func (c Config) AnyEnabled() bool {
 func (c *Config) UnmarshalJSON(data []byte) error {
 	var multi struct {
 		Extensions []Extension `json:"extensions"`
+		Blocks     []Block     `json:"blocks"`
 		AutoUpdate string      `json:"autoUpdate"`
 	}
 	if err := json.Unmarshal(data, &multi); err != nil {
@@ -189,6 +196,7 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 	}
 	if len(multi.Extensions) > 0 {
 		c.Extensions = multi.Extensions
+		c.Blocks = multi.Blocks
 		c.AutoUpdate = multi.AutoUpdate
 		return nil
 	}

@@ -29,7 +29,12 @@ const (
 	// ServiceName is the SCM service name; the watchdog references it too.
 	ServiceName = "ExtensionGuard"
 
-	backstop         = 30 * time.Second
+	backstop = 30 * time.Second
+	// scheduleTick is how often the service checks whether a block boundary has
+	// been crossed. It only compares a computed signature - no registry work - so
+	// it can run far more often than the backstop, which matters because being
+	// late to *start* enforcing is a hole a user could walk through.
+	scheduleTick     = 5 * time.Second
 	watchdogInterval = 5 * time.Second
 	watchdogRespawn  = 2 * time.Second
 	watchdogMutex    = `Local\ExtensionGuardWatchdog`
@@ -52,6 +57,13 @@ type program struct {
 	w   *watcher.Watcher
 	mu  sync.Mutex
 	dog *exec.Cmd
+
+	// applyMu serializes reapply and guards cfg and activeSig. Three goroutines
+	// reach them - the main loop, the registry watcher's callback, and the
+	// schedule ticker - and two concurrent applies would race each other writing
+	// the same policy keys.
+	applyMu   sync.Mutex
+	activeSig string
 }
 
 // New builds the service. configPath is embedded into the service's launch
@@ -241,6 +253,8 @@ func (p *program) loop() {
 
 	ticker := time.NewTicker(backstop)
 	defer ticker.Stop()
+	schedTicker := time.NewTicker(scheduleTick)
+	defer schedTicker.Stop()
 	updateTicker := time.NewTicker(updateCheckInterval)
 	defer updateTicker.Stop()
 	firstUpdate := time.NewTimer(updateStartupDelay)
@@ -251,6 +265,8 @@ func (p *program) loop() {
 			return
 		case <-ticker.C:
 			p.reapply("periodic")
+		case <-schedTicker.C:
+			p.checkSchedule()
 		case <-firstUpdate.C:
 			p.checkForUpdate()
 		case <-updateTicker.C:
@@ -265,7 +281,7 @@ func (p *program) loop() {
 // cooperative swap (it must outlive this service, which it stops and restarts).
 // Dev builds never auto-apply.
 func (p *program) checkForUpdate() {
-	mode := p.cfg.UpdateMode()
+	mode := p.updateMode()
 	if mode == policy.UpdateOff {
 		return
 	}
@@ -340,6 +356,9 @@ func (p *program) spawnWatchdog() {
 // the trusted copy and gets rewritten, the same way registry tamper loses to the
 // policy we re-apply below.
 func (p *program) reapply(reason string) {
+	p.applyMu.Lock()
+	defer p.applyMu.Unlock()
+
 	cfg, trust, err := policy.LoadTrusted(p.configPath)
 	if err != nil {
 		p.logger.Errorf("load config (%s): %v", reason, err)
@@ -349,13 +368,50 @@ func (p *program) reapply(reason string) {
 		}
 		p.cfg = cfg
 	}
+
+	now := time.Now()
+	active := p.resolve(now)
+	p.activeSig = p.cfg.ActiveSignature(now)
+
 	set := enforce.Default()
-	before := enforce.EnforcedCount(set.Verify(p.cfg))
-	if err := set.Apply(p.cfg); err != nil {
+	before := enforce.EnforcedCount(set.Verify(active))
+	if err := set.Apply(active); err != nil {
 		p.logger.Errorf("apply (%s): %v", reason, err)
 		return
 	}
-	if after := enforce.EnforcedCount(set.Verify(p.cfg)); after != before {
+	if after := enforce.EnforcedCount(set.Verify(active)); after != before {
 		p.logger.Infof("re-applied after %s: enforced %d -> %d", reason, before, after)
 	}
+}
+
+// resolve narrows the config to what should be enforced right now, logging any
+// schedule problem that made policy.EnforcedAt fall back to ignoring it.
+//
+// Callers must hold applyMu.
+func (p *program) resolve(now time.Time) policy.Config {
+	active, err := p.cfg.EnforcedAt(now)
+	if err != nil {
+		p.logger.Errorf("invalid schedule (%v); enforcing every enabled extension until it is corrected", err)
+	}
+	return active
+}
+
+// checkSchedule re-applies only when a block boundary has been crossed since the
+// last apply. It runs every few seconds, so it deliberately does no registry work
+// to decide - comparing the resolved signature is pure computation.
+func (p *program) checkSchedule() {
+	p.applyMu.Lock()
+	changed := p.cfg.ActiveSignature(time.Now()) != p.activeSig
+	p.applyMu.Unlock()
+	if changed {
+		p.reapply("schedule")
+	}
+}
+
+// updateMode reads the configured auto-update mode under the lock, since the
+// config is replaced by reapply on another goroutine.
+func (p *program) updateMode() string {
+	p.applyMu.Lock()
+	defer p.applyMu.Unlock()
+	return p.cfg.UpdateMode()
 }

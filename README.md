@@ -148,6 +148,7 @@ just one — no reinstall needed.
 `apply`, `remove` write to `HKLM`, so run them from an **elevated** terminal.
 
 ```sh
+guard blocks       # scheduled blocks: which are enforcing now, which are locked
 guard detect       # which browsers are installed
 guard apply        # enforce everything the config asks for
 guard verify       # show what is enforced, per area and target
@@ -367,9 +368,83 @@ has to survive continuous correction by a service instead of persisting the
 moment it is saved. That is the same ceiling described in `docs/pc-version.md`,
 and the floor the scheduled-block work depends on.
 
-The one exception is the installer: `guard select` adopts the freshly shipped
-`extension-ids.json`, so an upgrade that widens the catalog or corrects an
-extension ID takes effect instead of being reverted.
+The two exceptions are the installer and `guard commit`. `guard select` adopts
+the freshly shipped `extension-ids.json`, so an upgrade that widens the catalog
+or corrects an extension ID takes effect instead of being reverted; `guard
+commit` is how *you* adopt an edit you made on purpose (see below).
+
+## Scheduled blocks
+
+A **block** is a named group of extensions enforced on a schedule, optionally
+locked so it cannot be released early. Add a `blocks` array alongside
+`extensions`:
+
+```json
+{
+  "extensions": [ ... ],
+  "blocks": [
+    {
+      "id": "work",
+      "label": "Work hours",
+      "extensions": ["sieve"],
+      "windows": [
+        { "days": ["mon","tue","wed","thu","fri"], "start": "09:00", "end": "17:00" }
+      ]
+    },
+    {
+      "id": "quiet-hours",
+      "windows": [{ "start": "22:00", "end": "06:00" }],
+      "lockedUntil": "2026-09-01T09:00:00+08:00"
+    }
+  ]
+}
+```
+
+- **`extensions`** — which extensions the block governs. Omit it to govern every
+  extension in the catalog.
+- **`windows`** — recurring local-time ranges. Omit `days` for every day. An
+  `end` at or before `start` runs **past midnight**: `22:00`–`06:00` on `fri`
+  covers Friday night into Saturday morning. A block with no windows is simply
+  always on.
+- **`lockedUntil`** — RFC 3339. While it is in the future the block cannot be
+  changed or removed **even with the uninstall password**. Capped at 90 days, so
+  a mistyped year cannot lock someone out for decades.
+
+A schedule only ever *narrows* enforcement. An extension no block governs is
+enforced around the clock exactly as before, and an extension you switched off
+stays off inside a window. **A config with no `blocks` behaves identically to
+one written before schedules existed** — which is what keeps every existing
+install unchanged on upgrade.
+
+```sh
+guard blocks                    # what is configured, what is enforcing now, what is locked
+guard -until 72h lock work      # also 7d, 2026-09-01, 2026-09-01T17:00
+guard commit                    # adopt your edits to extension-ids.json
+```
+
+`lock` needs admin but no password — it only strengthens, and no command can
+shorten a lock; it runs out on its own. `commit` needs the password, because it
+can redefine enforcement wholesale, and is refused outright if it would touch a
+block that is currently locked.
+
+The service re-checks the schedule every 5s, comparing a computed signature
+rather than reading the registry, so crossing a boundary takes effect promptly
+without the polling cost.
+
+**An invalid schedule fails closed.** A window that will not parse would make its
+block look inactive and silently unlock everything it governs, so a config that
+does not validate is enforced with its schedule *ignored* — everything enabled
+stays locked until you fix it. `guard blocks` and `guard verify` both say so.
+
+### What a lock is and is not
+
+A lock means the commitment cannot be walked back early through the guard: not
+by editing the file, not with the password, not by rebooting (the deadline lives
+in the same SYSTEM-owned state as everything else, and the service enforces from
+boot). It does **not** survive an authorized uninstall, which still needs only
+the password. That is the honest ceiling, and it is the same one described in
+`docs/pc-version.md` — the escape hatch is deliberate, because software that
+cannot be removed at all is malware.
 
 `verify` reports each browser as locked when **all** configured extensions for
 that browser are force-installed. See `docs/pc-version.md` for the full

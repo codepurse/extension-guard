@@ -35,6 +35,7 @@ func main() {
 	cfgPath := flag.String("config", defaultConfigPath(), "path to extension-ids.json")
 	password := flag.String("password", "", "uninstall password (install-service / uninstall-service / set-password)")
 	extensions := flag.String("extensions", "", "comma-separated extension names to keep (used by 'select'); default keeps all")
+	until := flag.String("until", "", "deadline for 'lock': a duration (72h, 7d) or a time (2026-09-01, 2026-09-01T17:00)")
 	flag.Usage = usage
 	flag.Parse()
 
@@ -48,9 +49,9 @@ func main() {
 	}
 
 	// Handled before the config is reconciled below. version / check-update don't
-	// need a config at all (and version must work even when it is missing), and
-	// select must see the file as shipped - reconciling first would revert a
-	// freshly installed catalog before select could adopt it.
+	// need a config at all (and version must work even when it is missing), while
+	// select and commit must see the file as written - reconciling first would
+	// revert the very edit they exist to adopt.
 	switch cmd {
 	case "version":
 		fmt.Println(buildinfo.Version)
@@ -60,6 +61,9 @@ func main() {
 		return
 	case "select":
 		selectConfig(*cfgPath, *extensions)
+		return
+	case "commit":
+		commitCmd(*cfgPath, *password)
 		return
 	}
 
@@ -76,7 +80,7 @@ func main() {
 
 	switch cmd {
 	case "apply":
-		must(enforce.Default().Apply(cfg))
+		must(enforce.Default().Apply(activeNow(cfg)))
 		fmt.Println("policy applied")
 		printStatus(cfg)
 	case "verify", "status":
@@ -89,6 +93,10 @@ func main() {
 		for _, k := range []policy.Kind{policy.Chrome, policy.Edge, policy.Brave, policy.Firefox} {
 			fmt.Printf("  %-8s %v\n", k, detected[k])
 		}
+	case "blocks":
+		blocksCmd(cfg)
+	case "lock":
+		lockCmd(cfg, *cfgPath, flag.Arg(1), *until)
 	case "enable-extension":
 		toggleExtension(cfg, *cfgPath, flag.Arg(1), true)
 	case "disable-extension":
@@ -233,11 +241,28 @@ func prompt(label string) string {
 	return strings.TrimSpace(string(b))
 }
 
+// activeNow resolves the schedule the same way the service does, printing any
+// problem that forced the fail-closed fallback so the operator sees it.
+func activeNow(cfg policy.Config) policy.Config {
+	active, err := cfg.EnforcedAt(time.Now())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: %v\n", err)
+		fmt.Fprintln(os.Stderr, "(the schedule is being ignored; every enabled extension stays enforced)")
+	}
+	return active
+}
+
 // printStatus lists what every enforcer reports. The columns are the general
 // ones rather than browser-specific: "target" is a browser today and an
 // executable once app blocking lands, and "present" means the target exists on
 // this machine.
+//
+// It reports against the schedule-resolved config, so "enforced" means "matches
+// what should be locked at this moment" - outside a block's window its
+// extensions are supposed to be absent, and showing that as a failure would be
+// wrong.
 func printStatus(cfg policy.Config) {
+	cfg = activeNow(cfg)
 	fmt.Printf("  %-11s %-8s %-8s %-9s %s\n", "area", "target", "present", "enforced", "detail")
 	for _, s := range enforce.Default().Verify(cfg) {
 		fmt.Printf("  %-11s %-8s %-8v %-9v %s\n", s.Enforcer, s.Target, s.Present, s.Enforced, s.Detail)
@@ -292,7 +317,7 @@ func toggleExtension(cfg policy.Config, cfgPath, name string, enable bool) {
 	}
 	writeConfig(cfg, cfgPath)
 	if enable {
-		must(enforce.Default().Apply(cfg))
+		must(enforce.Default().Apply(activeNow(cfg)))
 		fmt.Printf("enabled: %s is now force-installed\n", name)
 	} else {
 		must(policy.Remove(cfg.Only(name)))
@@ -497,6 +522,13 @@ policy commands (admin):
   remove             lift everything the guard enforces
   detect             list which supported browsers are installed
   select             enable only -extensions, disable the rest (used by the installer)
+
+schedule commands:
+  blocks             list each block, whether it is enforcing now, and its lock
+  lock               <id>      lock a block until -until (admin; no password -
+                               a lock can be extended but never shortened)
+  commit             adopt a hand-edited config file (requires the password;
+                               refused outright if it would weaken a locked block)
   enable-extension   <name>   start locking an extension (adds protection; no password)
   disable-extension  <name>   stop locking an extension (password, unless already paused)
 

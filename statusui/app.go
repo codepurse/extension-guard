@@ -84,7 +84,14 @@ func (a *App) GetStatus() Status {
 	if cfg, _, err := policy.LoadTrusted(a.cfgPath); err == nil {
 		a.cfg = cfg
 	}
-	verified := policy.Verify(a.cfg)
+	// Verify against the schedule-resolved config, matching what the service
+	// actually enforces: outside a block's window its extensions are meant to be
+	// absent, and reporting that as "not locked" would read as a fault. The
+	// extension rows below deliberately keep using a.cfg instead, because those
+	// are the user's own on/off choices - a toggle must not appear to flip itself
+	// when a window closes.
+	active, _ := a.cfg.EnforcedAt(time.Now())
+	verified := policy.Verify(active)
 	rows := make([]BrowserRow, 0, len(verified))
 	locked := 0
 	for _, s := range verified {
