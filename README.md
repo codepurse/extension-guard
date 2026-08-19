@@ -143,6 +143,10 @@ rewrites the config; the service picks the change up on its next cycle. This is
 how you add a second extension (e.g. Sieve) to a guard you first installed for
 just one — no reinstall needed.
 
+If any **scheduled blocks** are configured, a section below lists them with
+their timetable and lock state, and offers a **Lock** button. See
+[Scheduled blocks](#scheduled-blocks).
+
 ## Try it (Windows, Administrator shell required)
 
 `apply`, `remove` write to `HKLM`, so run them from an **elevated** terminal.
@@ -421,6 +425,15 @@ guard blocks                    # what is configured, what is enforcing now, wha
 guard -until 72h lock work      # also 7d, 2026-09-01, 2026-09-01T17:00
 guard commit                    # adopt your edits to extension-ids.json
 ```
+
+In the **status window**, a "Scheduled blocks" section lists each block, its
+timetable, whether it is enforcing right now, and its lock; unlocked blocks get
+a **Lock** button offering 24h / 3d / 7d / 30d or a typed deadline. An extension
+under a block is tagged `scheduled`, so one that is idle outside its window does
+not read as a fault. The section is hidden entirely when no blocks are
+configured, and an invalid schedule shows a banner saying the schedule is not in
+use. **Authoring** blocks is still a config-file job — edit `extension-ids.json`
+and run `guard commit`.
 
 `lock` needs admin but no password — it only strengthens, and no command can
 shorten a lock; it runs out on its own. `commit` needs the password, because it

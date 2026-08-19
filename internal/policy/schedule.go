@@ -416,3 +416,83 @@ func shortensLock(old, next Block) bool {
 	}
 	return nextUntil.Before(oldUntil)
 }
+
+// weekdayOrder is Monday-first, which is how a schedule reads to a person even
+// though time.Weekday starts at Sunday.
+var weekdayOrder = []time.Weekday{
+	time.Monday, time.Tuesday, time.Wednesday, time.Thursday,
+	time.Friday, time.Saturday, time.Sunday,
+}
+
+var weekdayShort = map[time.Weekday]string{
+	time.Monday: "Mon", time.Tuesday: "Tue", time.Wednesday: "Wed", time.Thursday: "Thu",
+	time.Friday: "Fri", time.Saturday: "Sat", time.Sunday: "Sun",
+}
+
+// daysSummary renders a window's days the way a person would say them.
+func (w Window) daysSummary() string {
+	if len(w.Days) == 0 {
+		return "Daily"
+	}
+	set := make(map[time.Weekday]bool, len(w.Days))
+	for _, d := range w.Days {
+		if wd, ok := parseWeekday(d); ok {
+			set[wd] = true
+		}
+	}
+	switch {
+	case len(set) == 0:
+		return "Never" // every entry was unparseable; Validate reports why
+	case len(set) == 7:
+		return "Daily"
+	case len(set) == 5 && !set[time.Saturday] && !set[time.Sunday]:
+		return "Mon-Fri"
+	case len(set) == 2 && set[time.Saturday] && set[time.Sunday]:
+		return "Weekends"
+	}
+	names := make([]string, 0, len(set))
+	for _, wd := range weekdayOrder {
+		if set[wd] {
+			names = append(names, weekdayShort[wd])
+		}
+	}
+	return strings.Join(names, " ")
+}
+
+// Summary renders one window as "Mon-Fri 09:00-17:00".
+func (w Window) Summary() string {
+	return w.daysSummary() + " " + strings.TrimSpace(w.Start) + "-" + strings.TrimSpace(w.End)
+}
+
+// ScheduleSummary renders the block's windows for display. A block with no
+// windows is always on, which is what a lock alone needs.
+func (b Block) ScheduleSummary() string {
+	if len(b.Windows) == 0 {
+		return "Always"
+	}
+	parts := make([]string, 0, len(b.Windows))
+	for _, w := range b.Windows {
+		parts = append(parts, w.Summary())
+	}
+	return strings.Join(parts, ", ")
+}
+
+// ExtensionSummary names what the block governs, for display.
+func (b Block) ExtensionSummary() string {
+	if len(b.Extensions) == 0 {
+		return "all extensions"
+	}
+	return strings.Join(b.Extensions, ", ")
+}
+
+// GovernedBy reports whether any block in the config governs the named
+// extension - that is, whether its enforcement is on a schedule rather than
+// around the clock.
+func (c Config) GovernedBy(name string) bool {
+	for _, b := range c.Blocks {
+		if b.Governs(name) {
+			return true
+		}
+	}
+	return false
+}

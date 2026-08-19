@@ -36,6 +36,25 @@ type Status struct {
 	HasPassword    bool           `json:"hasPassword"`
 	Browsers       []BrowserRow   `json:"browsers"`
 	Extensions     []ExtensionRow `json:"extensions"`
+	Blocks         []BlockRow     `json:"blocks"`
+	// ScheduleError is set when the configured schedule does not validate. The
+	// guard then enforces everything around the clock and ignores the schedule
+	// (policy.EnforcedAt fails closed), so the window must say so rather than
+	// show windows that are not actually running.
+	ScheduleError string `json:"scheduleError"`
+}
+
+// BlockRow is one scheduled block as the status window shows it. Schedule and
+// Extensions are pre-rendered by policy so the window and the CLI describe a
+// block identically.
+type BlockRow struct {
+	ID          string `json:"id"`
+	Label       string `json:"label"`
+	Schedule    string `json:"schedule"`
+	Extensions  string `json:"extensions"`
+	Active      bool   `json:"active"`
+	Locked      bool   `json:"locked"`
+	LockedUntil string `json:"lockedUntil"`
 }
 
 // ExtensionRow is one manageable extension in the status window. Name is the
@@ -44,6 +63,10 @@ type ExtensionRow struct {
 	Name    string `json:"name"`
 	Label   string `json:"label"`
 	Enabled bool   `json:"enabled"`
+	// Scheduled means a block governs this extension, so "on" means "on during
+	// its windows" rather than around the clock. The window labels it, otherwise
+	// an extension idle outside its window looks like a fault.
+	Scheduled bool `json:"scheduled"`
 }
 
 // ActionResult is what the disable/enable methods report back to the frontend.
@@ -90,7 +113,8 @@ func (a *App) GetStatus() Status {
 	// extension rows below deliberately keep using a.cfg instead, because those
 	// are the user's own on/off choices - a toggle must not appear to flip itself
 	// when a window closes.
-	active, _ := a.cfg.EnforcedAt(time.Now())
+	now := time.Now()
+	active, _ := a.cfg.EnforcedAt(now)
 	verified := policy.Verify(active)
 	rows := make([]BrowserRow, 0, len(verified))
 	locked := 0
@@ -111,7 +135,40 @@ func (a *App) GetStatus() Status {
 		if label == "" {
 			label = e.Name
 		}
-		exts = append(exts, ExtensionRow{Name: e.Name, Label: label, Enabled: !e.Disabled})
+		exts = append(exts, ExtensionRow{
+			Name:      e.Name,
+			Label:     label,
+			Enabled:   !e.Disabled,
+			Scheduled: a.cfg.GovernedBy(e.Name),
+		})
+	}
+
+	blocks := make([]BlockRow, 0, len(a.cfg.Blocks))
+	for _, b := range a.cfg.Blocks {
+		row := BlockRow{
+			ID:         b.ID,
+			Label:      b.Label,
+			Schedule:   b.ScheduleSummary(),
+			Extensions: b.ExtensionSummary(),
+			Active:     b.Active(now),
+		}
+		if row.Label == "" {
+			row.Label = b.ID
+		}
+		if locked, until := b.LockedAt(now); locked {
+			row.Locked = true
+			if until.IsZero() {
+				row.LockedUntil = "an unreadable date"
+			} else {
+				row.LockedUntil = until.Local().Format("Mon 2 Jan, 15:04")
+			}
+		}
+		blocks = append(blocks, row)
+	}
+
+	scheduleErr := ""
+	if err := a.cfg.Validate(); err != nil {
+		scheduleErr = err.Error()
 	}
 	_, hasPw := scm.GetPasswordHash()
 	return Status{
@@ -121,7 +178,29 @@ func (a *App) GetStatus() Status {
 		HasPassword:    hasPw,
 		Browsers:       rows,
 		Extensions:     exts,
+		Blocks:         blocks,
+		ScheduleError:  scheduleErr,
 	}
+}
+
+// LockBlock locks a scheduled block so it cannot be released before the given
+// deadline. Free of the password - like enabling an extension it only
+// strengthens protection - but still elevated (UAC), because it writes the
+// trusted config.
+//
+// The deadline is passed through to the guard rather than parsed here, so the
+// window accepts exactly what the CLI does and there is one place that decides
+// what a deadline means.
+func (a *App) LockBlock(id, until string) ActionResult {
+	if strings.TrimSpace(id) == "" {
+		return ActionResult{Message: "No block selected."}
+	}
+	if strings.TrimSpace(until) == "" {
+		return ActionResult{Message: "Choose how long to lock it for."}
+	}
+	return a.execGuard(
+		[]string{"-config", a.cfgPath, "-until", until, "lock", id},
+		"Locked. It cannot be released early - not with the password, not by restarting.")
 }
 
 // Disable temporarily turns protection off - the one action that *weakens*

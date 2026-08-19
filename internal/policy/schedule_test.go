@@ -459,3 +459,70 @@ func TestCheckLockedBlocksCorruptedDeadline(t *testing.T) {
 		t.Errorf("supplying a readable future deadline should be accepted: %v", err)
 	}
 }
+
+// --- display helpers -------------------------------------------------------
+
+func TestWindowSummary(t *testing.T) {
+	cases := []struct {
+		w    Window
+		want string
+	}{
+		{Window{Start: "09:00", End: "17:00"}, "Daily 09:00-17:00"},
+		{Window{Days: []string{"mon", "tue", "wed", "thu", "fri"}, Start: "09:00", End: "17:00"}, "Mon-Fri 09:00-17:00"},
+		{Window{Days: []string{"sat", "sun"}, Start: "10:00", End: "23:00"}, "Weekends 10:00-23:00"},
+		{Window{Days: []string{"mon", "wed", "fri"}, Start: "20:00", End: "22:00"}, "Mon Wed Fri 20:00-22:00"},
+		// Listed out of order, and in long form: still reads Monday-first.
+		{Window{Days: []string{"friday", "monday"}, Start: "08:00", End: "09:00"}, "Mon Fri 08:00-09:00"},
+		{Window{Days: []string{"mon", "tue", "wed", "thu", "fri", "sat", "sun"}, Start: "00:00", End: "23:59"}, "Daily 00:00-23:59"},
+	}
+	for _, c := range cases {
+		if got := c.w.Summary(); got != c.want {
+			t.Errorf("Summary() = %q, want %q", got, c.want)
+		}
+	}
+}
+
+func TestScheduleSummary(t *testing.T) {
+	if got := (Block{}).ScheduleSummary(); got != "Always" {
+		t.Errorf("a block with no windows summarised as %q, want Always", got)
+	}
+	b := Block{Windows: []Window{
+		{Days: []string{"mon"}, Start: "09:00", End: "12:00"},
+		{Days: []string{"mon"}, Start: "14:00", End: "17:00"},
+	}}
+	if got, want := b.ScheduleSummary(), "Mon 09:00-12:00, Mon 14:00-17:00"; got != want {
+		t.Errorf("ScheduleSummary() = %q, want %q", got, want)
+	}
+}
+
+func TestExtensionSummary(t *testing.T) {
+	if got := (Block{}).ExtensionSummary(); got != "all extensions" {
+		t.Errorf("got %q, want the all-extensions wording", got)
+	}
+	if got := (Block{Extensions: []string{"sieve", "blocknsfw"}}).ExtensionSummary(); got != "sieve, blocknsfw" {
+		t.Errorf("got %q", got)
+	}
+}
+
+// TestGovernedBy backs the "scheduled" tag in the status window: an extension
+// under a block is enforced on a timetable, not around the clock, and the window
+// has to be able to say so.
+func TestGovernedBy(t *testing.T) {
+	cfg := scheduledConfig() // block "work" governs only "sieve"
+	if !cfg.GovernedBy("sieve") {
+		t.Error("sieve is governed by the work block")
+	}
+	if cfg.GovernedBy("blocknsfw") {
+		t.Error("blocknsfw is governed by nothing")
+	}
+	// A block with no extensions listed governs everything.
+	cfg.Blocks = []Block{{ID: "all"}}
+	if !cfg.GovernedBy("blocknsfw") {
+		t.Error("a block with no extensions should govern every extension")
+	}
+	// And a config with no blocks governs nothing.
+	cfg.Blocks = nil
+	if cfg.GovernedBy("sieve") {
+		t.Error("a config with no blocks governs nothing")
+	}
+}

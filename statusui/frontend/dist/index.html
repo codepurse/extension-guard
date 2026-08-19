@@ -57,11 +57,15 @@
   .row .toggle:hover { filter: brightness(1.2); }
   .exthint { font-size: 12px; color: var(--muted); margin: -6px 0 0; }
   .row .extname { text-transform: none; }
-  input[type=password] {
+  input[type=password], input[type=text] {
     background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
     color: var(--text); padding: 8px 10px; font-size: 13px; outline: none;
   }
-  input[type=password]:focus { border-color: var(--accent); }
+  input[type=password]:focus, input[type=text]:focus { border-color: var(--accent); }
+  .schedtag {
+    margin-left: 8px; font-size: 10px; color: var(--faint); background: var(--surface2);
+    padding: 1px 7px; border-radius: 999px; vertical-align: middle; text-transform: none;
+  }
   button {
     background: var(--accent-dim); color: #fff; border: none; border-radius: 8px;
     padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
@@ -92,6 +96,33 @@
     border: none; font-size: 18px; line-height: 1; padding: 0 4px; cursor: pointer; font-weight: 400;
   }
   .announce-x:hover { color: var(--text); background: transparent; }
+  /* Scheduled blocks - a group of extensions enforced on a timetable. */
+  .blockrow {
+    display: flex; align-items: flex-start; gap: 10px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px;
+  }
+  .blockrow.islocked { border-color: var(--accent-dim); }
+  .blockrow .binfo { min-width: 0; }
+  .blockrow .btitle { font-size: 13px; }
+  .blockrow .bmeta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .blockrow .bright {
+    margin-left: auto; display: flex; flex-direction: column; align-items: flex-end;
+    gap: 6px; flex-shrink: 0;
+  }
+  .badge.idle { color: var(--faint); background: var(--surface2); }
+  .badge.lockbadge { color: var(--accent); background: rgba(99,102,241,0.14); }
+  .lockbtn {
+    padding: 3px 12px; font-size: 11px; font-weight: 600; border-radius: 999px;
+    background: var(--surface2); color: var(--muted);
+  }
+  .lockbtn:hover { background: var(--accent-dim); color: #fff; }
+  .warnbox { border-color: var(--warn); }
+  .warnbox .lbl { color: var(--warn); font-weight: 600; }
+  .lock-choices { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .lock-choices button { padding: 5px 12px; font-size: 12px; background: var(--surface2); color: var(--muted); }
+  .lock-choices button.sel, .lock-choices button:hover { background: var(--accent-dim); color: #fff; }
+  .modal-note { font-size: 12px; color: var(--muted); margin: 0 0 12px; }
+  .modal input[type=text] { width: 100%; }
   /* Password prompt modal - shown only for actions that weaken protection. */
   .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; z-index: 50; }
   .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; width: 340px; max-width: 90%; }
@@ -149,6 +180,17 @@
   <p class="exthint" id="exthint">Turning one on adds protection (free). Turning one off needs the password.</p>
   <div class="rows" id="ext-rows"></div>
 
+  <div id="block-section" style="display:none;">
+    <div class="section-title">Scheduled blocks</div>
+    <p class="exthint">A block enforces its extensions only during its windows. Locking one means it cannot be released early.</p>
+    <div id="schedule-warning" class="card warnbox" style="display:none; margin-bottom:6px;">
+      <div class="lbl">This schedule is not being used</div>
+      <div class="announce-msg" id="schedule-warning-msg"></div>
+      <div class="announce-msg">Everything stays protected around the clock until it is fixed.</div>
+    </div>
+    <div class="rows" id="block-rows"></div>
+  </div>
+
   <div class="foot">
     <span id="ver">Extension Guard</span>
     <button class="ghost" id="check-updates">Check for updates</button>
@@ -166,6 +208,27 @@
     <div class="modal-actions">
       <button class="ghost" id="pw-modal-cancel">Cancel</button>
       <button id="pw-modal-ok">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- Lock prompt. Locking needs no password (it only strengthens), but it is
+     irreversible until the deadline, so it gets an explicit confirmation. -->
+<div id="lock-modal" class="modal-backdrop" style="display:none;">
+  <div class="modal">
+    <div class="modal-title" id="lock-modal-title">Lock block</div>
+    <p class="modal-note">Once locked it cannot be shortened, changed, or removed until the deadline &mdash; not with the password, not by restarting.</p>
+    <div class="lock-choices" id="lock-choices">
+      <button type="button" data-value="24h">24 hours</button>
+      <button type="button" data-value="3d">3 days</button>
+      <button type="button" data-value="7d">7 days</button>
+      <button type="button" data-value="30d">30 days</button>
+    </div>
+    <input id="lock-custom" type="text" placeholder="or a date: 2026-09-01, 2026-09-01T17:00" autocomplete="off" />
+    <div id="lock-modal-msg" class="msg"></div>
+    <div class="modal-actions">
+      <button class="ghost" id="lock-modal-cancel">Cancel</button>
+      <button id="lock-modal-ok">Lock</button>
     </div>
   </div>
 </div>
@@ -204,6 +267,45 @@
       function onOk() {
         if (!input.value) { pmsg.className = 'msg err'; pmsg.textContent = 'Enter the password.'; return; }
         const v = input.value; cleanup(); resolve(v);
+      }
+      function onCancel() { cleanup(); resolve(null); }
+      function onKey(e) {
+        if (e.key === 'Enter') { e.preventDefault(); onOk(); }
+        else if (e.key === 'Escape') { onCancel(); }
+      }
+      okBtn.addEventListener('click', onOk);
+      cancelBtn.addEventListener('click', onCancel);
+      input.addEventListener('keydown', onKey);
+    });
+  }
+
+  // askLockDuration resolves with a deadline string the guard understands, or
+  // null if the user cancels. The value is passed through untouched so the window
+  // accepts exactly what the CLI does.
+  function askLockDuration(label) {
+    return new Promise(function (resolve) {
+      const modal = document.getElementById('lock-modal');
+      const input = document.getElementById('lock-custom');
+      const lmsg = document.getElementById('lock-modal-msg');
+      const okBtn = document.getElementById('lock-modal-ok');
+      const cancelBtn = document.getElementById('lock-modal-cancel');
+      const choices = document.getElementById('lock-choices');
+      document.getElementById('lock-modal-title').textContent = 'Lock ' + label;
+      input.value = ''; lmsg.textContent = ''; lmsg.className = 'msg';
+      Array.prototype.forEach.call(choices.children, function (c) { c.classList.remove('sel'); });
+      modal.style.display = 'flex';
+      setTimeout(function () { input.focus(); }, 0);
+
+      function cleanup() {
+        modal.style.display = 'none';
+        okBtn.removeEventListener('click', onOk);
+        cancelBtn.removeEventListener('click', onCancel);
+        input.removeEventListener('keydown', onKey);
+      }
+      function onOk() {
+        const v = input.value.trim();
+        if (!v) { lmsg.className = 'msg err'; lmsg.textContent = 'Choose a length, or type one.'; return; }
+        cleanup(); resolve(v);
       }
       function onCancel() { cleanup(); resolve(null); }
       function onKey(e) {
@@ -271,6 +373,12 @@
       const name = document.createElement('span');
       name.className = 'bname extname';
       name.textContent = e.label || e.name;
+      if (e.scheduled) {
+        const tag = document.createElement('span');
+        tag.className = 'schedtag';
+        tag.textContent = 'scheduled';
+        name.appendChild(tag);
+      }
       const tog = document.createElement('button');
       tog.className = 'toggle ' + (e.enabled ? 'on' : 'off');
       tog.textContent = e.enabled ? 'On' : 'Off';
@@ -279,6 +387,83 @@
       row.appendChild(tog);
       extRows.appendChild(row);
     });
+
+    renderBlocks(s);
+  }
+
+  // renderBlocks lists each scheduled block, whether it is enforcing right now,
+  // and its lock. The whole section stays hidden when nothing is scheduled, so
+  // an install that never uses blocks looks exactly as it did before.
+  function renderBlocks(s) {
+    const section = document.getElementById('block-section');
+    const rows = document.getElementById('block-rows');
+    const blocks = s.blocks || [];
+    section.style.display = blocks.length ? '' : 'none';
+    if (!blocks.length) { return; }
+
+    const warn = document.getElementById('schedule-warning');
+    if (s.scheduleError) {
+      warn.style.display = '';
+      document.getElementById('schedule-warning-msg').textContent = s.scheduleError;
+    } else {
+      warn.style.display = 'none';
+    }
+
+    rows.innerHTML = '';
+    blocks.forEach(function (b) {
+      const row = document.createElement('div');
+      row.className = 'blockrow' + (b.locked ? ' islocked' : '');
+
+      const info = document.createElement('div');
+      info.className = 'binfo';
+      const title = document.createElement('div');
+      title.className = 'btitle';
+      title.textContent = b.label || b.id;
+      const meta = document.createElement('div');
+      meta.className = 'bmeta';
+      meta.textContent = b.schedule + '  •  ' + b.extensions;
+      info.appendChild(title);
+      info.appendChild(meta);
+
+      const right = document.createElement('div');
+      right.className = 'bright';
+      const badge = document.createElement('span');
+      // An idle block is not a fault - it is outside its window and meant to be.
+      badge.className = 'badge ' + (b.active ? 'locked' : 'idle');
+      badge.textContent = b.active ? 'Enforcing' : 'Idle';
+      right.appendChild(badge);
+
+      if (b.locked) {
+        const lb = document.createElement('span');
+        lb.className = 'badge lockbadge';
+        lb.textContent = 'Locked until ' + b.lockedUntil;
+        right.appendChild(lb);
+      } else {
+        const btn = document.createElement('button');
+        btn.className = 'lockbtn';
+        btn.textContent = 'Lock';
+        btn.addEventListener('click', function () { lockBlock(b.id, b.label || b.id); });
+        right.appendChild(btn);
+      }
+
+      row.appendChild(info);
+      row.appendChild(right);
+      rows.appendChild(row);
+    });
+  }
+
+  // lockBlock locks a block until a chosen deadline. Free of the password since
+  // it only strengthens protection, but still elevated (UAC).
+  async function lockBlock(id, label) {
+    if (!bound() || !window.go.main.App.LockBlock) { return; }
+    const until = await askLockDuration(label);
+    if (until === null) { return; }
+    setMsg('Approve the Windows permission prompt...');
+    let res;
+    try { res = await window.go.main.App.LockBlock(id, until); }
+    catch (e) { res = { ok: false, message: String(e) }; }
+    setMsg(res.message, res.ok ? 'ok' : 'err');
+    await refresh();
   }
 
   // toggleProtection flips overall protection. Disabling weakens it -> ask the
@@ -429,6 +614,14 @@
     };
     banner.style.display = '';
   }
+
+  document.getElementById('lock-choices').addEventListener('click', function (e) {
+    const btn = e.target.closest('button[data-value]');
+    if (!btn) { return; }
+    Array.prototype.forEach.call(this.children, function (c) { c.classList.remove('sel'); });
+    btn.classList.add('sel');
+    document.getElementById('lock-custom').value = btn.getAttribute('data-value');
+  });
 
   document.getElementById('protection-btn').addEventListener('click', toggleProtection);
   document.getElementById('refresh').addEventListener('click', refresh);

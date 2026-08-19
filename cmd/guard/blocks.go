@@ -26,15 +26,11 @@ func blocksCmd(cfg policy.Config) {
 		return
 	}
 	now := time.Now()
-	fmt.Printf("  %-14s %-9s %-22s %s\n", "id", "state", "extensions", "lock")
+	fmt.Printf("  %-12s %-8s %-24s %-20s %s\n", "id", "state", "schedule", "extensions", "lock")
 	for _, b := range cfg.Blocks {
-		state := "inactive"
+		state := "idle"
 		if b.Active(now) {
 			state = "active"
-		}
-		exts := "(all)"
-		if len(b.Extensions) > 0 {
-			exts = strings.Join(b.Extensions, ",")
 		}
 		lock := "-"
 		if locked, until := b.LockedAt(now); locked {
@@ -44,7 +40,8 @@ func blocksCmd(cfg policy.Config) {
 				lock = "locked until " + until.Local().Format("Mon 2 Jan 15:04")
 			}
 		}
-		fmt.Printf("  %-14s %-9s %-22s %s\n", b.ID, state, exts, lock)
+		fmt.Printf("  %-12s %-8s %-24s %-20s %s\n",
+			b.ID, state, b.ScheduleSummary(), b.ExtensionSummary(), lock)
 	}
 	if invalid := cfg.Validate(); invalid != nil {
 		fmt.Printf("\nwarning: %v\n", invalid)
