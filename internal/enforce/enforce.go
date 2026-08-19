@@ -58,7 +58,7 @@ type Enforcer interface {
 type Set []Enforcer
 
 // Default is the set the guard runs. New backends are added here.
-func Default() Set { return Set{Extensions{}} }
+func Default() Set { return Set{Extensions{}, Domains{}} }
 
 // Apply applies every enforcer, joining any errors. It deliberately does not
 // stop at the first failure: one backend failing (a browser policy key that

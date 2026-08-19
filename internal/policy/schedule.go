@@ -52,9 +52,14 @@ type Window struct {
 // That is the whole promise of a commitment tool, and it is why MaxLockDuration
 // exists.
 type Block struct {
-	ID          string   `json:"id"`
-	Label       string   `json:"label,omitempty"`
+	ID    string `json:"id"`
+	Label string `json:"label,omitempty"`
+	// Extensions and Domains are what the block governs. Naming neither means the
+	// block governs everything in both catalogs; naming either means it governs
+	// exactly what is listed, and nothing of the kind it leaves out. That keeps a
+	// pre-domains config reading the same way it always did.
 	Extensions  []string `json:"extensions,omitempty"`
+	Domains     []string `json:"domains,omitempty"`
 	Windows     []Window `json:"windows,omitempty"`
 	LockedUntil string   `json:"lockedUntil,omitempty"`
 }
@@ -164,15 +169,37 @@ func (b Block) LockedAt(at time.Time) (bool, time.Time) {
 	return at.Before(until), until
 }
 
-// Governs reports whether this block covers the named extension. A block with no
-// extensions listed governs every extension in the catalog.
+// governsAll reports whether the block covers both catalogs wholesale, which is
+// what naming neither extensions nor domains means.
+func (b Block) governsAll() bool { return len(b.Extensions) == 0 && len(b.Domains) == 0 }
+
+// Governs reports whether this block covers the named extension.
 func (b Block) Governs(name string) bool {
-	if len(b.Extensions) == 0 {
+	if b.governsAll() {
 		return true
 	}
 	name = strings.ToLower(strings.TrimSpace(name))
 	for _, e := range b.Extensions {
 		if strings.ToLower(strings.TrimSpace(e)) == name {
+			return true
+		}
+	}
+	return false
+}
+
+// GovernsDomain reports whether this block covers the named domain, comparing
+// normalized hosts so the block list and the catalog agree on what "reddit.com"
+// means however either was typed.
+func (b Block) GovernsDomain(name string) bool {
+	if b.governsAll() {
+		return true
+	}
+	want, err := NormalizeDomain(name)
+	if err != nil {
+		return false
+	}
+	for _, d := range b.Domains {
+		if h, err := NormalizeDomain(d); err == nil && h == want {
 			return true
 		}
 	}
@@ -194,6 +221,8 @@ func (c Config) ActiveAt(at time.Time) Config {
 	out := c
 	out.Extensions = make([]Extension, len(c.Extensions))
 	copy(out.Extensions, c.Extensions)
+	out.Domains = make([]Domain, len(c.Domains))
+	copy(out.Domains, c.Domains)
 
 	for i, e := range out.Extensions {
 		if e.Disabled {
@@ -212,6 +241,26 @@ func (c Config) ActiveAt(at time.Time) Config {
 		}
 		if governed && !active {
 			out.Extensions[i].Disabled = true
+		}
+	}
+
+	for i, d := range out.Domains {
+		if d.Disabled {
+			continue
+		}
+		governed, active := false, false
+		for _, b := range c.Blocks {
+			if !b.GovernsDomain(d.Name) {
+				continue
+			}
+			governed = true
+			if b.Active(at) {
+				active = true
+				break
+			}
+		}
+		if governed && !active {
+			out.Domains[i].Disabled = true
 		}
 	}
 	return out
@@ -238,11 +287,14 @@ func (c Config) EnforcedAt(at time.Time) (Config, error) {
 // boundary without touching the registry.
 func (c Config) ActiveSignature(at time.Time) string {
 	active := c.ActiveAt(at)
-	names := make([]string, 0, len(active.Extensions))
+	names := make([]string, 0, len(active.Extensions)+len(active.Domains))
 	for _, e := range active.Extensions {
 		if !e.Disabled {
-			names = append(names, strings.ToLower(e.Name))
+			names = append(names, "ext:"+strings.ToLower(e.Name))
 		}
+	}
+	for _, d := range active.BlockedDomains() {
+		names = append(names, "dom:"+d)
 	}
 	sort.Strings(names)
 	return strings.Join(names, ",")
@@ -275,6 +327,9 @@ func (c Config) LockedBlocks(at time.Time) []Block {
 // that silently never fires is worse than a config that refuses to load, because
 // the user believes they are protected when they are not.
 func (c Config) Validate() error {
+	if err := c.validateDomains(); err != nil {
+		return err
+	}
 	seen := make(map[string]bool, len(c.Blocks))
 	known := make(map[string]bool, len(c.Extensions))
 	for _, e := range c.Extensions {
@@ -294,6 +349,15 @@ func (c Config) Validate() error {
 		for _, name := range b.Extensions {
 			if !known[strings.ToLower(strings.TrimSpace(name))] {
 				return fmt.Errorf("block %q lists unknown extension %q", b.ID, name)
+			}
+		}
+		for _, name := range b.Domains {
+			host, err := NormalizeDomain(name)
+			if err != nil {
+				return fmt.Errorf("block %q: %w", b.ID, err)
+			}
+			if !c.HasDomain(host) {
+				return fmt.Errorf("block %q lists domain %q, which is not in the domains list", b.ID, host)
 			}
 		}
 
@@ -374,7 +438,16 @@ func sameExceptDeadline(a, b Block) bool {
 	if a.ID != b.ID || a.Label != b.Label {
 		return false
 	}
-	if !sameStrings(a.Extensions, b.Extensions) || len(a.Windows) != len(b.Windows) {
+	if !sameStrings(a.Extensions, b.Extensions) {
+		return false
+	}
+	// Domains are compared normalized, so rewriting "reddit.com" as
+	// "https://www.Reddit.com/" is not treated as a change while actually adding or
+	// dropping a site still is.
+	if !sameDomains(a.Domains, b.Domains) {
+		return false
+	}
+	if len(a.Windows) != len(b.Windows) {
 		return false
 	}
 	for i := range a.Windows {
@@ -382,6 +455,35 @@ func sameExceptDeadline(a, b Block) bool {
 			return false
 		}
 		if !sameStrings(a.Windows[i].Days, b.Windows[i].Days) {
+			return false
+		}
+	}
+	return true
+}
+
+// sameDomains compares two domain lists by their normalized hosts.
+func sameDomains(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	norm := func(in []string) []string {
+		out := make([]string, 0, len(in))
+		for _, s := range in {
+			if h, err := NormalizeDomain(s); err == nil {
+				out = append(out, h)
+			} else {
+				out = append(out, strings.ToLower(strings.TrimSpace(s)))
+			}
+		}
+		sort.Strings(out)
+		return out
+	}
+	return sameOrderStrings(norm(a), norm(b))
+}
+
+func sameOrderStrings(a, b []string) bool {
+	for i := range a {
+		if a[i] != b[i] {
 			return false
 		}
 	}
@@ -477,12 +579,25 @@ func (b Block) ScheduleSummary() string {
 	return strings.Join(parts, ", ")
 }
 
-// ExtensionSummary names what the block governs, for display.
-func (b Block) ExtensionSummary() string {
-	if len(b.Extensions) == 0 {
-		return "all extensions"
+// GovernedSummary names what the block governs, for display. A block naming
+// neither list governs both catalogs, which is what "everything" means here.
+func (b Block) GovernedSummary() string {
+	if b.governsAll() {
+		return "everything"
 	}
-	return strings.Join(b.Extensions, ", ")
+	parts := make([]string, 0, len(b.Extensions)+len(b.Domains))
+	parts = append(parts, b.Extensions...)
+	for _, d := range b.Domains {
+		if h, err := NormalizeDomain(d); err == nil {
+			parts = append(parts, h)
+		} else {
+			parts = append(parts, d)
+		}
+	}
+	if len(parts) == 0 {
+		return "nothing"
+	}
+	return strings.Join(parts, ", ")
 }
 
 // GovernedBy reports whether any block in the config governs the named

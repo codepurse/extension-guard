@@ -143,6 +143,11 @@ rewrites the config; the service picks the change up on its next cycle. This is
 how you add a second extension (e.g. Sieve) to a guard you first installed for
 just one — no reinstall needed.
 
+The **Blocked sites** section lists the domain block list with a box to add one.
+Adding is free; removing needs the password. A site that is on but currently
+outside its schedule window is badged **Waiting**, not shown as failing. See
+[Blocked sites](#blocked-sites).
+
 If any **scheduled blocks** are configured, a section below lists them with
 their timetable and lock state, and offers a **Lock** button. See
 [Scheduled blocks](#scheduled-blocks).
@@ -152,6 +157,7 @@ their timetable and lock state, and offers a **Lock** button. See
 `apply`, `remove` write to `HKLM`, so run them from an **elevated** terminal.
 
 ```sh
+guard domains      # blocked sites: which are on the list, which are enforced now
 guard blocks       # scheduled blocks: which are enforcing now, which are locked
 guard detect       # which browsers are installed
 guard apply        # enforce everything the config asks for
@@ -377,6 +383,64 @@ the freshly shipped `extension-ids.json`, so an upgrade that widens the catalog
 or corrects an extension ID takes effect instead of being reverted; `guard
 commit` is how *you* adopt an edit you made on purpose (see below).
 
+## Blocked sites
+
+Add a domain and it is blocked in every supported browser, **including all its
+subdomains**: `reddit.com` covers `www.reddit.com`, `old.reddit.com`, and
+`https://reddit.com/r/anything`.
+
+```sh
+guard block-domain reddit.com     # admin; no password - it only adds protection
+guard unblock-domain reddit.com   # password (unless protection is paused)
+guard domains                     # what is on the list and what is enforced now
+```
+
+Or type it into the **Blocked sites** box in the status window.
+
+```json
+{
+  "domains": [
+    { "name": "reddit.com" },
+    { "name": "news.ycombinator.com", "disabled": true }
+  ]
+}
+```
+
+### How it works, and what it does not cover
+
+This uses each browser's **enterprise URL filter**, not the hosts file:
+`URLBlocklist` on Chrome/Edge/Brave, `WebsiteFilter` on Firefox. Three reasons
+that matters:
+
+- A hosts entry is resolved by the **OS**, and both Chrome and Firefox can use
+  **DNS-over-HTTPS**, which skips the OS resolver — the block would silently stop
+  working. A policy is enforced inside the browser, above DNS.
+- It lands in `HKLM\SOFTWARE\Policies`, which the guard's **tamper watcher
+  already watches**, so a deleted key is restored within milliseconds for free.
+- It writes registry policy and kills no processes, which is why this could ship
+  **without waiting on code signing**, unlike blocking applications.
+
+What it does **not** cover, plainly: a browser the guard doesn't support, and any
+non-browser app. Those need enforcement below the browser — still to come.
+
+### Input handling
+
+Paste whatever you have; it is reduced to the bare hostname.
+`https://www.Reddit.com/r/x?sort=new` and `reddit.com:443` and `REDDIT.com.` all
+become `reddit.com`. A leading `www.` is dropped on purpose — someone typing
+`www.reddit.com` means Reddit, and keeping the prefix would leave
+`old.reddit.com` reachable.
+
+Refused, with an explanation:
+
+| Input | Why |
+|---|---|
+| `*`, `*.reddit.com` | A bare `*` is a valid Chromium pattern meaning *block every URL*. Reaching that by typo would take the whole web out. |
+| `localhost` | No dot, so not a domain. |
+| `reddit.com, twitter.com` | Add them one at a time. |
+| `old.reddit.com` when `reddit.com` is already blocked | Tightens nothing, and burns one of the 1000 entries browsers honour. |
+| `redditÉ.com` | Use the punycode form (`xn--…`). |
+
 ## Scheduled blocks
 
 A **block** is a named group of extensions enforced on a schedule, optionally
@@ -404,8 +468,9 @@ locked so it cannot be released early. Add a `blocks` array alongside
 }
 ```
 
-- **`extensions`** — which extensions the block governs. Omit it to govern every
-  extension in the catalog.
+- **`extensions`** / **`domains`** — what the block governs. Naming neither means
+  it governs everything in both lists; naming either means it governs exactly what
+  is listed, and nothing of the kind it leaves out.
 - **`windows`** — recurring local-time ranges. Omit `days` for every day. An
   `end` at or before `start` runs **past midnight**: `22:00`–`06:00` on `fri`
   covers Friday night into Saturday morning. A block with no windows is simply

@@ -80,6 +80,11 @@ type Config struct {
 	// to one written before schedules existed, which keeps trusted copies stable
 	// across the upgrade. See schedule.go.
 	Blocks []Block `json:"blocks,omitempty"`
+	// Domains are sites blocked in every supported browser via its enterprise URL
+	// filter. Blocking a domain also blocks its subdomains. omitempty for the same
+	// reason as Blocks: a config without domains encodes byte-identically to one
+	// written before they existed. See domains.go.
+	Domains []Domain `json:"domains,omitempty"`
 	// AutoUpdate controls how the service reacts to a newer release:
 	// "notify" (default) logs availability, "apply" downloads and installs it
 	// silently, "off" disables the periodic check. See UpdateMode. Silent "apply"
@@ -118,6 +123,25 @@ func (c Config) Targets(k Kind) []Target {
 			continue
 		}
 		out = append(out, e.Target(k))
+	}
+	return out
+}
+
+// InactiveTargets is the complement of Targets: the targets of extensions that
+// are currently switched off, either by their own Disabled flag or because
+// ActiveAt resolved them out of a schedule window.
+//
+// Apply needs this to *prune*. The enforcement mechanisms are incremental - a
+// registry value per extension, a key per Firefox add-on - so writing only the
+// active set leaves a stale entry behind for anything that just went inactive,
+// and the extension stays force-installed after its window closes. Enforcement
+// has to be reconciled, not appended to.
+func (c Config) InactiveTargets(k Kind) []Target {
+	out := make([]Target, 0, len(c.Extensions))
+	for _, e := range c.Extensions {
+		if e.Disabled {
+			out = append(out, e.Target(k))
+		}
 	}
 	return out
 }
@@ -189,14 +213,16 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 	var multi struct {
 		Extensions []Extension `json:"extensions"`
 		Blocks     []Block     `json:"blocks"`
+		Domains    []Domain    `json:"domains"`
 		AutoUpdate string      `json:"autoUpdate"`
 	}
 	if err := json.Unmarshal(data, &multi); err != nil {
 		return err
 	}
-	if len(multi.Extensions) > 0 {
+	if len(multi.Extensions) > 0 || len(multi.Domains) > 0 {
 		c.Extensions = multi.Extensions
 		c.Blocks = multi.Blocks
+		c.Domains = multi.Domains
 		c.AutoUpdate = multi.AutoUpdate
 		return nil
 	}

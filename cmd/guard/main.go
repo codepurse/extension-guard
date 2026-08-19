@@ -95,6 +95,12 @@ func main() {
 		}
 	case "blocks":
 		blocksCmd(cfg)
+	case "domains":
+		domainsCmd(cfg)
+	case "block-domain":
+		blockDomainCmd(cfg, *cfgPath, flag.Arg(1))
+	case "unblock-domain":
+		unblockDomainCmd(cfg, *cfgPath, flag.Arg(1), *password)
 	case "lock":
 		lockCmd(cfg, *cfgPath, flag.Arg(1), *until)
 	case "enable-extension":
@@ -522,6 +528,12 @@ policy commands (admin):
   remove             lift everything the guard enforces
   detect             list which supported browsers are installed
   select             enable only -extensions, disable the rest (used by the installer)
+
+domain commands:
+  domains            list the blocked domains and whether each is enforced now
+  block-domain       <domain>  block a domain and all its subdomains (admin; no
+                               password - it only adds protection)
+  unblock-domain     <domain>  stop filtering a domain (password, unless paused)
 
 schedule commands:
   blocks             list each block, whether it is enforcing now, and its lock

@@ -41,7 +41,7 @@ func blocksCmd(cfg policy.Config) {
 			}
 		}
 		fmt.Printf("  %-12s %-8s %-24s %-20s %s\n",
-			b.ID, state, b.ScheduleSummary(), b.ExtensionSummary(), lock)
+			b.ID, state, b.ScheduleSummary(), b.GovernedSummary(), lock)
 	}
 	if invalid := cfg.Validate(); invalid != nil {
 		fmt.Printf("\nwarning: %v\n", invalid)

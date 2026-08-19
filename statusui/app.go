@@ -37,11 +37,24 @@ type Status struct {
 	Browsers       []BrowserRow   `json:"browsers"`
 	Extensions     []ExtensionRow `json:"extensions"`
 	Blocks         []BlockRow     `json:"blocks"`
+	Domains        []DomainRow    `json:"domains"`
 	// ScheduleError is set when the configured schedule does not validate. The
 	// guard then enforces everything around the clock and ignores the schedule
 	// (policy.EnforcedAt fails closed), so the window must say so rather than
 	// show windows that are not actually running.
 	ScheduleError string `json:"scheduleError"`
+}
+
+// DomainRow is one entry in the site block list. Enabled is the user's own on/off
+// choice; Blocked is whether it is actually being filtered at this moment, which
+// differs when a schedule has it out of window. Both are shown, because "on but
+// not blocking right now" is a state the user needs to be able to tell apart from
+// "not working".
+type DomainRow struct {
+	Name      string `json:"name"`
+	Enabled   bool   `json:"enabled"`
+	Blocked   bool   `json:"blocked"`
+	Scheduled bool   `json:"scheduled"`
 }
 
 // BlockRow is one scheduled block as the status window shows it. Schedule and
@@ -149,7 +162,7 @@ func (a *App) GetStatus() Status {
 			ID:         b.ID,
 			Label:      b.Label,
 			Schedule:   b.ScheduleSummary(),
-			Extensions: b.ExtensionSummary(),
+			Extensions: b.GovernedSummary(),
 			Active:     b.Active(now),
 		}
 		if row.Label == "" {
@@ -166,6 +179,31 @@ func (a *App) GetStatus() Status {
 		blocks = append(blocks, row)
 	}
 
+	blockedNow := make(map[string]bool)
+	for _, h := range active.BlockedDomains() {
+		blockedNow[h] = true
+	}
+	domains := make([]DomainRow, 0, len(a.cfg.Domains))
+	for _, d := range a.cfg.Domains {
+		host, err := policy.NormalizeDomain(d.Name)
+		if err != nil {
+			host = d.Name // show it as written; Validate explains the problem
+		}
+		scheduled := false
+		for _, b := range a.cfg.Blocks {
+			if b.GovernsDomain(host) {
+				scheduled = true
+				break
+			}
+		}
+		domains = append(domains, DomainRow{
+			Name:      host,
+			Enabled:   !d.Disabled,
+			Blocked:   blockedNow[host],
+			Scheduled: scheduled,
+		})
+	}
+
 	scheduleErr := ""
 	if err := a.cfg.Validate(); err != nil {
 		scheduleErr = err.Error()
@@ -179,8 +217,61 @@ func (a *App) GetStatus() Status {
 		Browsers:       rows,
 		Extensions:     exts,
 		Blocks:         blocks,
+		Domains:        domains,
 		ScheduleError:  scheduleErr,
 	}
+}
+
+// BlockDomain adds a site to the block list, covering it and every subdomain.
+// Free of the password - it only adds protection, the same gate as enabling an
+// extension - but elevated (UAC), because it writes browser policy.
+//
+// The domain is passed to the guard as typed: normalization, the "already covered
+// by a broader entry" check and validation all live in one place there, so the
+// window and the CLI accept and refuse exactly the same things.
+func (a *App) BlockDomain(name string) ActionResult {
+	if strings.TrimSpace(name) == "" {
+		return ActionResult{Message: "Type a site to block."}
+	}
+	if _, err := policy.NormalizeDomain(name); err != nil {
+		// Answer an obviously bad entry immediately rather than spending a UAC
+		// prompt to be told the same thing.
+		return ActionResult{Message: capitalize(err.Error())}
+	}
+	return a.execGuard(
+		[]string{"-config", a.cfgPath, "block-domain", name},
+		"Blocked, including every subdomain.")
+}
+
+// UnblockDomain stops filtering a site, keeping it in the list so it can be
+// turned back on. That weakens protection, so it requires the password - except
+// while protection is in the authorized paused state, exactly as for an
+// extension.
+func (a *App) UnblockDomain(name, password string) ActionResult {
+	if strings.TrimSpace(name) == "" {
+		return ActionResult{Message: "No site selected."}
+	}
+	args := []string{"-config", a.cfgPath}
+	if !scm.IsDisabled() {
+		hash, ok := scm.GetPasswordHash()
+		if !ok {
+			return ActionResult{Message: "No password is set. Install protection first."}
+		}
+		if !auth.Verify(hash, password) {
+			return ActionResult{Message: "Incorrect password."}
+		}
+		args = append(args, "-password", password)
+	}
+	args = append(args, "unblock-domain", name)
+	return a.execGuard(args, name+" is no longer filtered.")
+}
+
+// capitalize upper-cases the first letter of a Go error string for display.
+func capitalize(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 // LockBlock locks a scheduled block so it cannot be released before the given

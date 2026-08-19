@@ -96,6 +96,11 @@
     border: none; font-size: 18px; line-height: 1; padding: 0 4px; cursor: pointer; font-weight: 400;
   }
   .announce-x:hover { color: var(--text); background: transparent; }
+  /* Site block list. */
+  .addrow { display: flex; gap: 8px; margin-bottom: 6px; }
+  .addrow input[type=text] { flex: 1; min-width: 0; }
+  .badge.idlewin { color: var(--warn); background: var(--warn-bg); }
+  .row .dname { font-size: 13px; text-transform: none; word-break: break-all; }
   /* Scheduled blocks - a group of extensions enforced on a timetable. */
   .blockrow {
     display: flex; align-items: flex-start; gap: 10px; background: var(--surface);
@@ -179,6 +184,15 @@
   <div class="section-title">Protected extensions</div>
   <p class="exthint" id="exthint">Turning one on adds protection (free). Turning one off needs the password.</p>
   <div class="rows" id="ext-rows"></div>
+
+  <div class="section-title">Blocked sites</div>
+  <p class="exthint">Blocking a site covers every subdomain, in all supported browsers. Adding one is free; removing one needs the password.</p>
+  <div class="addrow">
+    <input id="domain-input" type="text" placeholder="reddit.com" autocomplete="off" spellcheck="false" />
+    <button id="domain-add">Block</button>
+  </div>
+  <div class="rows" id="domain-rows"></div>
+  <p class="exthint" id="domain-empty" style="display:none;">Nothing blocked yet.</p>
 
   <div id="block-section" style="display:none;">
     <div class="section-title">Scheduled blocks</div>
@@ -388,7 +402,83 @@
       extRows.appendChild(row);
     });
 
+    renderDomains(s);
     renderBlocks(s);
+  }
+
+  // renderDomains lists the site block list. A site can be switched on yet not
+  // blocking right now because a schedule has it out of window - that is shown as
+  // "Waiting", because a user who sees "On" and reaches the site otherwise has
+  // every reason to think the app is broken.
+  function renderDomains(s) {
+    const rows = document.getElementById('domain-rows');
+    const empty = document.getElementById('domain-empty');
+    const domains = s.domains || [];
+    rows.innerHTML = '';
+    empty.style.display = domains.length ? 'none' : '';
+
+    domains.forEach(function (d) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      const name = document.createElement('span');
+      name.className = 'dname';
+      name.textContent = d.name;
+      row.appendChild(name);
+
+      if (d.enabled && d.scheduled && !d.blocked) {
+        const badge = document.createElement('span');
+        badge.className = 'badge idlewin';
+        badge.textContent = 'Waiting';
+        badge.title = 'On, but outside its schedule window right now';
+        row.appendChild(badge);
+      }
+
+      const tog = document.createElement('button');
+      tog.className = 'toggle ' + (d.enabled ? 'on' : 'off');
+      tog.textContent = d.enabled ? 'On' : 'Off';
+      tog.style.marginLeft = d.enabled && d.scheduled && !d.blocked ? '8px' : 'auto';
+      tog.addEventListener('click', function () { toggleDomain(d.name, d.enabled); });
+      row.appendChild(tog);
+      rows.appendChild(row);
+    });
+  }
+
+  // addDomain blocks a new site. Free of the password since it only strengthens.
+  async function addDomain() {
+    if (!bound() || !window.go.main.App.BlockDomain) { return; }
+    const input = document.getElementById('domain-input');
+    const value = input.value.trim();
+    if (!value) { setMsg('Type a site to block.', 'err'); input.focus(); return; }
+    setMsg('Approve the Windows permission prompt...');
+    let res;
+    try { res = await window.go.main.App.BlockDomain(value); }
+    catch (e) { res = { ok: false, message: String(e) }; }
+    setMsg(res.message, res.ok ? 'ok' : 'err');
+    if (res.ok) { input.value = ''; }
+    await refresh();
+  }
+
+  // toggleDomain switches one site off (weakens -> password, unless paused) or
+  // back on (strengthens -> free).
+  async function toggleDomain(name, enabled) {
+    if (!bound()) { return; }
+    let res;
+    if (enabled) {
+      if (!current.disabled) {
+        const pw = await askPassword('Enter the password to stop blocking ' + name);
+        if (pw === null) { return; }
+        setMsg('Approve the Windows permission prompt...');
+        try { res = await window.go.main.App.UnblockDomain(name, pw); } catch (e) { res = { ok: false, message: String(e) }; }
+      } else {
+        setMsg('Approve the Windows permission prompt...');
+        try { res = await window.go.main.App.UnblockDomain(name, ''); } catch (e) { res = { ok: false, message: String(e) }; }
+      }
+    } else {
+      setMsg('Approve the Windows permission prompt...');
+      try { res = await window.go.main.App.BlockDomain(name); } catch (e) { res = { ok: false, message: String(e) }; }
+    }
+    setMsg(res.message, res.ok ? 'ok' : 'err');
+    await refresh();
   }
 
   // renderBlocks lists each scheduled block, whether it is enforcing right now,
@@ -614,6 +704,11 @@
     };
     banner.style.display = '';
   }
+
+  document.getElementById('domain-add').addEventListener('click', addDomain);
+  document.getElementById('domain-input').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); addDomain(); }
+  });
 
   document.getElementById('lock-choices').addEventListener('click', function (e) {
     const btn = e.target.closest('button[data-value]');

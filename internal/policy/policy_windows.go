@@ -4,7 +4,6 @@ package policy
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"golang.org/x/sys/windows/registry"
@@ -33,19 +32,28 @@ var appPathExe = map[Kind]string{
 	Firefox: "firefox.exe",
 }
 
-// Apply writes the force-install policy for every configured extension in cfg,
-// across every browser. Extensions/browsers left as placeholders are skipped.
-// Writing keys for a browser that isn't installed yet is harmless - the lock
-// simply takes effect if/when that browser appears. Requires Administrator.
+// Apply reconciles the force-install policy with cfg across every browser:
+// every enabled extension is written, and every disabled one is removed.
+//
+// The removal half matters as much as the write. These mechanisms are
+// incremental, so appending the active set would leave a stale entry for
+// anything just switched off - and a scheduled extension would stay
+// force-installed after its window closed, which is a schedule that can only
+// tighten. Extensions/browsers left as placeholders are skipped. Writing keys
+// for a browser that isn't installed yet is harmless - the lock takes effect
+// if/when that browser appears. Requires Administrator.
 func Apply(cfg Config) error {
 	var errs []string
 	for _, k := range ChromiumKinds {
-		if err := applyChromium(k, cfg.Targets(k)); err != nil {
+		if err := applyChromium(k, cfg.Targets(k), cfg.InactiveTargets(k)); err != nil {
 			errs = append(errs, fmt.Sprintf("%s: %v", k, err))
 		}
 	}
 	if err := applyFirefox(cfg.Targets(Firefox)); err != nil {
 		errs = append(errs, fmt.Sprintf("firefox: %v", err))
+	}
+	if err := removeFirefox(cfg.InactiveTargets(Firefox)); err != nil {
+		errs = append(errs, fmt.Sprintf("firefox prune: %v", err))
 	}
 	if len(errs) > 0 {
 		return fmt.Errorf("%s", strings.Join(errs, "; "))
@@ -53,49 +61,38 @@ func Apply(cfg Config) error {
 	return nil
 }
 
-func applyChromium(k Kind, targets []Target) error {
-	if len(chromiumForcelistValues(targets)) == 0 {
-		return nil // nothing configured for this browser - skip quietly
-	}
-	key, _, err := registry.CreateKey(registry.LOCAL_MACHINE, chromiumPolicyRoot[k]+`\`+forcelistSubkey, registry.ALL_ACCESS)
-	if err != nil {
-		return err
-	}
-	defer key.Close()
-	for _, t := range targets {
-		val, err := chromiumForcelistValue(t)
-		if err != nil {
-			continue // not configured - skip quietly
-		}
-		name, err := forcelistSlot(key, t.ExtensionID)
-		if err != nil {
-			return err
-		}
-		if err := key.SetStringValue(name, val); err != nil {
-			return err
-		}
-	}
-	return nil
+// applyChromium reconciles one browser's forcelist: the enabled extensions are
+// present, the disabled ones are gone, and any entry the guard does not manage is
+// left in place. See syncNumberedList for why removal has to renumber.
+func applyChromium(k Kind, want, inactive []Target) error {
+	return syncNumberedList(
+		chromiumPolicyRoot[k]+`\`+forcelistSubkey,
+		chromiumForcelistValues(want),
+		dropForcelist(inactive),
+	)
 }
 
-// forcelistSlot returns the value name to write under ExtensionInstallForcelist:
-// the existing slot if our extension is already listed, otherwise the next free
-// numeric index (the policy uses "1", "2", ... value names).
-func forcelistSlot(key registry.Key, extID string) (string, error) {
-	names, err := key.ReadValueNames(-1)
-	if err != nil {
-		return "", err
-	}
-	maxIdx := 0
-	for _, n := range names {
-		if v, _, err := key.GetStringValue(n); err == nil && strings.HasPrefix(v, extID+";") {
-			return n, nil
-		}
-		if i, err := strconv.Atoi(n); err == nil && i > maxIdx {
-			maxIdx = i
+// dropForcelist reports which forcelist entries belong to the given targets.
+// Entries are "<id>;<update_url>", so the extension id prefix identifies ours
+// without depending on the update URL still matching what we would write today.
+func dropForcelist(targets []Target) func(string) bool {
+	prefixes := make([]string, 0, len(targets))
+	for _, t := range targets {
+		if t.ExtensionID != "" {
+			prefixes = append(prefixes, t.ExtensionID+";")
 		}
 	}
-	return strconv.Itoa(maxIdx + 1), nil
+	if len(prefixes) == 0 {
+		return nil
+	}
+	return func(v string) bool {
+		for _, p := range prefixes {
+			if strings.HasPrefix(v, p) {
+				return true
+			}
+		}
+		return false
+	}
 }
 
 func applyFirefox(targets []Target) error {
@@ -195,25 +192,7 @@ func Remove(cfg Config) error {
 }
 
 func removeChromium(k Kind, targets []Target) error {
-	key, err := registry.OpenKey(registry.LOCAL_MACHINE, chromiumPolicyRoot[k]+`\`+forcelistSubkey, registry.ALL_ACCESS)
-	if err != nil {
-		return nil // nothing to remove
-	}
-	defer key.Close()
-	names, _ := key.ReadValueNames(-1)
-	for _, t := range targets {
-		if t.ExtensionID == "" {
-			continue
-		}
-		for _, n := range names {
-			if v, _, err := key.GetStringValue(n); err == nil && strings.HasPrefix(v, t.ExtensionID+";") {
-				if err := key.DeleteValue(n); err != nil {
-					return err
-				}
-			}
-		}
-	}
-	return nil
+	return syncNumberedList(chromiumPolicyRoot[k]+`\`+forcelistSubkey, nil, dropForcelist(targets))
 }
 
 func removeFirefox(targets []Target) error {

@@ -495,12 +495,17 @@ func TestScheduleSummary(t *testing.T) {
 	}
 }
 
-func TestExtensionSummary(t *testing.T) {
-	if got := (Block{}).ExtensionSummary(); got != "all extensions" {
-		t.Errorf("got %q, want the all-extensions wording", got)
+func TestGovernedSummary(t *testing.T) {
+	if got := (Block{}).GovernedSummary(); got != "everything" {
+		t.Errorf("a block naming nothing summarised as %q, want everything", got)
 	}
-	if got := (Block{Extensions: []string{"sieve", "blocknsfw"}}).ExtensionSummary(); got != "sieve, blocknsfw" {
+	if got := (Block{Extensions: []string{"sieve", "blocknsfw"}}).GovernedSummary(); got != "sieve, blocknsfw" {
 		t.Errorf("got %q", got)
+	}
+	// Domains appear normalized, so the summary matches what is enforced.
+	b := Block{Extensions: []string{"sieve"}, Domains: []string{"https://www.Reddit.com/r/x"}}
+	if got, want := b.GovernedSummary(), "sieve, reddit.com"; got != want {
+		t.Errorf("got %q, want %q", got, want)
 	}
 }
 
