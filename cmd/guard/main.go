@@ -34,8 +34,15 @@ import (
 func main() {
 	cfgPath := flag.String("config", defaultConfigPath(), "path to extension-ids.json")
 	password := flag.String("password", "", "uninstall password (install-service / uninstall-service / set-password)")
-	extensions := flag.String("extensions", "", "comma-separated extension names to keep (used by 'select'); default keeps all")
+	extensions := flag.String("extensions", "", "comma-separated extension names: the ones to keep ('select'), or the ones a block governs ('add-block')")
+	domains := flag.String("domains", "", "comma-separated domains a block governs (used by 'add-block')")
+	apps := flag.String("apps", "", "comma-separated blocked apps a block governs, by value (used by 'add-block')")
+	days := flag.String("days", "", "days a block's window falls on: mon,wed,fri or weekdays/weekends/daily (default every day)")
+	from := flag.String("from", "", "start of a block's window, HH:MM (used by 'add-block')")
+	to := flag.String("to", "", "end of a block's window, HH:MM; before the start means it runs past midnight")
 	until := flag.String("until", "", "deadline for 'lock': a duration (72h, 7d) or a time (2026-09-01, 2026-09-01T17:00)")
+	kind := flag.String("kind", "", "what a block-app/unblock-app argument is: exe (default), folder, store, or title")
+	label := flag.String("label", "", "friendly name shown in the status window (used by 'block-app' and 'add-block')")
 	flag.Usage = usage
 	flag.Parse()
 
@@ -64,6 +71,12 @@ func main() {
 		return
 	case "commit":
 		commitCmd(*cfgPath, *password)
+		return
+	case "blocked":
+		// Windows starts this in place of a blocked application, in the blocked
+		// user's session, with the application's own command line appended. It must
+		// not need the config, the registry, or admin - see blockedCmd.
+		blockedCmd(flag.Args()[1:])
 		return
 	}
 
@@ -101,6 +114,28 @@ func main() {
 		blockDomainCmd(cfg, *cfgPath, flag.Arg(1))
 	case "unblock-domain":
 		unblockDomainCmd(cfg, *cfgPath, flag.Arg(1), *password)
+	case "apps":
+		appsCmd(cfg)
+	case "agent":
+		// Internal: the service starts this in the signed-in user's session, because
+		// a service cannot see that session's windows. See runAgent.
+		runAgent(cfg, *cfgPath)
+	case "block-app":
+		blockAppCmd(cfg, *cfgPath, *kind, flag.Arg(1), *label)
+	case "unblock-app":
+		unblockAppCmd(cfg, *cfgPath, *kind, flag.Arg(1), *password)
+	case "add-block":
+		addBlockCmd(cfg, *cfgPath, flag.Arg(1), blockSpec{
+			label:      *label,
+			days:       *days,
+			from:       *from,
+			to:         *to,
+			extensions: *extensions,
+			domains:    *domains,
+			apps:       *apps,
+		}, *password)
+	case "remove-block":
+		removeBlockCmd(cfg, *cfgPath, flag.Arg(1), *password)
 	case "lock":
 		lockCmd(cfg, *cfgPath, flag.Arg(1), *until)
 	case "enable-extension":
@@ -535,8 +570,32 @@ domain commands:
                                password - it only adds protection)
   unblock-domain     <domain>  stop filtering a domain (password, unless paused)
 
+application commands:
+  apps               list the blocked applications and whether each is enforced now
+  block-app          <app>     keep an application closed (admin; no password -
+                               it only adds protection). -kind picks what <app> is:
+                                 exe    (default) a path or a name: steam.exe
+                                 folder every .exe in a folder
+                                 store  a Microsoft Store app, by package family
+                                 title  any window whose title contains the text
+                               -label sets the name the status window shows
+  unblock-app        <app>     let an application run again (password, unless
+                               paused); pass the same -kind it was added with
+
 schedule commands:
   blocks             list each block, whether it is enforcing now, and its lock
+  add-block          [id]      create a block. -label names it (the id is derived
+                               from the label when you omit it), -extensions /
+                               -domains / -apps say what it governs (naming none
+                               governs everything), and -days -from -to give it a
+                               window. With a window it needs the password: a
+                               schedule enforces things only sometimes, which is
+                               weaker than around the clock. With no window it is
+                               always on, so it is free - that is the shape to
+                               create and then lock.
+  remove-block       <id>      delete a block, returning what it governed to
+                               around-the-clock enforcement (password; refused
+                               while the block is locked)
   lock               <id>      lock a block until -until (admin; no password -
                                a lock can be extended but never shortened)
   commit             adopt a hand-edited config file (requires the password;
@@ -554,6 +613,10 @@ service commands (admin):
   stop               stop the service
   run                run in the foreground (also used by the service manager)
   watchdog           run the watchdog loop (internal; spawned by the service)
+  blocked            report that a launch was blocked (internal; Windows starts
+                     this in place of a blocked application)
+  agent              sweep window-title rules in the signed-in user's session
+                     (internal; spawned by the service, which cannot see them)
 
 update commands:
   check-update       report whether a newer release is available (no admin)

@@ -141,3 +141,100 @@ func TestDefaultSetIncludesExtensions(t *testing.T) {
 		t.Error("the default set no longer enforces extensions")
 	}
 }
+
+// sweepFake is an Enforcer that also needs the continuous half of enforcement.
+type sweepFake struct {
+	fake
+	swept    int
+	sweepErr error
+}
+
+func (f *sweepFake) Sweep(policy.Config) error {
+	f.swept++
+	return f.sweepErr
+}
+
+// TestSweepOnlyReachesSweepers is what keeps the fast ticker cheap: the service
+// calls Sweep every second, and a backend that writes a policy the browser then
+// honours must not be re-applied at that rate.
+func TestSweepOnlyReachesSweepers(t *testing.T) {
+	plain := &fake{name: "plain"}
+	sweeper := &sweepFake{fake: fake{name: "sweeper"}}
+
+	if err := (Set{plain, sweeper}).Sweep(policy.Config{}); err != nil {
+		t.Fatalf("Sweep: %v", err)
+	}
+	if sweeper.swept != 1 {
+		t.Errorf("sweeper swept %d times, want 1", sweeper.swept)
+	}
+	if plain.applied != 0 {
+		t.Errorf("a non-sweeper was applied by Sweep (%d times)", plain.applied)
+	}
+}
+
+func TestSweepReportsFailureNamingTheBackend(t *testing.T) {
+	sweeper := &sweepFake{fake: fake{name: "apps"}, sweepErr: errors.New("access denied")}
+	err := (Set{sweeper}).Sweep(policy.Config{})
+	if err == nil {
+		t.Fatal("expected the failure to be reported")
+	}
+	if !strings.Contains(err.Error(), "apps sweep") {
+		t.Errorf("error should name the failing backend, got %q", err)
+	}
+}
+
+// TestDefaultSetIncludesApps guards the wiring: an Enforcer nobody put in the
+// default set enforces nothing, however complete it is.
+func TestDefaultSetIncludesApps(t *testing.T) {
+	var found, sweeps bool
+	for _, e := range Default() {
+		if e.Name() == "apps" {
+			found = true
+			_, sweeps = e.(Sweeper)
+		}
+	}
+	if !found {
+		t.Fatal("the default set does not block applications")
+	}
+	if !sweeps {
+		t.Error("the apps backend is in the set but not swept, so nothing closes a running app")
+	}
+}
+
+// TestAppsAdapterShape checks the adapter maps policy's app vocabulary onto the
+// general one. It asserts shape, not values: whether an app is installed on the
+// machine running the test is not the adapter's business.
+func TestAppsAdapterShape(t *testing.T) {
+	cfg := policy.Config{Apps: []policy.App{{Kind: policy.AppExe, Value: "some-app-nobody-has.exe", Label: "Some app"}}}
+	got := Apps{}.Verify(cfg)
+	if len(got) != 1 {
+		t.Fatalf("Verify returned %d statuses, want 1", len(got))
+	}
+	if got[0].Enforcer != "apps" {
+		t.Errorf("Enforcer = %q, want apps", got[0].Enforcer)
+	}
+	if got[0].Target != "Some app" {
+		t.Errorf("Target = %q, want the rule's label", got[0].Target)
+	}
+	if got[0].Detail == "" {
+		t.Error("status has no detail")
+	}
+}
+
+// A config with no app rules must cost nothing: no process list, no registry, and
+// no error on a platform that cannot enforce them.
+func TestAppsQuietWhenNothingConfigured(t *testing.T) {
+	empty := policy.Config{}
+	if err := (Apps{}).Apply(empty); err != nil {
+		t.Errorf("Apply with no apps configured: %v", err)
+	}
+	if err := (Apps{}).Sweep(empty); err != nil {
+		t.Errorf("Sweep with no apps configured: %v", err)
+	}
+	if err := (Apps{}).Remove(empty); err != nil {
+		t.Errorf("Remove with no apps configured: %v", err)
+	}
+	if got := (Apps{}).Verify(empty); len(got) != 0 {
+		t.Errorf("Verify with no apps configured returned %d statuses", len(got))
+	}
+}

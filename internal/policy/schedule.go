@@ -54,12 +54,16 @@ type Window struct {
 type Block struct {
 	ID    string `json:"id"`
 	Label string `json:"label,omitempty"`
-	// Extensions and Domains are what the block governs. Naming neither means the
-	// block governs everything in both catalogs; naming either means it governs
-	// exactly what is listed, and nothing of the kind it leaves out. That keeps a
-	// pre-domains config reading the same way it always did.
+	// Extensions, Domains and Apps are what the block governs. Naming none of them
+	// means the block governs everything in every catalog; naming any means it
+	// governs exactly what is listed, and nothing of the kinds it leaves out. That
+	// keeps a pre-domains (and pre-apps) config reading the same way it always did.
+	//
+	// Apps are listed by the value the rule is stored under - an executable path
+	// or name, a folder, a Store package family name, or a window title.
 	Extensions  []string `json:"extensions,omitempty"`
 	Domains     []string `json:"domains,omitempty"`
+	Apps        []string `json:"apps,omitempty"`
 	Windows     []Window `json:"windows,omitempty"`
 	LockedUntil string   `json:"lockedUntil,omitempty"`
 }
@@ -169,9 +173,11 @@ func (b Block) LockedAt(at time.Time) (bool, time.Time) {
 	return at.Before(until), until
 }
 
-// governsAll reports whether the block covers both catalogs wholesale, which is
-// what naming neither extensions nor domains means.
-func (b Block) governsAll() bool { return len(b.Extensions) == 0 && len(b.Domains) == 0 }
+// governsAll reports whether the block covers every catalog wholesale, which is
+// what naming no extensions, domains or apps means.
+func (b Block) governsAll() bool {
+	return len(b.Extensions) == 0 && len(b.Domains) == 0 && len(b.Apps) == 0
+}
 
 // Governs reports whether this block covers the named extension.
 func (b Block) Governs(name string) bool {
@@ -206,6 +212,28 @@ func (b Block) GovernsDomain(name string) bool {
 	return false
 }
 
+// GovernsApp reports whether this block covers an app rule, comparing normalized
+// values so the block list and the catalog agree on what a path or package name
+// means however either was typed.
+func (b Block) GovernsApp(a App) bool {
+	if b.governsAll() {
+		return true
+	}
+	want, err := NormalizeApp(a.Kind, a.Value, "")
+	if err != nil {
+		return false
+	}
+	for _, listed := range b.Apps {
+		// A block lists an app by value, not by kind: the kind is a property of the
+		// catalog entry, and repeating it in the schedule would be a second place to
+		// get it wrong. So the listed value is normalized as the entry's own kind.
+		if n, err := NormalizeApp(a.Kind, listed, ""); err == nil && n.key() == want.key() {
+			return true
+		}
+	}
+	return false
+}
+
 // ActiveAt resolves the schedule into a plain Config describing what should be
 // enforced at the given moment: an extension governed by a block is enabled only
 // while one of its blocks is active, and an extension no block governs keeps its
@@ -223,47 +251,52 @@ func (c Config) ActiveAt(at time.Time) Config {
 	copy(out.Extensions, c.Extensions)
 	out.Domains = make([]Domain, len(c.Domains))
 	copy(out.Domains, c.Domains)
+	out.Apps = make([]App, len(c.Apps))
+	copy(out.Apps, c.Apps)
 
 	for i, e := range out.Extensions {
 		if e.Disabled {
 			continue // switched off outright; a schedule does not resurrect it
 		}
-		governed, active := false, false
-		for _, b := range c.Blocks {
-			if !b.Governs(e.Name) {
-				continue
-			}
-			governed = true
-			if b.Active(at) {
-				active = true
-				break
-			}
-		}
-		if governed && !active {
+		if c.outOfWindow(at, func(b Block) bool { return b.Governs(e.Name) }) {
 			out.Extensions[i].Disabled = true
 		}
 	}
-
 	for i, d := range out.Domains {
 		if d.Disabled {
 			continue
 		}
-		governed, active := false, false
-		for _, b := range c.Blocks {
-			if !b.GovernsDomain(d.Name) {
-				continue
-			}
-			governed = true
-			if b.Active(at) {
-				active = true
-				break
-			}
-		}
-		if governed && !active {
+		if c.outOfWindow(at, func(b Block) bool { return b.GovernsDomain(d.Name) }) {
 			out.Domains[i].Disabled = true
 		}
 	}
+	for i, a := range out.Apps {
+		if a.Disabled {
+			continue
+		}
+		if c.outOfWindow(at, func(b Block) bool { return b.GovernsApp(a) }) {
+			out.Apps[i].Disabled = true
+		}
+	}
 	return out
+}
+
+// outOfWindow reports whether an entry that is switched on should nonetheless be
+// treated as off at this moment: some block governs it, and none of the blocks
+// governing it is active. An entry no block governs is never out of window - it
+// is enforced around the clock, which is what a config with no schedule means.
+func (c Config) outOfWindow(at time.Time, governs func(Block) bool) bool {
+	governed := false
+	for _, b := range c.Blocks {
+		if !governs(b) {
+			continue
+		}
+		if b.Active(at) {
+			return false
+		}
+		governed = true
+	}
+	return governed
 }
 
 // EnforcedAt resolves the schedule into the config that should be enforced at
@@ -287,7 +320,7 @@ func (c Config) EnforcedAt(at time.Time) (Config, error) {
 // boundary without touching the registry.
 func (c Config) ActiveSignature(at time.Time) string {
 	active := c.ActiveAt(at)
-	names := make([]string, 0, len(active.Extensions)+len(active.Domains))
+	names := make([]string, 0, len(active.Extensions)+len(active.Domains)+len(active.Apps))
 	for _, e := range active.Extensions {
 		if !e.Disabled {
 			names = append(names, "ext:"+strings.ToLower(e.Name))
@@ -296,8 +329,98 @@ func (c Config) ActiveSignature(at time.Time) string {
 	for _, d := range active.BlockedDomains() {
 		names = append(names, "dom:"+d)
 	}
+	for _, a := range active.BlockedApps() {
+		names = append(names, "app:"+a.key())
+	}
 	sort.Strings(names)
 	return strings.Join(names, ",")
+}
+
+// Narrows reports whether this block makes enforcement *less* than around the
+// clock for whatever it governs - which is exactly what having windows means.
+//
+// This is the load-bearing fact behind the gate on creating one. Everywhere else
+// in the guard, adding a rule strengthens protection and costs only admin, while
+// weakening it costs the password. A schedule inverts that: putting an extension
+// that was enforced continuously onto a 09:00-17:00 timetable *un*-enforces it for
+// sixteen hours a day. So a block with windows needs the password, and a block
+// without them - the always-on kind that exists to be locked - does not.
+//
+// The rule is deliberately blunt in the same way CheckLockedBlocks is. A precise
+// answer would mean computing whether the new block's windows cover what some
+// other block already covers, and that is the window-coverage reasoning this file
+// refuses to do, because any gap in it is a way out of a commitment.
+func (b Block) Narrows() bool { return len(b.Windows) > 0 }
+
+// AddBlock appends a block, refusing an id that is already taken. The caller is
+// expected to Validate afterwards: this checks only what is about the collection
+// rather than about the block itself.
+func (c *Config) AddBlock(b Block) error {
+	id := strings.ToLower(strings.TrimSpace(b.ID))
+	if id == "" {
+		return fmt.Errorf("a block needs an id")
+	}
+	if _, exists := c.Block(id); exists {
+		return fmt.Errorf("there is already a block called %q", b.ID)
+	}
+	c.Blocks = append(c.Blocks, b)
+	return nil
+}
+
+// RemoveBlock drops the block with the given id, reporting whether it was there.
+// Whether removal is *allowed* is not decided here - a locked block is refused by
+// CheckLockedBlocks, which compares the whole config and is what every mutation
+// path already goes through.
+func (c *Config) RemoveBlock(id string) bool {
+	want := strings.ToLower(strings.TrimSpace(id))
+	for i, b := range c.Blocks {
+		if strings.ToLower(b.ID) == want {
+			c.Blocks = append(c.Blocks[:i], c.Blocks[i+1:]...)
+			return true
+		}
+	}
+	return false
+}
+
+// NewBlockID derives a block id from a label, keeping it short, lowercase and
+// free of anything that would need quoting on a command line - the id is what
+// `guard lock` and `guard remove-block` take as an argument. A collision gets a
+// numeric suffix, so a second "Work hours" becomes "work-hours-2".
+//
+// This exists so the status window can ask for a name and nothing else. Making a
+// person invent a stable identifier for something they think of as "evenings" is
+// the kind of detail that stops a feature from being used.
+func NewBlockID(label string, taken func(string) bool) string {
+	var b strings.Builder
+	lastDash := true // suppresses a leading dash
+	for _, r := range strings.ToLower(strings.TrimSpace(label)) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+			lastDash = false
+		default:
+			if !lastDash {
+				b.WriteByte('-')
+				lastDash = true
+			}
+		}
+	}
+	id := strings.Trim(b.String(), "-")
+	if len(id) > 24 {
+		id = strings.Trim(id[:24], "-")
+	}
+	if id == "" {
+		id = "block"
+	}
+	if taken == nil || !taken(id) {
+		return id
+	}
+	for n := 2; ; n++ {
+		candidate := id + "-" + strconv.Itoa(n)
+		if !taken(candidate) {
+			return candidate
+		}
+	}
 }
 
 // Block returns the block with the given id (case-insensitive).
@@ -330,6 +453,9 @@ func (c Config) Validate() error {
 	if err := c.validateDomains(); err != nil {
 		return err
 	}
+	if err := c.validateApps(); err != nil {
+		return err
+	}
 	seen := make(map[string]bool, len(c.Blocks))
 	known := make(map[string]bool, len(c.Extensions))
 	for _, e := range c.Extensions {
@@ -358,6 +484,15 @@ func (c Config) Validate() error {
 			}
 			if !c.HasDomain(host) {
 				return fmt.Errorf("block %q lists domain %q, which is not in the domains list", b.ID, host)
+			}
+		}
+		for _, value := range b.Apps {
+			// The kind is not repeated in the block, so a listed value has to match
+			// some catalog entry under that entry's own kind. Checking it here is what
+			// stops a typo from silently governing nothing - which would leave the app
+			// blocked around the clock while the schedule looks like it applies.
+			if !c.appListed(value) {
+				return fmt.Errorf("block %q lists app %q, which is not in the apps list", b.ID, value)
 			}
 		}
 
@@ -447,6 +582,12 @@ func sameExceptDeadline(a, b Block) bool {
 	if !sameDomains(a.Domains, b.Domains) {
 		return false
 	}
+	// Apps are compared the same way: case and slash direction do not change which
+	// application a path names, so rewriting one is not an edit, while swapping in
+	// a different app is.
+	if !sameApps(a.Apps, b.Apps) {
+		return false
+	}
 	if len(a.Windows) != len(b.Windows) {
 		return false
 	}
@@ -474,6 +615,24 @@ func sameDomains(a, b []string) bool {
 			} else {
 				out = append(out, strings.ToLower(strings.TrimSpace(s)))
 			}
+		}
+		sort.Strings(out)
+		return out
+	}
+	return sameOrderStrings(norm(a), norm(b))
+}
+
+// sameApps compares two app lists by their comparable form: backslashes and
+// case do not distinguish two paths, so neither should they distinguish two
+// versions of a locked block.
+func sameApps(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	norm := func(in []string) []string {
+		out := make([]string, 0, len(in))
+		for _, s := range in {
+			out = append(out, strings.ToLower(normalizeWinPath(s)))
 		}
 		sort.Strings(out)
 		return out
@@ -579,13 +738,13 @@ func (b Block) ScheduleSummary() string {
 	return strings.Join(parts, ", ")
 }
 
-// GovernedSummary names what the block governs, for display. A block naming
-// neither list governs both catalogs, which is what "everything" means here.
+// GovernedSummary names what the block governs, for display. A block naming no
+// list governs every catalog, which is what "everything" means here.
 func (b Block) GovernedSummary() string {
 	if b.governsAll() {
 		return "everything"
 	}
-	parts := make([]string, 0, len(b.Extensions)+len(b.Domains))
+	parts := make([]string, 0, len(b.Extensions)+len(b.Domains)+len(b.Apps))
 	parts = append(parts, b.Extensions...)
 	for _, d := range b.Domains {
 		if h, err := NormalizeDomain(d); err == nil {
@@ -593,6 +752,11 @@ func (b Block) GovernedSummary() string {
 		} else {
 			parts = append(parts, d)
 		}
+	}
+	for _, a := range b.Apps {
+		// Shown as the leaf name: a block row is one line, and a full install path
+		// would push everything else off it.
+		parts = append(parts, baseName(normalizeWinPath(a)))
 	}
 	if len(parts) == 0 {
 		return "nothing"

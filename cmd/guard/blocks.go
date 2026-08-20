@@ -7,7 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/codepurse/extension-guard/internal/enforce"
 	"github.com/codepurse/extension-guard/internal/policy"
+	"github.com/codepurse/extension-guard/internal/scm"
 )
 
 // This file holds the commands for scheduled blocks: listing them, locking one
@@ -47,6 +49,162 @@ func blocksCmd(cfg policy.Config) {
 		fmt.Printf("\nwarning: %v\n", invalid)
 		fmt.Println("(the schedule is being ignored; every enabled extension stays enforced until this is fixed)")
 	}
+}
+
+// blockSpec is what the add-block flags describe: one block, with at most one
+// window. A block with several windows is still a config-file job (edit and
+// `guard commit`); one window covers "work hours" and "evenings", which is what
+// people actually set up.
+type blockSpec struct {
+	label      string
+	days       string // "mon,tue" / "weekdays" / "" for every day
+	from, to   string // "HH:MM"; both empty means an always-on block
+	extensions string // comma-separated names; empty with the others means "everything"
+	domains    string
+	apps       string
+}
+
+// addBlockCmd creates a scheduled block.
+//
+// The gate here is the opposite of every other "add" in the guard, and it is
+// worth being explicit about why. Blocking a site or an app adds protection, so
+// it costs admin and nothing more. A *schedule* takes something that was enforced
+// around the clock and enforces it only sometimes - so creating a block with
+// windows weakens protection and takes the password, exactly like unblocking a
+// site. A block with no windows is always on: it cannot weaken anything, so it is
+// free. See policy.Block.Narrows.
+func addBlockCmd(cfg policy.Config, cfgPath, id string, spec blockSpec, password string) {
+	block, err := buildBlock(cfg, id, spec)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	if err := cfg.AddBlock(block); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	// Everything that can refuse the block is checked before the password is asked
+	// for, the same way commit does it: being prompted for a password and *then*
+	// told the schedule was unusable wastes the one step that costs the user
+	// something.
+	if err := cfg.Validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		fmt.Fprintln(os.Stderr, "(nothing was changed)")
+		os.Exit(1)
+	}
+	if block.Narrows() && !scm.IsDisabled() {
+		requirePassword(password)
+	}
+	writeConfig(cfg, cfgPath)
+	must(enforce.Default().Apply(activeNow(cfg)))
+
+	fmt.Printf("created block %q: %s, governing %s\n", block.ID, block.ScheduleSummary(), block.GovernedSummary())
+	if block.Narrows() {
+		fmt.Println("(what it governs is now enforced only during those windows)")
+	}
+	fmt.Printf("lock it with `guard -until 7d lock %s`\n", block.ID)
+}
+
+// buildBlock turns the flags into a block, resolving what it governs against the
+// config so a typo is refused here rather than silently governing nothing.
+func buildBlock(cfg policy.Config, id string, spec blockSpec) (policy.Block, error) {
+	b := policy.Block{
+		Label:      strings.TrimSpace(spec.label),
+		Extensions: splitAndTrim(spec.extensions),
+		Domains:    splitAndTrim(spec.domains),
+		Apps:       splitAndTrim(spec.apps),
+	}
+	b.ID = strings.TrimSpace(id)
+	if b.ID == "" {
+		// The status window asks for a name, not an id; derive one so it does not
+		// have to invent identifiers on the user's behalf.
+		name := b.Label
+		if name == "" {
+			name = "block"
+		}
+		b.ID = policy.NewBlockID(name, func(candidate string) bool {
+			_, taken := cfg.Block(candidate)
+			return taken
+		})
+	}
+
+	from, to := strings.TrimSpace(spec.from), strings.TrimSpace(spec.to)
+	switch {
+	case from == "" && to == "":
+		// Always on. This is the shape a lock alone needs: "everything, until Friday".
+	case from == "" || to == "":
+		return policy.Block{}, fmt.Errorf("-from and -to go together (a window needs both ends)")
+	default:
+		days, err := parseDayList(spec.days)
+		if err != nil {
+			return policy.Block{}, err
+		}
+		b.Windows = []policy.Window{{Days: days, Start: from, End: to}}
+	}
+	return b, nil
+}
+
+// dayPresets are the groupings people say out loud, so neither the CLI nor the
+// status window has to spell out five day names for the common case.
+var dayPresets = map[string][]string{
+	"daily":    nil, // no days listed means every day
+	"everyday": nil,
+	"all":      nil,
+	"weekdays": {"mon", "tue", "wed", "thu", "fri"},
+	"weekends": {"sat", "sun"},
+}
+
+// parseDayList accepts "mon,wed,fri", a preset like "weekdays", or empty for
+// every day. Day names themselves are validated by policy.Validate, which is the
+// one place that knows the accepted spellings.
+func parseDayList(s string) ([]string, error) {
+	trimmed := strings.ToLower(strings.TrimSpace(s))
+	if trimmed == "" {
+		return nil, nil
+	}
+	if days, ok := dayPresets[trimmed]; ok {
+		return days, nil
+	}
+	days := splitAndTrim(strings.ReplaceAll(trimmed, " ", ","))
+	if len(days) == 0 {
+		return nil, fmt.Errorf("no days in %q", s)
+	}
+	return days, nil
+}
+
+// removeBlockCmd deletes a block, returning whatever it governed to being
+// enforced around the clock.
+//
+// That reads like strengthening, and usually is - but not always: when two blocks
+// govern the same thing, its enforced time is the union of their windows, and
+// dropping one can narrow that union. Deciding which case applies is the
+// window-coverage reasoning schedule.go deliberately refuses to do, so this takes
+// the password either way. A locked block is refused outright, password or not.
+func removeBlockCmd(cfg policy.Config, cfgPath, id, password string) {
+	if strings.TrimSpace(id) == "" {
+		fmt.Fprintln(os.Stderr, "error: block id required, e.g. `guard remove-block work`")
+		os.Exit(2)
+	}
+	block, ok := cfg.Block(id)
+	if !ok {
+		fmt.Fprintf(os.Stderr, "error: no block with id %q\n", id)
+		fmt.Fprintln(os.Stderr, "(run `guard blocks` to see them)")
+		os.Exit(1)
+	}
+	proposed := cfg
+	proposed.Blocks = append([]policy.Block(nil), cfg.Blocks...)
+	proposed.RemoveBlock(block.ID)
+	if err := policy.CheckLockedBlocks(cfg, proposed, time.Now()); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		fmt.Fprintln(os.Stderr, "(nothing was changed)")
+		os.Exit(1)
+	}
+	if !scm.IsDisabled() {
+		requirePassword(password)
+	}
+	writeConfig(proposed, cfgPath)
+	must(enforce.Default().Apply(activeNow(proposed)))
+	fmt.Printf("removed block %q; %s is enforced around the clock again\n", block.ID, block.GovernedSummary())
 }
 
 // lockCmd locks a block so it cannot be weakened before the given time.

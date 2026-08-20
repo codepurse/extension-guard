@@ -2,6 +2,7 @@ package policy
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -529,5 +530,166 @@ func TestGovernedBy(t *testing.T) {
 	cfg.Blocks = nil
 	if cfg.GovernedBy("sieve") {
 		t.Error("a config with no blocks governs nothing")
+	}
+}
+
+// A schedule is the one kind of rule that makes enforcement *less* than
+// around-the-clock, which is what the password gate on creating one keys off.
+// An always-on block cannot weaken anything, so it must not read as narrowing.
+func TestBlockNarrows(t *testing.T) {
+	always := Block{ID: "commit"}
+	if always.Narrows() {
+		t.Error("a block with no windows is always on; it does not narrow enforcement")
+	}
+	scheduled := Block{ID: "work", Windows: []Window{{Start: "09:00", End: "17:00"}}}
+	if !scheduled.Narrows() {
+		t.Error("a block with a window enforces only sometimes, which narrows enforcement")
+	}
+}
+
+func TestAddBlockRefusesDuplicateID(t *testing.T) {
+	cfg := Config{Blocks: []Block{{ID: "work"}}}
+	if err := cfg.AddBlock(Block{ID: "evenings"}); err != nil {
+		t.Fatalf("AddBlock: %v", err)
+	}
+	if err := cfg.AddBlock(Block{ID: "WORK"}); err == nil {
+		t.Error("expected a duplicate id to be refused, case-insensitively")
+	}
+	if err := cfg.AddBlock(Block{ID: "  "}); err == nil {
+		t.Error("expected a block with no id to be refused")
+	}
+	if len(cfg.Blocks) != 2 {
+		t.Errorf("config has %d blocks, want 2", len(cfg.Blocks))
+	}
+}
+
+func TestRemoveBlock(t *testing.T) {
+	cfg := Config{Blocks: []Block{{ID: "work"}, {ID: "evenings"}, {ID: "weekends"}}}
+	if !cfg.RemoveBlock("EVENINGS") {
+		t.Fatal("RemoveBlock did not find the block")
+	}
+	if len(cfg.Blocks) != 2 || cfg.Blocks[0].ID != "work" || cfg.Blocks[1].ID != "weekends" {
+		t.Errorf("blocks after removal = %+v", cfg.Blocks)
+	}
+	if cfg.RemoveBlock("nope") {
+		t.Error("RemoveBlock reported removing a block that was not there")
+	}
+}
+
+// The id is derived so the status window can ask for a name and nothing else.
+func TestNewBlockID(t *testing.T) {
+	cases := map[string]string{
+		"Work hours":     "work-hours",
+		"  Evenings!!  ": "evenings",
+		"Sat & Sun":      "sat-sun",
+		"":               "block",
+		"...":            "block",
+		"A very long name indeed that keeps going": "a-very-long-name-indeed",
+	}
+	for label, want := range cases {
+		if got := NewBlockID(label, nil); got != want {
+			t.Errorf("NewBlockID(%q) = %q, want %q", label, got, want)
+		}
+	}
+	// A collision gets a suffix rather than silently colliding.
+	taken := map[string]bool{"work-hours": true, "work-hours-2": true}
+	if got := NewBlockID("Work hours", func(id string) bool { return taken[id] }); got != "work-hours-3" {
+		t.Errorf("NewBlockID with collisions = %q, want work-hours-3", got)
+	}
+}
+
+// Removing a locked block is refused by the same check that refuses editing one:
+// the promise a lock makes is that it outlasts the password.
+func TestRemovingALockedBlockIsRefused(t *testing.T) {
+	now := time.Now()
+	locked := Block{ID: "focus", LockedUntil: now.Add(24 * time.Hour).Format(time.RFC3339)}
+	current := Config{Blocks: []Block{locked, {ID: "other"}}}
+
+	proposed := Config{Blocks: []Block{locked}} // "other" removed: fine
+	if err := CheckLockedBlocks(current, proposed, now); err != nil {
+		t.Errorf("removing an unlocked block should be allowed: %v", err)
+	}
+	proposed = Config{Blocks: []Block{{ID: "other"}}} // "focus" removed: refused
+	if err := CheckLockedBlocks(current, proposed, now); err == nil {
+		t.Error("expected removing a locked block to be refused")
+	}
+}
+
+// TestAuthoredBlockSurvivesTheTrustedStore walks the whole path a block created
+// from the status window takes: it is added to the enforced config, committed
+// through the SYSTEM-owned store, reloaded the way the service reloads it, and
+// then resolved against the clock.
+//
+// The last step is the one worth guarding. A block authored in the GUI has to
+// behave exactly like one hand-written into the file - enforcing inside its
+// window, releasing outside it - or the feature would look like it worked while
+// enforcing something else entirely.
+func TestAuthoredBlockSurvivesTheTrustedStore(t *testing.T) {
+	store := &fakeStore{}
+	useFakeStore(t, store)
+	path := filepath.Join(t.TempDir(), "extension-ids.json")
+
+	cfg := Config{
+		Extensions: []Extension{{Name: "sieve"}},
+		Domains:    []Domain{{Name: "reddit.com"}},
+		Apps:       []App{{Kind: AppExe, Value: "steam.exe"}},
+	}
+	// What `guard add-block -label "Work hours" -days ... -from 09:00 -to 17:00`
+	// builds, governing one thing of each kind.
+	block := Block{
+		ID:         NewBlockID("Work hours", nil),
+		Label:      "Work hours",
+		Extensions: []string{"sieve"},
+		Domains:    []string{"reddit.com"},
+		Apps:       []string{"steam.exe"},
+		Windows:    []Window{{Days: []string{"mon", "tue", "wed", "thu", "fri"}, Start: "09:00", End: "17:00"}},
+	}
+	if err := cfg.AddBlock(block); err != nil {
+		t.Fatalf("AddBlock: %v", err)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if err := Commit(cfg, path); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+
+	loaded, trust, err := LoadTrusted(path)
+	if err != nil {
+		t.Fatalf("LoadTrusted: %v", err)
+	}
+	if trust != TrustOK {
+		t.Errorf("trust = %v, want ok - a committed config must not read back as tampered", trust)
+	}
+	got, ok := loaded.Block("work-hours")
+	if !ok {
+		t.Fatalf("the block did not survive the round trip: %+v", loaded.Blocks)
+	}
+	if got.ScheduleSummary() != "Mon-Fri 09:00-17:00" {
+		t.Errorf("schedule = %q", got.ScheduleSummary())
+	}
+
+	// Wednesday 10:00 is inside the window; Wednesday 20:00 is outside it.
+	inside := time.Date(2026, 8, 19, 10, 0, 0, 0, time.Local)
+	outside := time.Date(2026, 8, 19, 20, 0, 0, 0, time.Local)
+
+	active, err := loaded.EnforcedAt(inside)
+	if err != nil {
+		t.Fatalf("EnforcedAt: %v", err)
+	}
+	if len(active.Targets(Chrome)) != 1 || len(active.BlockedDomains()) != 1 || len(active.BlockedApps()) != 1 {
+		t.Errorf("inside the window: %d extensions, %d domains, %d apps enforced; want 1 each",
+			len(active.Targets(Chrome)), len(active.BlockedDomains()), len(active.BlockedApps()))
+	}
+	idle, err := loaded.EnforcedAt(outside)
+	if err != nil {
+		t.Fatalf("EnforcedAt: %v", err)
+	}
+	if len(idle.Targets(Chrome)) != 0 || len(idle.BlockedDomains()) != 0 || len(idle.BlockedApps()) != 0 {
+		t.Errorf("outside the window: %d extensions, %d domains, %d apps still enforced; want 0 each",
+			len(idle.Targets(Chrome)), len(idle.BlockedDomains()), len(idle.BlockedApps()))
+	}
+	if loaded.ActiveSignature(inside) == loaded.ActiveSignature(outside) {
+		t.Error("the signature does not change across the boundary, so the service would not re-apply")
 	}
 }

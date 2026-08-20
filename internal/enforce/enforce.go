@@ -1,14 +1,14 @@
 // Package enforce is the seam between "what the guard should enforce" and "how
 // each kind of thing is enforced".
 //
-// Until now there was exactly one kind - browser extensions, locked via the
+// Originally there was exactly one kind - browser extensions, locked via the
 // enterprise force-install policy - and the service called into package policy
-// directly. The planned work adds more: blocking applications, and later
-// blocking sites outside the browser. Those share nothing with the registry
-// writes that lock an extension except the lifecycle around them: apply on
-// start, re-apply on tamper, verify for the status display, lift on an
-// authorized teardown. This package names that lifecycle so a new backend plugs
-// into the service rather than being threaded through it.
+// directly. There are three now: extensions, blocked sites, and blocked
+// applications, with blocking sites outside the browser still to come. They share
+// nothing with the registry writes that lock an extension except the lifecycle
+// around them: apply on start, re-apply on tamper, verify for the status display,
+// lift on an authorized teardown. This package names that lifecycle so a new
+// backend plugs into the service rather than being threaded through it.
 //
 // One deliberate limitation: an Enforcer takes the whole policy.Config today
 // rather than some narrower rule type. The config schema that describes blocks
@@ -54,11 +54,24 @@ type Enforcer interface {
 	Remove(cfg policy.Config) error
 }
 
+// Sweeper is an Enforcer whose rules need continuous attention rather than a
+// policy written once. Blocking an application is the case: a browser honours a
+// force-install policy by itself, but a program nobody has looked at yet is a
+// program that is running.
+//
+// The service drives Sweep on a fast ticker, so an implementation must be cheap
+// enough to run every second and must do nothing when the config asks for
+// nothing. Announcing the need through an interface keeps the service ignorant of
+// which backend has it.
+type Sweeper interface {
+	Sweep(cfg policy.Config) error
+}
+
 // Set is an ordered group of enforcers driven together.
 type Set []Enforcer
 
 // Default is the set the guard runs. New backends are added here.
-func Default() Set { return Set{Extensions{}, Domains{}} }
+func Default() Set { return Set{Extensions{}, Domains{}, Apps{}} }
 
 // Apply applies every enforcer, joining any errors. It deliberately does not
 // stop at the first failure: one backend failing (a browser policy key that
@@ -81,6 +94,23 @@ func (s Set) Remove(cfg policy.Config) error {
 	for _, e := range s {
 		if err := e.Remove(cfg); err != nil {
 			errs = append(errs, wrap(e, "remove", err))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// Sweep runs the continuous half of enforcement: every member that implements
+// Sweeper, in set order, with errors joined. Members that do not need it are
+// skipped, so a set of policy-writing backends makes this a no-op.
+func (s Set) Sweep(cfg policy.Config) error {
+	var errs []error
+	for _, e := range s {
+		sw, ok := e.(Sweeper)
+		if !ok {
+			continue
+		}
+		if err := sw.Sweep(cfg); err != nil {
+			errs = append(errs, wrap(e, "sweep", err))
 		}
 	}
 	return errors.Join(errs...)

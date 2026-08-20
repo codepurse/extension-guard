@@ -8,6 +8,7 @@ package guardsvc
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
@@ -34,7 +35,15 @@ const (
 	// been crossed. It only compares a computed signature - no registry work - so
 	// it can run far more often than the backstop, which matters because being
 	// late to *start* enforcing is a hole a user could walk through.
-	scheduleTick     = 5 * time.Second
+	scheduleTick = 5 * time.Second
+	// appSweepTick is how often blocked applications are swept. It has to be fast:
+	// unlike a browser policy, which the browser then honours on its own, an
+	// application the guard has not looked at yet is an application that is
+	// running, and every second of that is a second the block visibly failed. The
+	// sweep does no registry work and returns immediately when no app rules are
+	// configured, so an install that blocks only extensions and sites pays nothing
+	// for this ticker.
+	appSweepTick     = 1 * time.Second
 	watchdogInterval = 5 * time.Second
 	watchdogRespawn  = 2 * time.Second
 	watchdogMutex    = `Local\ExtensionGuardWatchdog`
@@ -58,12 +67,22 @@ type program struct {
 	mu  sync.Mutex
 	dog *exec.Cmd
 
-	// applyMu serializes reapply and guards cfg and activeSig. Three goroutines
-	// reach them - the main loop, the registry watcher's callback, and the
-	// schedule ticker - and two concurrent applies would race each other writing
-	// the same policy keys.
+	// applyMu serializes reapply and guards cfg and activeSig. Several goroutines
+	// reach them - the main loop, the registry watcher's callback, the schedule
+	// ticker and the app sweep - and two concurrent applies would race each other
+	// writing the same policy keys.
 	applyMu   sync.Mutex
 	activeSig string
+	// lastSweepErr is the last app-sweep failure that was logged. The sweep runs
+	// every second, so a persistent failure (a process owned by an account we
+	// cannot touch) would otherwise fill the event log with the same line; it is
+	// logged when it changes and then held. lastAgentErr does the same for the
+	// session agent, which is re-checked on every re-apply.
+	lastSweepErr string
+	lastAgentErr string
+	// agent is the helper running in the interactive user's session, present only
+	// while a window-title rule is configured. See agent_windows.go.
+	agent *sessionAgent
 }
 
 // New builds the service. configPath is embedded into the service's launch
@@ -212,6 +231,13 @@ func (p *program) Stop(s service.Service) error {
 	if p.w != nil {
 		p.w.Stop()
 	}
+	// The session helper enforces nothing on its own once we are gone, and an
+	// orphan sweeping in the user's session would be enforcement nobody is
+	// managing. It also exits by itself when it sees the service stop.
+	p.applyMu.Lock()
+	stopSessionAgent(p.agent)
+	p.agent = nil
+	p.applyMu.Unlock()
 	// In an interactive debug session, kill the watchdog so it doesn't outlive
 	// the console. Under the real service manager we deliberately leave it
 	// running so it can resurrect the service after a graceful stop.
@@ -255,6 +281,8 @@ func (p *program) loop() {
 	defer ticker.Stop()
 	schedTicker := time.NewTicker(scheduleTick)
 	defer schedTicker.Stop()
+	appTicker := time.NewTicker(appSweepTick)
+	defer appTicker.Stop()
 	updateTicker := time.NewTicker(updateCheckInterval)
 	defer updateTicker.Stop()
 	firstUpdate := time.NewTimer(updateStartupDelay)
@@ -267,6 +295,8 @@ func (p *program) loop() {
 			p.reapply("periodic")
 		case <-schedTicker.C:
 			p.checkSchedule()
+		case <-appTicker.C:
+			p.sweepApps()
 		case <-firstUpdate.C:
 			p.checkForUpdate()
 		case <-updateTicker.C:
@@ -382,6 +412,50 @@ func (p *program) reapply(reason string) {
 	if after := enforce.EnforcedCount(set.Verify(active)); after != before {
 		p.logger.Infof("re-applied after %s: enforced %d -> %d", reason, before, after)
 	}
+	p.ensureAgent(active)
+}
+
+// ensureAgent keeps the session helper running while a window-title rule needs it,
+// and shuts it down when none does. It is driven from reapply rather than from the
+// sweep ticker: starting a process is not something to attempt every second, and a
+// helper that appears within 30 seconds of someone signing in is soon enough for a
+// rule that only matches windows they have opened since.
+//
+// Callers must hold applyMu.
+func (p *program) ensureAgent(active policy.Config) {
+	// An interactive `guard run` is already in the user's session, so it can see
+	// the windows itself and a helper would only duplicate the work.
+	if !policy.NeedsTitles(active.BlockedApps()) || p.interactive {
+		stopSessionAgent(p.agent)
+		p.agent = nil
+		return
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		p.logAgent(fmt.Sprintf("locate executable: %v", err))
+		return
+	}
+	agent, err := ensureSessionAgent(p.agent, exe, p.configPath)
+	p.agent = agent
+	if err != nil {
+		p.logAgent(err.Error())
+		return
+	}
+	p.logAgent("")
+}
+
+// logAgent reports a change in the session agent's health, once. Nobody signed in
+// is the common case on a server or a locked machine, and it must not fill the log.
+func (p *program) logAgent(msg string) {
+	if msg == p.lastAgentErr {
+		return
+	}
+	if msg != "" {
+		p.logger.Warningf("session agent unavailable, so window-title rules are not enforced: %s", msg)
+	} else if p.lastAgentErr != "" {
+		p.logger.Infof("session agent running; window-title rules are enforced again")
+	}
+	p.lastAgentErr = msg
 }
 
 // resolve narrows the config to what should be enforced right now, logging any
@@ -405,6 +479,37 @@ func (p *program) checkSchedule() {
 	p.applyMu.Unlock()
 	if changed {
 		p.reapply("schedule")
+	}
+}
+
+// sweepApps closes any blocked application that is running. It is the one piece
+// of enforcement that has to run continuously rather than being written once and
+// honoured by something else, which is why it gets its own ticker instead of
+// waiting for the 30s backstop - see enforce.Sweeper.
+//
+// It takes applyMu so it cannot race a re-apply writing the same launch-block
+// keys, and it resolves the schedule without reporting a bad one: reapply already
+// logs that every cycle, and repeating it every second would bury everything else.
+func (p *program) sweepApps() {
+	p.applyMu.Lock()
+	defer p.applyMu.Unlock()
+
+	if !p.cfg.AnyApps() {
+		return // nothing configured; do not even look at the process list
+	}
+	active, _ := p.cfg.EnforcedAt(time.Now())
+	err := enforce.Default().Sweep(active)
+	msg := ""
+	if err != nil {
+		msg = err.Error()
+	}
+	if msg != p.lastSweepErr {
+		if msg != "" {
+			p.logger.Errorf("sweep: %s", msg)
+		} else {
+			p.logger.Infof("sweep: recovered")
+		}
+		p.lastSweepErr = msg
 	}
 }
 

@@ -83,3 +83,75 @@ pushes Chrome extensions to Edge.)
 All the update URLs above are "latest" endpoints, so existing installs
 auto-update and new installs get the current version — the guard config never
 changes on a version bump (only if an extension's **ID** changes).
+
+## Blocking applications — what enforces it
+
+Locking an extension is enforced *by the browser*: the guard writes a policy and
+the browser honours it. There is no equivalent for an application. Nothing else
+on the machine is going to refuse to start a program on our behalf, so the guard
+has to do it itself, and the two ways it can are both above the kernel:
+
+1. **Image File Execution Options** — the loader's "run this under a debugger"
+   hook. `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution
+   Options\<image>` with `Debugger` set to `"…\guard.exe" blocked` makes Windows
+   start the guard *instead* of the program; it shows a message and exits.
+   Keyed on the image's file name, with an optional `UseFilter` + `FilterFullPath`
+   subkey to restrict it to one path. Not consulted for Store apps, which are
+   activated through a broker.
+2. **A process sweep** — enumerate processes (and, for window-title rules, the
+   visible top-level windows), match against the rules, terminate what matches.
+   Covers every rule kind, writes nothing, but acts after the process exists.
+
+The guard runs both: the launch block so a blocked app never appears, the sweep
+so anything the launch block cannot express - a folder, a Store app, a window
+title - is still closed, and so a deleted launch block is not a bypass.
+
+### What was ruled out, and why
+
+| Option | Why not |
+|---|---|
+| **AppLocker** | Enterprise/Education only. The target user is on Home or Pro. |
+| **Software Restriction Policies** | Absent from Home editions, and deprecated. |
+| **A filesystem filter driver** | The only *real* block, and it needs an EV certificate plus WHQL signing - a different order of cost and process from an Authenticode certificate. |
+| **`DisallowRun` (Explorer policy)** | Only blocks launches through Explorer. Trivially bypassed. |
+
+So the honest ceiling is the same one this document describes for the registry
+keys: a local administrator can stop the service, and while it is stopped nothing
+is swept. What makes it hold in practice is the running guard - SYSTEM service,
+watchdog, password gate - continuously correcting the machine, not the mechanism
+being unbreakable.
+
+### Why this one waits on the certificate
+
+An **unsigned** LocalSystem service that terminates processes and writes IFEO
+`Debugger` keys is a precise description of several malware families. Both
+behaviours are what antivirus heuristics look for, and an unsigned binary has
+nothing to weigh against them. The browser-policy features could ship before the
+code-signing certificate because they only write policy keys; this one should not.
+
+### The guardrail
+
+A refuse-to-kill list for critical system processes is not optional. Blocking
+`explorer.exe` takes the desktop away; `lsass.exe` or `csrss.exe` forces a
+reboot; and a rule naming the guard's own binaries would let a block disarm the
+guard from the inside. The list lives in `internal/policy/apps.go` and is checked
+in two places - when a rule is added, and again in the sweep - so a rule that
+reached the config by some other route still cannot fire.
+
+### Session 0 and window titles
+
+A Windows service runs in **session 0**, on its own window station. `EnumWindows`
+there enumerates the service desktop - none of the user's windows - so a
+window-title rule evaluated from the service matches nothing and enforces
+nothing, without any error to notice.
+
+The fix is a session helper: when a title rule exists, the service starts
+`guard agent` in the console session with `WTSQueryUserToken` +
+`CreateProcessAsUser`, and `STARTUPINFO.lpDesktop` set to `winsta0\default` (a
+process created from session 0 with no desktop named lands back on the service
+window station, which is the same blindness). The helper sweeps *only* title
+rules; everything else is matched on the process list, which is
+session-independent, and stays with the service - whose SYSTEM rights can close
+processes the user cannot. A `Local\` mutex keeps it to one per session, and it
+exits when the service stops, when protection is paused, or when the last title
+rule goes away.

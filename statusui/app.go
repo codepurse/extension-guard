@@ -38,6 +38,7 @@ type Status struct {
 	Extensions     []ExtensionRow `json:"extensions"`
 	Blocks         []BlockRow     `json:"blocks"`
 	Domains        []DomainRow    `json:"domains"`
+	Apps           []AppRow       `json:"apps"`
 	// ScheduleError is set when the configured schedule does not validate. The
 	// guard then enforces everything around the clock and ignores the schedule
 	// (policy.EnforcedAt fails closed), so the window must say so rather than
@@ -52,6 +53,21 @@ type Status struct {
 // "not working".
 type DomainRow struct {
 	Name      string `json:"name"`
+	Enabled   bool   `json:"enabled"`
+	Blocked   bool   `json:"blocked"`
+	Scheduled bool   `json:"scheduled"`
+}
+
+// AppRow is one entry in the application block list. Kind and Value identify the
+// rule to the guard (both are needed: the same text can be an executable name and
+// a window title). Label is what the user reads, Note explains what the rule
+// actually covers, and Enabled/Blocked are the same pair as for a domain - the
+// user's own choice, and whether it is being enforced at this moment.
+type AppRow struct {
+	Kind      string `json:"kind"`
+	Value     string `json:"value"`
+	Label     string `json:"label"`
+	Note      string `json:"note"`
 	Enabled   bool   `json:"enabled"`
 	Blocked   bool   `json:"blocked"`
 	Scheduled bool   `json:"scheduled"`
@@ -204,6 +220,33 @@ func (a *App) GetStatus() Status {
 		})
 	}
 
+	blockedApps := make(map[string]bool)
+	for _, app := range active.BlockedApps() {
+		blockedApps[appKey(app)] = true
+	}
+	apps := make([]AppRow, 0, len(a.cfg.Apps))
+	for _, raw := range a.cfg.Apps {
+		app, err := policy.NormalizeApp(raw.Kind, raw.Value, raw.Label)
+		if err != nil {
+			// Show it as written and say why it is not doing anything; dropping it
+			// would leave the user hunting for a rule they know they added.
+			apps = append(apps, AppRow{
+				Kind: raw.Kind, Value: raw.Value, Label: raw.Value,
+				Note: capitalize(err.Error()), Enabled: !raw.Disabled,
+			})
+			continue
+		}
+		apps = append(apps, AppRow{
+			Kind:      app.Kind,
+			Value:     app.Value,
+			Label:     app.Display(),
+			Note:      app.Summary(),
+			Enabled:   !raw.Disabled,
+			Blocked:   blockedApps[appKey(app)],
+			Scheduled: a.cfg.GovernedApp(app),
+		})
+	}
+
 	scheduleErr := ""
 	if err := a.cfg.Validate(); err != nil {
 		scheduleErr = err.Error()
@@ -218,8 +261,17 @@ func (a *App) GetStatus() Status {
 		Extensions:     exts,
 		Blocks:         blocks,
 		Domains:        domains,
+		Apps:           apps,
 		ScheduleError:  scheduleErr,
 	}
+}
+
+// appKey matches a configured rule to the resolved set. Kind is part of it
+// because the same text can be two different rules - "Steam" as a window title is
+// not "steam.exe" - and the comparison is case-insensitive because Windows treats
+// paths and image names that way.
+func appKey(a policy.App) string {
+	return strings.ToLower(a.Kind) + "|" + strings.ToLower(a.Value)
 }
 
 // BlockDomain adds a site to the block list, covering it and every subdomain.
@@ -266,12 +318,198 @@ func (a *App) UnblockDomain(name, password string) ActionResult {
 	return a.execGuard(args, name+" is no longer filtered.")
 }
 
+// BlockApp adds an application to the block list. Free of the password - it only
+// adds protection, the same gate as blocking a site - but elevated (UAC), because
+// it writes the launch block and the trusted config.
+//
+// The value is passed to the guard as given: normalization, the guardrail that
+// refuses to block part of Windows, and the "already covered by a folder" check
+// all live in one place there, so the window and the CLI accept and refuse
+// exactly the same things.
+func (a *App) BlockApp(kind, value, label string) ActionResult {
+	if strings.TrimSpace(value) == "" {
+		return ActionResult{Message: "Choose an application to block."}
+	}
+	if _, err := policy.NormalizeApp(kind, value, label); err != nil {
+		// Answer an obviously bad entry immediately rather than spending a UAC
+		// prompt to be told the same thing.
+		return ActionResult{Message: capitalize(err.Error())}
+	}
+	args := []string{"-config", a.cfgPath}
+	if k := strings.TrimSpace(kind); k != "" {
+		args = append(args, "-kind", k)
+	}
+	if l := strings.TrimSpace(label); l != "" {
+		args = append(args, "-label", l)
+	}
+	args = append(args, "block-app", value)
+	return a.execGuard(args, "Blocked. It will be closed if it is running.")
+}
+
+// UnblockApp stops enforcing one rule, keeping it in the list so it can be turned
+// back on. That weakens protection, so it requires the password - except while
+// protection is in the authorized paused state, exactly as for a site.
+func (a *App) UnblockApp(kind, value, password string) ActionResult {
+	if strings.TrimSpace(value) == "" {
+		return ActionResult{Message: "No application selected."}
+	}
+	args := []string{"-config", a.cfgPath}
+	if !scm.IsDisabled() {
+		hash, ok := scm.GetPasswordHash()
+		if !ok {
+			return ActionResult{Message: "No password is set. Install protection first."}
+		}
+		if !auth.Verify(hash, password) {
+			return ActionResult{Message: "Incorrect password."}
+		}
+		args = append(args, "-password", password)
+	}
+	if k := strings.TrimSpace(kind); k != "" {
+		args = append(args, "-kind", k)
+	}
+	args = append(args, "unblock-app", value)
+	return a.execGuard(args, "It can run again.")
+}
+
+// BrowseForExe opens the Windows file picker and returns the chosen executable's
+// full path, or "" if the user cancelled. Picking a file changes nothing on its
+// own - BlockApp is what applies it - so this needs neither the password nor
+// elevation.
+func (a *App) BrowseForExe() string {
+	path, err := wruntime.OpenFileDialog(a.ctx, wruntime.OpenDialogOptions{
+		Title: "Choose the application to block",
+		Filters: []wruntime.FileFilter{
+			{DisplayName: "Applications (*.exe)", Pattern: "*.exe"},
+		},
+	})
+	if err != nil {
+		return ""
+	}
+	return path
+}
+
+// BrowseForFolder opens the folder picker and returns the chosen folder, or "" if
+// the user cancelled. Blocking a folder covers every executable in it, which is
+// how a game that ships several launchers is blocked once.
+func (a *App) BrowseForFolder() string {
+	path, err := wruntime.OpenDirectoryDialog(a.ctx, wruntime.OpenDialogOptions{
+		Title: "Choose a folder - every application in it will be blocked",
+	})
+	if err != nil {
+		return ""
+	}
+	return path
+}
+
+// ListStoreApps lists the Microsoft Store apps installed for this user, for the
+// picker. Read-only and admin-free; it reads the per-user package registration
+// rather than calling the AppX APIs, so the list opens immediately.
+func (a *App) ListStoreApps() []policy.StoreApp {
+	return policy.InstalledStoreApps()
+}
+
 // capitalize upper-cases the first letter of a Go error string for display.
 func capitalize(s string) string {
 	if s == "" {
 		return s
 	}
 	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// BlockDraft is a block as the "New block" form describes it. Days are short
+// weekday names ("mon"); From and To are "HH:MM" and both empty means the block is
+// always on. Extensions, Domains and Apps are what it governs, by the same
+// identifiers the rest of the window uses - naming none of them governs
+// everything, which is what the form's "Everything" choice sends.
+type BlockDraft struct {
+	Label      string   `json:"label"`
+	Days       []string `json:"days"`
+	From       string   `json:"from"`
+	To         string   `json:"to"`
+	Extensions []string `json:"extensions"`
+	Domains    []string `json:"domains"`
+	Apps       []string `json:"apps"`
+}
+
+// CreateBlock adds a scheduled block.
+//
+// This is the one "add" in the window that can need the password, and the reason
+// is worth stating plainly: a schedule enforces things only during its windows, so
+// putting an extension that was locked around the clock onto a 9-to-5 timetable
+// leaves it unenforced for the rest of the day. A block with no windows is always
+// on and cannot weaken anything, so that one is free - it is the shape you create
+// and then lock. policy.Block.Narrows is the single place that decides which is
+// which, and the elevated guard re-checks it, so the gate cannot be skipped from
+// here.
+func (a *App) CreateBlock(draft BlockDraft, password string) ActionResult {
+	if strings.TrimSpace(draft.Label) == "" {
+		return ActionResult{Message: "Give the block a name."}
+	}
+	scheduled := strings.TrimSpace(draft.From) != "" || strings.TrimSpace(draft.To) != ""
+	if scheduled && (strings.TrimSpace(draft.From) == "" || strings.TrimSpace(draft.To) == "") {
+		return ActionResult{Message: "A window needs both a start and an end time."}
+	}
+
+	args := []string{"-config", a.cfgPath}
+	if scheduled && !scm.IsDisabled() {
+		hash, ok := scm.GetPasswordHash()
+		if !ok {
+			return ActionResult{Message: "No password is set. Install protection first."}
+		}
+		if !auth.Verify(hash, password) {
+			return ActionResult{Message: "Incorrect password."}
+		}
+		args = append(args, "-password", password)
+	}
+	args = append(args, "-label", draft.Label)
+	if scheduled {
+		args = append(args, "-from", draft.From, "-to", draft.To)
+		if len(draft.Days) > 0 {
+			args = append(args, "-days", strings.Join(draft.Days, ","))
+		}
+	}
+	// Naming nothing governs every catalog, so the flags are only passed when the
+	// form actually chose something.
+	for flag, values := range map[string][]string{
+		"-extensions": draft.Extensions,
+		"-domains":    draft.Domains,
+		"-apps":       draft.Apps,
+	} {
+		if len(values) > 0 {
+			args = append(args, flag, strings.Join(values, ","))
+		}
+	}
+	args = append(args, "add-block")
+
+	msg := "Created. It is always on, so you can lock it."
+	if scheduled {
+		msg = "Created. What it governs is now enforced only during those windows."
+	}
+	return a.execGuard(args, msg)
+}
+
+// RemoveBlock deletes a block. It takes the password even though it usually
+// restores around-the-clock enforcement: when two blocks govern the same thing,
+// dropping one can narrow the time it is enforced, and deciding which case applies
+// is exactly the window-coverage reasoning the guard refuses to do. A locked block
+// is refused by the guard itself, password or not.
+func (a *App) RemoveBlock(id, password string) ActionResult {
+	if strings.TrimSpace(id) == "" {
+		return ActionResult{Message: "No block selected."}
+	}
+	args := []string{"-config", a.cfgPath}
+	if !scm.IsDisabled() {
+		hash, ok := scm.GetPasswordHash()
+		if !ok {
+			return ActionResult{Message: "No password is set. Install protection first."}
+		}
+		if !auth.Verify(hash, password) {
+			return ActionResult{Message: "Incorrect password."}
+		}
+		args = append(args, "-password", password)
+	}
+	args = append(args, "remove-block", id)
+	return a.execGuard(args, "Removed. What it governed is enforced around the clock again.")
 }
 
 // LockBlock locks a scheduled block so it cannot be released before the given
@@ -457,7 +695,10 @@ func (a *App) guardPath() (string, error) {
 	}
 	p := filepath.Join(filepath.Dir(exe), name)
 	if !fileExists(p) {
-		return "", fmt.Errorf("%s was not found next to this app", name)
+		// Name the path. The installer puts both binaries in the same directory, so
+		// this only happens to a copy that was moved on its own or run straight out
+		// of a build directory - and in both cases the path says which.
+		return "", fmt.Errorf("%s was not found next to this app (looked in %s)", name, filepath.Dir(exe))
 	}
 	return p, nil
 }

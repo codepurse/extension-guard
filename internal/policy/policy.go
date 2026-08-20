@@ -85,6 +85,11 @@ type Config struct {
 	// reason as Blocks: a config without domains encodes byte-identically to one
 	// written before they existed. See domains.go.
 	Domains []Domain `json:"domains,omitempty"`
+	// Apps are applications the guard keeps closed: an executable, every
+	// executable in a folder, a Microsoft Store app, or anything showing a window
+	// with a given title. omitempty for the same reason as the two above. See
+	// apps.go.
+	Apps []App `json:"apps,omitempty"`
 	// AutoUpdate controls how the service reacts to a newer release:
 	// "notify" (default) logs availability, "apply" downloads and installs it
 	// silently, "off" disables the periodic check. See UpdateMode. Silent "apply"
@@ -214,15 +219,20 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 		Extensions []Extension `json:"extensions"`
 		Blocks     []Block     `json:"blocks"`
 		Domains    []Domain    `json:"domains"`
+		Apps       []App       `json:"apps"`
 		AutoUpdate string      `json:"autoUpdate"`
 	}
 	if err := json.Unmarshal(data, &multi); err != nil {
 		return err
 	}
-	if len(multi.Extensions) > 0 || len(multi.Domains) > 0 {
+	// Any of the modern top-level lists identifies the current shape. Apps counts
+	// too: a config that blocks only applications has no extensions to recognize
+	// it by, and falling through to the legacy branch would silently discard it.
+	if len(multi.Extensions) > 0 || len(multi.Domains) > 0 || len(multi.Apps) > 0 {
 		c.Extensions = multi.Extensions
 		c.Blocks = multi.Blocks
 		c.Domains = multi.Domains
+		c.Apps = multi.Apps
 		c.AutoUpdate = multi.AutoUpdate
 		return nil
 	}

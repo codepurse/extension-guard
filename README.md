@@ -148,8 +148,17 @@ Adding is free; removing needs the password. A site that is on but currently
 outside its schedule window is badged **Waiting**, not shown as failing. See
 [Blocked sites](#blocked-sites).
 
-If any **scheduled blocks** are configured, a section below lists them with
-their timetable and lock state, and offers a **Lock** button. See
+The **Blocked apps** section has four ways in - **Add .exe file** and **Add
+folder** open the Windows pickers, **Add Store app** lists the Microsoft Store
+apps installed for you, and **Add window title** takes typed text. Each row says
+underneath what the rule actually covers, because "Steam" alone does not
+distinguish one executable from a whole folder. Adding is free; removing needs the
+password. See [Blocked apps](#blocked-apps).
+
+The **Scheduled blocks** section lists any blocks with their timetable and lock
+state, and offers **New block**, **Lock** and **Remove**. Creating a block with a
+timetable needs the password (a schedule enforces things only *sometimes*);
+creating an always-on one, and locking it, does not. See
 [Scheduled blocks](#scheduled-blocks).
 
 ## Try it (Windows, Administrator shell required)
@@ -158,6 +167,7 @@ their timetable and lock state, and offers a **Lock** button. See
 
 ```sh
 guard domains      # blocked sites: which are on the list, which are enforced now
+guard apps         # blocked applications: same, per rule
 guard blocks       # scheduled blocks: which are enforcing now, which are locked
 guard detect       # which browsers are installed
 guard apply        # enforce everything the config asks for
@@ -166,23 +176,30 @@ guard remove       # lift it all (authorized uninstall)
 ```
 
 `verify` reports one row per target with the columns `area`, `target`,
-`present`, `enforced`, `detail`. Today the only area is `extensions` and every
-target is a browser; the columns are general so blocked applications can appear
-alongside them without a second command.
+`present`, `enforced`, `detail`. The areas are `extensions`, `domains` and
+`apps`; a target is a browser for the first two and one block rule for the last,
+which is why the columns are worded generally rather than per browser.
 
 ### Enforcement backends
 
 `internal/enforce` is the seam between *what* the guard should enforce and *how*
 each kind of thing is enforced. An `Enforcer` applies, verifies, and removes one
 kind of rule; `enforce.Default()` is the set the service drives, and the service
-knows only that set - not what is in it. Locking browser extensions is currently
-the only member, a thin adapter over `internal/policy`, which still owns the
+knows only that set - not what is in it. There are three members - `extensions`,
+`domains`, `apps` - each a thin adapter over `internal/policy`, which owns the
 registry and managed-policy-file work.
 
 `Apply` and `Remove` fan out across the whole set and join errors rather than
 stopping at the first failure, so one backend failing cannot silently leave the
-others unenforced. Adding application blocking means writing an `Enforcer` and
+others unenforced. Adding a kind of blocking means writing an `Enforcer` and
 putting it in `Default()`, not threading a second code path through the service.
+
+One backend needs more than "apply once": a browser honours a force-install
+policy by itself, but *an application nobody has looked at yet is an application
+that is running*. An `Enforcer` that also implements `Sweeper` says so, and the
+service drives `Sweep` on a 1s ticker - which is how a blocked app is closed
+promptly without re-writing policy keys every second. The service does not know
+which backend needs it.
 
 ### Run it as a service (milestone 2)
 
@@ -418,10 +435,13 @@ that matters:
 - It lands in `HKLM\SOFTWARE\Policies`, which the guard's **tamper watcher
   already watches**, so a deleted key is restored within milliseconds for free.
 - It writes registry policy and kills no processes, which is why this could ship
-  **without waiting on code signing**, unlike blocking applications.
+  **without waiting on code signing**, unlike [blocking
+  applications](#blocked-apps).
 
 What it does **not** cover, plainly: a browser the guard doesn't support, and any
-non-browser app. Those need enforcement below the browser — still to come.
+non-browser app reaching a site of its own accord. Blocking the *app* is covered
+below; filtering a non-browser app's traffic needs enforcement below the browser
+and is still to come.
 
 ### Input handling
 
@@ -440,6 +460,128 @@ Refused, with an explanation:
 | `reddit.com, twitter.com` | Add them one at a time. |
 | `old.reddit.com` when `reddit.com` is already blocked | Tightens nothing, and burns one of the 1000 entries browsers honour. |
 | `redditÉ.com` | Use the punycode form (`xn--…`). |
+
+## Blocked apps
+
+Games and other distracting applications are blocked alongside sites. A blocked
+application **does not start** — and is closed if it is already running.
+
+There are four kinds of rule, because "the app I want gone" is not one thing:
+
+| `-kind` | What you give it | What it blocks |
+|---|---|---|
+| `exe` (default) | A full path (`C:\Games\Steam\steam.exe`) or a bare name (`steam.exe`) | That copy — or, for a bare name, that executable wherever it is installed |
+| `folder` | A folder (`C:\Games\Steam`) | Every `.exe` under it, now and after an update renames one |
+| `store` | A Microsoft Store package family name | That Store app, across version updates |
+| `title` | Text (`Solitaire`) | Any window whose title contains it |
+
+```sh
+guard block-app "C:\Games\Steam\steam.exe"                  # admin; no password
+guard -kind folder -label Epic block-app "C:\Games\Epic"    # every .exe in it
+guard -kind store block-app Microsoft.MinecraftUWP_8wekyb3d8bbwe
+guard -kind title block-app "Spider Solitaire"
+guard unblock-app steam.exe                                 # password (unless paused)
+guard apps                                                  # what is on the list, what is enforced now
+```
+
+Or use the four buttons in the **Blocked apps** section of the status window,
+which browse for the file or folder, list the installed Store apps, and take a
+typed window title. `unblock-app` needs the same `-kind` the rule was added with:
+`Steam` as a window title is not `steam.exe`, and unblocking one must not unblock
+the other.
+
+```json
+{
+  "apps": [
+    { "kind": "exe", "value": "C:\\Games\\Steam\\steam.exe", "label": "Steam" },
+    { "kind": "folder", "value": "C:\\Games\\Epic" },
+    { "kind": "store", "value": "Microsoft.MinecraftUWP_8wekyb3d8bbwe", "label": "Minecraft" },
+    { "kind": "title", "value": "Solitaire", "disabled": true }
+  ]
+}
+```
+
+### How it works, and what it does not cover
+
+Two mechanisms, because neither covers the ground alone:
+
+- **A launch block**, via **Image File Execution Options** — the loader's "run
+  this under a debugger" hook. With `Debugger` pointed at `guard blocked`, Windows
+  starts the guard instead of the program and the user gets a message saying it is
+  blocked. This is the only way to stop an app appearing on screen at all. IFEO is
+  keyed on the executable's *file name* (with an optional full-path filter), so it
+  can express an `exe` rule and nothing else, and it does not apply to Store apps,
+  which are activated through a broker.
+- **A sweep**, terminating anything running that matches any rule. It covers all
+  four kinds and writes nothing, but it acts after the process exists — so a
+  blocked app that slips past the launch block flickers for up to a second before
+  it closes. The service sweeps every **1s**, and does nothing at all when no app
+  rules are configured.
+
+The launch block lives outside `HKLM\SOFTWARE\Policies`, so unlike the browser
+policies it is **not** restored within milliseconds by the tamper watcher — it is
+re-asserted by the 30s re-apply. The sweep is what covers the gap: delete the key
+and the app starts, then closes a second later.
+
+### Window titles need a session helper
+
+A Windows service runs in **session 0** and cannot see the signed-in user's
+windows — `EnumWindows` there enumerates the service desktop, which has none. A
+title rule evaluated from the service would therefore match nothing and silently
+enforce nothing, which is the one failure this project refuses to ship.
+
+So when — and only when — a title rule is configured, the service starts a copy of
+itself in the console session (`guard agent`, via `CreateProcessAsUser` on the
+session token) that sweeps the title rules from where the windows actually are.
+It holds no password, writes nothing, and exits when protection is paused, when
+the service stops, or when the last title rule goes away. Every other rule kind is
+matched on the process list, which is session-independent, and stays with the
+service — whose SYSTEM rights let it close processes the user cannot.
+
+Consequences worth knowing: a title rule does nothing while nobody is signed in
+(there are no windows), and after signing in the helper appears within one
+re-apply cycle (≤30s).
+
+Reconciled, not accumulated: every re-apply removes launch blocks the guard owns
+and no longer wants — including for a rule deleted from the config outright — and
+leaves anything under IFEO it did **not** write alone. A rule on an executable
+some other tool already debugs is refused with an error rather than silently
+overwritten (the sweep still closes it).
+
+What this is **not**: a kernel-level block. AppLocker needs Enterprise, Software
+Restriction Policies are absent from Home editions, and a filesystem filter driver
+needs an EV certificate and WHQL signing. What the guard has instead is the same
+thing it has everywhere else — a SYSTEM service, a watchdog, and a password gate —
+so a bypass has to survive continuous correction rather than just being applied
+once. It also does not stop you *browsing* a blocked folder; it stops the
+executables in it from running.
+
+### Guardrails
+
+Blocking the wrong thing here does not inconvenience you, it breaks the machine,
+so the refusals are not negotiable:
+
+| Refused | Why |
+|---|---|
+| `explorer.exe`, `lsass.exe`, `svchost.exe`, … | Windows needs them; killing one takes the desktop away or forces a reboot |
+| `guard.exe`, `extension-guard-status.exe` | A rule must not be able to disarm the guard from inside |
+| `C:\`, `D:` | A whole drive is every program on the machine |
+| `C:\Windows`, `C:\Windows\System32`, or any parent of them | Same, by inclusion |
+| A window title under 3 characters | It would match nearly every window, and the sweep closes what owns a match |
+| `readme.txt`, `Games\steam.exe` | Not an executable; not a full path |
+
+The protected-image list is checked **twice** — when a rule is added, so you are
+told no rather than finding out later, and again in the sweep, so a rule that
+reached the config some other way still cannot fire. A guardrail that only exists
+at the input is not a guardrail.
+
+### Code signing
+
+This is the backend that made code signing a prerequisite rather than a nicety.
+An **unsigned** service running as LocalSystem that terminates processes and
+writes launch-block registry keys is exactly the shape antivirus heuristics are
+built to quarantine — see [`docs/signing.md`](docs/signing.md). Blocking sites
+could ship before the certificate; shipping this to end users should wait for it.
 
 ## Scheduled blocks
 
@@ -468,9 +610,10 @@ locked so it cannot be released early. Add a `blocks` array alongside
 }
 ```
 
-- **`extensions`** / **`domains`** — what the block governs. Naming neither means
-  it governs everything in both lists; naming either means it governs exactly what
-  is listed, and nothing of the kind it leaves out.
+- **`extensions`** / **`domains`** / **`apps`** — what the block governs. Naming
+  none of them means it governs everything in every list; naming any means it
+  governs exactly what is listed, and nothing of the kinds it leaves out. Apps are
+  listed by the `value` their rule is stored under (`"steam.exe"`), not by kind.
 - **`windows`** — recurring local-time ranges. Omit `days` for every day. An
   `end` at or before `start` runs **past midnight**: `22:00`–`06:00` on `fri`
   covers Friday night into Saturday morning. A block with no windows is simply
@@ -489,16 +632,45 @@ install unchanged on upgrade.
 guard blocks                    # what is configured, what is enforcing now, what is locked
 guard -until 72h lock work      # also 7d, 2026-09-01, 2026-09-01T17:00
 guard commit                    # adopt your edits to extension-ids.json
+
+# create one without touching the file
+guard -label "Work hours" -days weekdays -from 09:00 -to 17:00 \
+      -extensions sieve -domains reddit.com -apps steam.exe add-block
+guard -label "Seven day commitment" add-block     # no window: always on, made to be locked
+guard remove-block work-hours
 ```
+
+`add-block` takes the *name* and derives the id (`Work hours` → `work-hours`), so
+nothing has to invent an identifier; pass one positionally to choose it yourself.
+`-days` accepts `mon,wed,fri` or `weekdays` / `weekends` / `daily`, and omitting it
+means every day. Naming no `-extensions`/`-domains`/`-apps` governs everything. One
+window per block; a second window is still a config-file job.
+
+**The gate is inverted here, on purpose.** Everywhere else, adding a rule
+strengthens protection and costs only admin. A *schedule* does the opposite: it
+takes something enforced around the clock and enforces it only sometimes, so
+`add-block` **with** a window needs the password, exactly like unblocking a site.
+With no window the block is always on, cannot weaken anything, and is free — that
+is the shape you create and then `lock`. `remove-block` takes the password too:
+when two blocks govern the same thing, dropping one can narrow the union of their
+windows, and deciding which case applies is the window-coverage reasoning the guard
+refuses to do. A locked block is refused outright either way.
 
 In the **status window**, a "Scheduled blocks" section lists each block, its
 timetable, whether it is enforcing right now, and its lock; unlocked blocks get
-a **Lock** button offering 24h / 3d / 7d / 30d or a typed deadline. An extension
-under a block is tagged `scheduled`, so one that is idle outside its window does
-not read as a fault. The section is hidden entirely when no blocks are
-configured, and an invalid schedule shows a banner saying the schedule is not in
-use. **Authoring** blocks is still a config-file job — edit `extension-ids.json`
-and run `guard commit`.
+**Lock** (24h / 3d / 7d / 30d or a typed deadline) and **Remove** buttons, while a
+locked one gets neither, because the guard would refuse both. An extension under a
+block is tagged `scheduled`, so one that is idle outside its window does not read
+as a fault, and an invalid schedule shows a banner saying the schedule is not in
+use.
+
+**New block** opens a form: a name, day chips (none chosen means every day),
+`from`/`to` times or an **Always on** tick, and either *Everything* or a picked
+list of the extensions, sites and apps you already have. It asks for the password
+only when a window was set — the same inverted gate as the CLI, decided in one
+place (`policy.Block.Narrows`) and re-checked by the elevated guard, so it cannot
+be skipped from the renderer. Hand-editing `extension-ids.json` plus `guard commit`
+still works, and is still the way to give one block several windows.
 
 `lock` needs admin but no password — it only strengthens, and no command can
 shorten a lock; it runs out on its own. `commit` needs the password, because it
