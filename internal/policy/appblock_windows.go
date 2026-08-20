@@ -698,7 +698,7 @@ func storeDisplayName(packages registry.Key, fullName, family string) string {
 		name, _, err := sub.GetStringValue("DisplayName")
 		sub.Close()
 		if err == nil {
-			n := strings.TrimSpace(name)
+			n := sanitizeStoreName(name)
 			if n != "" && !strings.HasPrefix(strings.ToLower(n), "ms-resource:") && !strings.HasPrefix(n, "@{") {
 				return n
 			}
@@ -714,6 +714,34 @@ func storeDisplayName(packages registry.Key, fullName, family string) string {
 		name = name[i+1:]
 	}
 	return name
+}
+
+// sanitizeStoreName constrains a package's DisplayName before anything uses it.
+//
+// Unlike a label the user typed, this string comes from a per-user registry key
+// that any standard user can write, and it travels into the status window and
+// from there into the command line of an *elevated* guard.exe. Correct escaping
+// is what makes that safe (see buildArgs in statusui), but a display name has no
+// business containing quoting characters or control codes in the first place, and
+// narrowing it here means one mistake at the boundary is not enough on its own.
+// The length cap is for the same reason a name is not a paragraph.
+func sanitizeStoreName(s string) string {
+	const maxRunes = 96
+	var b strings.Builder
+	n := 0
+	for _, r := range s {
+		if n == maxRunes {
+			break
+		}
+		switch {
+		case r < 0x20, r == 0x7f: // control characters, including newlines
+		case r == '"', r == '\\':
+		default:
+			b.WriteRune(r)
+			n++
+		}
+	}
+	return strings.TrimSpace(b.String())
 }
 
 func fileExists(p string) bool {

@@ -155,3 +155,15 @@ session-independent, and stays with the service - whose SYSTEM rights can close
 processes the user cannot. A `Local\` mutex keeps it to one per session, and it
 exits when the service stops, when protection is paused, or when the last title
 rule goes away.
+
+### Where guard.exe lives is load-bearing for the launch block
+
+The `Debugger` value points at `guard.exe` in the directory the writing binary
+ran from. Whoever launches a blocked image then executes that file **with their
+own token** - which is the ordinary IFEO escalation shape. Writing the key needs
+Administrator, and the same `guard.exe` is the service binary, so a directory a
+standard user can write already means total compromise either way. But it does
+mean the launch block must only ever be written from an install directory
+standard users cannot write to: `%ProgramFiles%`, which is where the installer
+puts it. A guard run out of a build tree (as during development) points the key
+into that tree.

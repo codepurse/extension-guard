@@ -279,3 +279,25 @@ func TestSleepHelper(t *testing.T) {
 	}
 	time.Sleep(45 * time.Second)
 }
+
+// A Store app's DisplayName is read from a key any standard user can write, and
+// it ends up in the status window and in an elevated command line. Escaping is
+// what makes that safe; this narrows the value as well, so one boundary mistake
+// is not sufficient on its own.
+func TestSanitizeStoreName(t *testing.T) {
+	cases := map[string]string{
+		"Minecraft Launcher":            "Minecraft Launcher",
+		"  Roblox  ":                    "Roblox",
+		`evil\" -extensions x select "`: "evil -extensions x select",
+		"line\r\nbreak":                 "linebreak",
+		"tab\there":                     "tabhere",
+		"":                              "",
+		"\x00\x01\x02":                  "",
+		strings.Repeat("A", 200):        strings.Repeat("A", 96),
+	}
+	for in, want := range cases {
+		if got := sanitizeStoreName(in); got != want {
+			t.Errorf("sanitizeStoreName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
