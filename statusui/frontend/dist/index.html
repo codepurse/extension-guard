@@ -131,6 +131,10 @@
     gap: 6px; flex-shrink: 0;
   }
   .badge.idle { color: var(--faint); background: var(--surface2); }
+  /* A block with time left today: on, in window, and enforcing nothing yet. It
+     gets the "warning" colour rather than the idle grey because it is a countdown,
+     not a resting state. */
+  .badge.budget { color: var(--warn); background: var(--warn-bg); }
   .badge.lockbadge { color: var(--accent); background: rgba(99,102,241,0.14); }
   .lockbtn {
     padding: 3px 12px; font-size: 11px; font-weight: 600; border-radius: 999px;
@@ -170,6 +174,22 @@
   .modal .modal-title { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
   .modal input[type=password] { width: 100%; }
   .modal .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+
+  /* Recent activity. A row is a coloured dot, what happened, and when - the dot
+     is what makes "protection held" and "protection was weakened" separable at a
+     glance, which is what the list is scanned for. */
+  .act {
+    display: flex; align-items: flex-start; gap: 10px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px;
+  }
+  .act .dot { width: 6px; height: 6px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; background: var(--faint); }
+  .act.enforced .dot { background: var(--ok); }
+  .act.weakened .dot { background: var(--warn); }
+  .act .body { flex: 1; min-width: 0; }
+  .act .text { font-size: 13px; }
+  .act .sub { font-size: 11px; color: var(--muted); margin-top: 1px; }
+  .act .when { font-size: 11px; color: var(--faint); white-space: nowrap; margin-top: 2px; }
+  .actpath { font-size: 11px; color: var(--faint); word-break: break-all; margin: -4px 0 0; }
 </style>
 </head>
 <body>
@@ -214,6 +234,15 @@
     <button id="announce-link" class="announce-link" style="display:none;"></button>
   </div>
 
+  <div class="section-head">
+    <div class="section-title">Recent activity</div>
+    <button id="act-more" class="ghost small" style="display:none;">Show more</button>
+  </div>
+  <p class="exthint">What the guard did, and what was done to it. Kept on this PC only &mdash; nothing is sent anywhere.</p>
+  <div class="rows" id="act-rows"></div>
+  <p class="exthint" id="act-empty" style="display:none;">Nothing recorded yet.</p>
+  <p class="actpath" id="act-path"></p>
+
   <div class="section-title">Browsers</div>
   <div class="rows" id="rows"></div>
 
@@ -246,11 +275,15 @@
       <div class="section-title">Scheduled blocks</div>
       <button id="block-new" class="ghost small">New block</button>
     </div>
-    <p class="exthint">A block enforces what it governs only during its windows. Locking one means it cannot be released early.</p>
+    <p class="exthint">A block enforces what it governs only during its windows, or &mdash; with a daily limit &mdash; once that much time has been used. Locking one means it cannot be released early.</p>
     <div id="schedule-warning" class="card warnbox" style="display:none; margin-bottom:6px;">
       <div class="lbl">This schedule is not being used</div>
       <div class="announce-msg" id="schedule-warning-msg"></div>
       <div class="announce-msg">Everything stays protected around the clock until it is fixed.</div>
+    </div>
+    <div id="usage-warning" class="card warnbox" style="display:none; margin-bottom:6px;">
+      <div class="lbl">Today&rsquo;s usage could not be read</div>
+      <div class="announce-msg" id="usage-warning-msg"></div>
     </div>
     <div class="rows" id="block-rows"></div>
     <p class="exthint" id="block-empty" style="display:none;">No blocks yet &mdash; everything you have turned on is enforced around the clock.</p>
@@ -331,6 +364,10 @@
       </div>
     </div>
     <div class="nb-row">
+      <span class="nb-lbl">Daily limit</span><input id="nb-limit" type="text" placeholder="45m (leave empty for none)" autocomplete="off" />
+    </div>
+    <p class="nb-sub">A limit may only cover applications &mdash; the guard counts time by watching programs run, and a browser never reports back how long a site was open. Leave the times above empty for a limit that applies at any hour.</p>
+    <div class="nb-row">
       <span class="nb-lbl">Governs</span>
       <div class="chips" id="nb-scope">
         <button type="button" data-scope="all" class="sel">Everything</button>
@@ -349,6 +386,20 @@
 
 <!-- Lock prompt. Locking needs no password (it only strengthens), but it is
      irreversible until the deadline, so it gets an explicit confirmation. -->
+<div id="pause-modal" class="modal-backdrop" style="display:none;">
+  <div class="modal">
+    <div class="modal-title">Turn protection off</div>
+    <p class="modal-note">The guard stays installed and keeps running, so it can turn protection back on by itself when the time is up.</p>
+    <div class="lock-choices" id="pause-choices"></div>
+    <input id="pause-pw" type="password" placeholder="Password" autocomplete="off" />
+    <div id="pause-msg" class="msg"></div>
+    <div class="modal-actions">
+      <button class="ghost" id="pause-cancel">Cancel</button>
+      <button id="pause-ok">Turn off</button>
+    </div>
+  </div>
+</div>
+
 <div id="lock-modal" class="modal-backdrop" style="display:none;">
   <div class="modal">
     <div class="modal-title" id="lock-modal-title">Lock block</div>
@@ -522,6 +573,7 @@
       const daysBox = document.getElementById('nb-days');
       const from = document.getElementById('nb-from');
       const to = document.getElementById('nb-to');
+      const limit = document.getElementById('nb-limit');
       const scopeBox = document.getElementById('nb-scope');
       const items = document.getElementById('nb-items');
       const note = document.getElementById('nb-note');
@@ -529,7 +581,7 @@
       const okBtn = document.getElementById('nb-ok');
       const cancelBtn = document.getElementById('nb-cancel');
 
-      label.value = ''; from.value = ''; to.value = '';
+      label.value = ''; from.value = ''; to.value = ''; limit.value = '';
       always.checked = false;
       msg.textContent = ''; msg.className = 'msg';
       Array.prototype.forEach.call(daysBox.children, function (c) { c.classList.remove('sel'); });
@@ -561,9 +613,17 @@
       function paint() {
         sched.style.display = always.checked ? 'none' : '';
         items.style.display = scope === 'some' ? '' : 'none';
-        note.textContent = always.checked
-          ? 'An always-on block only adds protection, so this is free. Lock it afterwards to make it stick.'
-          : 'A schedule enforces what it governs only during its windows — the rest of the day it is not enforced. That is weaker than around the clock, so creating it needs the password.';
+        // Three notes for three gates. A limit and a window both make enforcement
+        // less than around the clock, which is why either one costs the password;
+        // saying which of them applies is more use than saying "this may need a
+        // password" and leaving the user to work out why.
+        if (limit.value.trim()) {
+          note.textContent = 'A daily limit lets the apps it covers run for that long each day, and blocks them once the time is used up. That is weaker than blocking them outright, so creating it needs the password.';
+        } else if (always.checked) {
+          note.textContent = 'An always-on block only adds protection, so this is free. Lock it afterwards to make it stick.';
+        } else {
+          note.textContent = 'A schedule enforces what it governs only during its windows — the rest of the day it is not enforced. That is weaker than around the clock, so creating it needs the password.';
+        }
       }
       function onScope(e) {
         const btn = e.target.closest('button[data-scope]');
@@ -584,6 +644,7 @@
         scopeBox.removeEventListener('click', onScope);
         daysBox.removeEventListener('click', onDay);
         always.removeEventListener('change', paint);
+        limit.removeEventListener('input', paint);
         label.removeEventListener('keydown', onKey);
         modal.removeEventListener('keydown', onKey);
       }
@@ -591,8 +652,21 @@
       function onOk() {
         const name = label.value.trim();
         if (!name) { fail('Give the block a name.'); label.focus(); return; }
-        const draft = { label: name, days: [], from: '', to: '', extensions: [], domains: [], apps: [] };
-        if (!always.checked) {
+        const draft = { label: name, days: [], from: '', to: '', limit: '', extensions: [], domains: [], apps: [] };
+        const lim = limit.value.trim();
+        if (lim) {
+          // Shapes the guard accepts: 45m, 1h30m, 1.5h, or a bare number of minutes.
+          if (!/^(\d+(\.\d+)?\s*[mh]?|\d+h\s*\d+m?)$/i.test(lim)) {
+            fail('A limit looks like 45m, 1h30m, or a number of minutes.'); limit.focus(); return;
+          }
+          draft.limit = lim;
+        }
+        // A limit on its own is a whole rule - "45 minutes a day, whenever you like" -
+        // so leaving both times empty is not a mistake in that case. Without a limit
+        // it is: a block with neither is the always-on kind, which is what the
+        // checkbox is for.
+        const noTimes = !from.value.trim() && !to.value.trim();
+        if (!always.checked && !(lim && noTimes)) {
           const f = from.value.trim(), t = to.value.trim();
           if (!/^\d{1,2}:\d{2}$/.test(f) || !/^\d{1,2}:\d{2}$/.test(t)) { fail('Times look like 09:00.'); return; }
           if (f === t) { fail('A window that starts and ends at the same time never applies.'); return; }
@@ -614,6 +688,17 @@
             return;
           }
         }
+        // The same two rules the guard enforces, answered here so the user is not
+        // refused after typing a password. Only applications can be measured, so a
+        // limit has to name some and nothing else.
+        if (draft.limit && !draft.apps.length) {
+          fail('A time limit has to cover applications — choose the apps it applies to.');
+          return;
+        }
+        if (draft.limit && (draft.extensions.length || draft.domains.length)) {
+          fail('A time limit can only cover applications, not extensions or sites.');
+          return;
+        }
         cleanup(); resolve(draft);
       }
       function onCancel() { cleanup(); resolve(null); }
@@ -633,6 +718,7 @@
       scopeBox.addEventListener('click', onScope);
       daysBox.addEventListener('click', onDay);
       always.addEventListener('change', paint);
+      limit.addEventListener('input', paint);
       label.addEventListener('keydown', onKey);
       modal.addEventListener('keydown', onKey);
     });
@@ -691,11 +777,15 @@
     document.getElementById('hero-title').textContent =
       paused ? 'Protection paused' : (s.serviceRunning ? 'Protection active' : 'Protection inactive');
     document.getElementById('hero-sub').textContent =
-      paused ? 'You turned protection off. Turn it back on to resume filtering.'
+      paused ? (s.pausedUntil
+                  ? 'Protection is off until ' + s.pausedUntil + '. It turns itself back on then.'
+                  : 'You turned protection off. It stays off until you turn it back on.')
              : (s.serviceRunning ? 'The guard service is running and watching your browsers.'
                                  : 'The guard service is not running.');
 
-    document.getElementById('svc-val').textContent = paused ? 'Paused' : (s.serviceRunning ? 'Running' : 'Stopped');
+    document.getElementById('svc-val').textContent =
+      paused ? (s.pausedUntil ? 'Paused till ' + s.pausedUntil.replace(/,.*/, '') : 'Paused')
+             : (s.serviceRunning ? 'Running' : 'Stopped');
     document.getElementById('locked-val').textContent = s.lockedCount;
 
     // One prominent control: disable when active (weakens -> password), else enable
@@ -960,6 +1050,14 @@
     // blocks are created - hiding it would hide the way in.
     empty.style.display = blocks.length ? 'none' : '';
 
+    const usageWarn = document.getElementById('usage-warning');
+    if (s.usageError) {
+      usageWarn.style.display = '';
+      document.getElementById('usage-warning-msg').textContent = s.usageError;
+    } else {
+      usageWarn.style.display = 'none';
+    }
+
     const warn = document.getElementById('schedule-warning');
     if (s.scheduleError) {
       warn.style.display = '';
@@ -981,16 +1079,33 @@
       title.textContent = b.label || b.id;
       const meta = document.createElement('div');
       meta.className = 'bmeta';
-      meta.textContent = b.schedule + '  •  ' + b.extensions;
+      // The limit belongs on this line with the timetable: both answer "when does
+      // this block apply", and a row that showed one without the other would be
+      // describing half the rule.
+      meta.textContent = b.schedule + '  •  ' + b.extensions + (b.limit ? '  •  ' + b.limit : '');
       info.appendChild(title);
       info.appendChild(meta);
 
       const right = document.createElement('div');
       right.className = 'bright';
       const badge = document.createElement('span');
-      // An idle block is not a fault - it is outside its window and meant to be.
-      badge.className = 'badge ' + (b.active ? 'locked' : 'idle');
-      badge.textContent = b.active ? 'Enforcing' : 'Idle';
+      // Three states. An idle block is not a fault - it is outside its window and
+      // meant to be - and a block with time left today is not idle either: it is
+      // counting down, which is the state the person checking most wants to see.
+      if (b.inBudget) {
+        badge.className = 'badge budget';
+        badge.textContent = (b.left || '0m') + ' left today';
+        badge.title = b.used ? b.used + ' used so far today' : '';
+      } else {
+        badge.className = 'badge ' + (b.active ? 'locked' : 'idle');
+        badge.textContent = b.active ? 'Enforcing' : 'Idle';
+        if (b.limit && b.active && b.used) {
+          // Enforcing *because* the budget ran out, rather than because a window
+          // opened. Saying which is the difference between "working" and "broken".
+          badge.textContent = 'Used up';
+          badge.title = b.used + ' used today';
+        }
+      }
       right.appendChild(badge);
 
       if (b.locked) {
@@ -1078,16 +1193,81 @@
     const disabling = current.serviceRunning && !current.disabled;
     let res;
     if (disabling) {
-      const pw = await askPassword('Enter the password to turn protection off');
-      if (pw === null) { return; }
+      const chosen = await askPause();
+      if (chosen === null) { return; }
       setMsg('Approve the Windows permission prompt…');
-      try { res = await window.go.main.App.Disable(pw); } catch (e) { res = { ok: false, message: String(e) }; }
+      try { res = await window.go.main.App.Disable(chosen.password, chosen.spec); }
+      catch (e) { res = { ok: false, message: String(e) }; }
     } else {
       setMsg('Approve the Windows permission prompt…');
       try { res = await window.go.main.App.Enable(); } catch (e) { res = { ok: false, message: String(e) }; }
     }
     setMsg(res.message, res.ok ? 'ok' : 'err');
     await refresh();
+  }
+
+  // askPause collects how long to turn protection off for, and the password, in
+  // one dialog. Resolves to {spec, password} or null if cancelled.
+  //
+  // The durations come from the backend rather than being written here, so the
+  // window and the guard agree on what is offered and the list is decided in one
+  // place. The first choice is preselected: a bounded pause is the one that
+  // cannot be forgotten about, so it should be what you get by just typing the
+  // password and pressing enter.
+  async function askPause() {
+    const modal = document.getElementById('pause-modal');
+    const box = document.getElementById('pause-choices');
+    const pw = document.getElementById('pause-pw');
+    const msg = document.getElementById('pause-msg');
+    const okBtn = document.getElementById('pause-ok');
+    const cancelBtn = document.getElementById('pause-cancel');
+
+    let choices = [];
+    try { choices = (await window.go.main.App.PauseChoices()) || []; } catch (e) { choices = []; }
+    if (!choices.length) { choices = [{ label: 'Until I turn it back on', spec: '' }]; }
+
+    let spec = choices[0].spec;
+    box.innerHTML = '';
+    choices.forEach(function (c, i) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = c.label;
+      if (i === 0) { b.classList.add('sel'); }
+      b.addEventListener('click', function () {
+        Array.prototype.forEach.call(box.children, function (o) { o.classList.remove('sel'); });
+        b.classList.add('sel');
+        spec = c.spec;
+      });
+      box.appendChild(b);
+    });
+
+    return new Promise(function (resolve) {
+      msg.textContent = '';
+      pw.value = '';
+      modal.style.display = 'flex';
+      pw.focus();
+
+      function cleanup() {
+        modal.style.display = 'none';
+        okBtn.removeEventListener('click', onOk);
+        cancelBtn.removeEventListener('click', onCancel);
+        document.removeEventListener('keydown', onKey);
+      }
+      function onOk() {
+        if (!pw.value) { msg.className = 'msg err'; msg.textContent = 'Enter the password.'; pw.focus(); return; }
+        const out = { spec: spec, password: pw.value };
+        cleanup();
+        resolve(out);
+      }
+      function onCancel() { cleanup(); resolve(null); }
+      function onKey(e) {
+        if (e.key === 'Enter') { e.preventDefault(); onOk(); }
+        if (e.key === 'Escape') { onCancel(); }
+      }
+      okBtn.addEventListener('click', onOk);
+      cancelBtn.addEventListener('click', onCancel);
+      document.addEventListener('keydown', onKey);
+    });
   }
 
   // toggleExt flips one extension. Turning off weakens protection -> ask the
@@ -1122,6 +1302,10 @@
       return;
     }
     render(await window.go.main.App.GetStatus());
+    // Reload the record too: every action that reaches here has just written an
+    // entry, and a list that needed a second refresh to show it would read as
+    // nothing having happened.
+    await loadActivity();
   }
 
   // loadVersion shows the running build in the footer, e.g. "Extension Guard v1.2.0".
@@ -1220,6 +1404,91 @@
     banner.style.display = '';
   }
 
+  // How many activity entries the list shows collapsed and expanded. Expanding
+  // asks the backend again rather than filtering what is already here, because the
+  // point of "Show more" is to reach further back than the first call asked for.
+  const ACT_COLLAPSED = 6;
+  const ACT_EXPANDED = 50;
+  let actLimit = ACT_COLLAPSED;
+
+  // loadActivity fills the Recent activity list. Every value goes in through
+  // textContent: the entries contain sites and window titles somebody typed, and
+  // the record is appendable by any user on the machine (see internal/activity),
+  // so none of it may reach the DOM as markup.
+  async function loadActivity() {
+    if (!bound() || !window.go.main.App.GetActivity) { return; }
+    const rows = document.getElementById('act-rows');
+    const empty = document.getElementById('act-empty');
+    const more = document.getElementById('act-more');
+
+    let list = [];
+    try { list = (await window.go.main.App.GetActivity(actLimit)) || []; } catch (e) { list = []; }
+
+    rows.innerHTML = '';
+    empty.style.display = list.length ? 'none' : '';
+    // Offer "Show more" only when there is plausibly more to show: a list shorter
+    // than the collapsed limit is already everything there is.
+    more.style.display = (actLimit > ACT_COLLAPSED || list.length >= ACT_COLLAPSED) ? '' : 'none';
+    more.textContent = actLimit > ACT_COLLAPSED ? 'Show less' : 'Show more';
+
+    list.forEach(function (e) {
+      const row = document.createElement('div');
+      row.className = 'act ' + (e.severity || 'neutral');
+
+      const dot = document.createElement('span');
+      dot.className = 'dot';
+      row.appendChild(dot);
+
+      const body = document.createElement('div');
+      body.className = 'body';
+      const text = document.createElement('div');
+      text.className = 'text';
+      text.textContent = e.text || '';
+      body.appendChild(text);
+
+      // The detail and who did it share one quiet line; either can be absent.
+      const bits = [];
+      if (e.detail) { bits.push(e.detail); }
+      if (e.actor) { bits.push(e.actor); }
+      if (bits.length) {
+        const sub = document.createElement('div');
+        sub.className = 'sub';
+        sub.textContent = bits.join(' · ');
+        body.appendChild(sub);
+      }
+      row.appendChild(body);
+
+      const when = document.createElement('span');
+      when.className = 'when';
+      when.textContent = e.when || '';
+      row.appendChild(when);
+
+      rows.appendChild(row);
+    });
+
+    await showActivityPath(list.length > 0);
+  }
+
+  // showActivityPath names the file under the list, so a parent who wants to read
+  // or keep the raw record does not have to be told where it is.
+  async function showActivityPath(any) {
+    const el = document.getElementById('act-path');
+    if (!any || !window.go.main.App.ActivityPath) { el.textContent = ''; return; }
+    if (el.dataset.path) { el.textContent = el.dataset.path; return; }
+    try {
+      const p = await window.go.main.App.ActivityPath();
+      el.dataset.path = p ? 'Kept at ' + p : '';
+      el.textContent = el.dataset.path;
+    } catch (e) { el.textContent = ''; }
+  }
+
+  // toggleActivity switches between the short list and the long one.
+  async function toggleActivity() {
+    actLimit = actLimit > ACT_COLLAPSED ? ACT_COLLAPSED : ACT_EXPANDED;
+    await loadActivity();
+  }
+
+  document.getElementById('act-more').addEventListener('click', toggleActivity);
   document.getElementById('domain-add').addEventListener('click', addDomain);
   document.getElementById('domain-input').addEventListener('keydown', function (e) {
     if (e.key === 'Enter') { e.preventDefault(); addDomain(); }

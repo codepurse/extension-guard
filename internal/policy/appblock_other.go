@@ -2,7 +2,10 @@
 
 package policy
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
 
 // Application blocking is Windows-only. The rule kinds are Windows concepts -
 // Image File Execution Options, Store packages, window titles - and there is no
@@ -29,6 +32,13 @@ func SweepApps(cfg Config) error {
 	}
 	return errAppsUnsupported
 }
+
+// SampleUsage measures nothing here. Time limits are counted by watching
+// processes, which is the same Windows-only mechanism as the sweep, and a limit
+// that measured nothing would read as a budget nobody ever spends - that is, as no
+// limit at all. It returns no error because ApplyApps already refuses the app rules
+// such a block has to cover, and one refusal per cycle is enough.
+func SampleUsage(cfg Config, at time.Time) ([]string, error) { return nil, nil }
 
 // VerifyApps reports every configured rule as unenforced, with the reason, rather
 // than reporting nothing - a rule the user set up must not simply disappear from

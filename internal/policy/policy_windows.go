@@ -55,6 +55,10 @@ func Apply(cfg Config) error {
 	if err := removeFirefox(cfg.InactiveTargets(Firefox)); err != nil {
 		errs = append(errs, fmt.Sprintf("firefox prune: %v", err))
 	}
+	// The forcelist lives in the same hive as the URL filter and is read the same
+	// way, so it needs the same nudge. Best effort for the same reason - see
+	// gprefresh_windows.go.
+	_ = refreshBrowserPolicy()
 	if len(errs) > 0 {
 		return fmt.Errorf("%s", strings.Join(errs, "; "))
 	}
@@ -97,10 +101,19 @@ func dropForcelist(targets []Target) func(string) bool {
 
 func applyFirefox(targets []Target) error {
 	for _, t := range configuredFirefox(targets) {
-		key, _, err := registry.CreateKey(registry.LOCAL_MACHINE, firefoxPolicyRoot+`\ExtensionSettings\`+t.AddonID, registry.ALL_ACCESS)
+		path := firefoxPolicyRoot + `\ExtensionSettings\` + t.AddonID
+		// Skipping a key that is already correct is not just tidiness. Apply runs on
+		// every reconcile cycle, and rewriting these values each time would trip the
+		// guard's own tamper watcher and make every write look like a policy change
+		// that needs a group policy refresh.
+		if firefoxEntryCorrect(path, t.InstallURL) {
+			continue
+		}
+		key, _, err := registry.CreateKey(registry.LOCAL_MACHINE, path, registry.ALL_ACCESS)
 		if err != nil {
 			return err
 		}
+		markBrowserPolicyChanged()
 		if err := key.SetStringValue("installation_mode", "force_installed"); err != nil {
 			key.Close()
 			return err
@@ -112,6 +125,19 @@ func applyFirefox(targets []Target) error {
 		key.Close()
 	}
 	return nil
+}
+
+// firefoxEntryCorrect reports whether the ExtensionSettings key at path already
+// force-installs installURL, so applyFirefox can leave it alone.
+func firefoxEntryCorrect(path, installURL string) bool {
+	key, err := registry.OpenKey(registry.LOCAL_MACHINE, path, registry.QUERY_VALUE)
+	if err != nil {
+		return false
+	}
+	defer key.Close()
+	mode, _, _ := key.GetStringValue("installation_mode")
+	url, _, _ := key.GetStringValue("install_url")
+	return mode == "force_installed" && url == installURL
 }
 
 // Verify reports the lock status of each browser. A browser is Locked only when
@@ -185,6 +211,7 @@ func Remove(cfg Config) error {
 	if err := removeFirefox(cfg.Targets(Firefox)); err != nil {
 		errs = append(errs, fmt.Sprintf("firefox: %v", err))
 	}
+	_ = refreshBrowserPolicy()
 	if len(errs) > 0 {
 		return fmt.Errorf("%s", strings.Join(errs, "; "))
 	}
@@ -201,8 +228,11 @@ func removeFirefox(targets []Target) error {
 			continue
 		}
 		// DeleteKey removes the leaf key (installation_mode / install_url values
-		// live directly under it). Absence is treated as success.
-		_ = registry.DeleteKey(registry.LOCAL_MACHINE, firefoxPolicyRoot+`\ExtensionSettings\`+t.AddonID)
+		// live directly under it). Absence is treated as success - and is also the
+		// case where nothing changed, so it asks for no refresh.
+		if err := registry.DeleteKey(registry.LOCAL_MACHINE, firefoxPolicyRoot+`\ExtensionSettings\`+t.AddonID); err == nil {
+			markBrowserPolicyChanged()
+		}
 	}
 	return nil
 }

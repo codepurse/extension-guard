@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/codepurse/extension-guard/internal/activity"
 	"github.com/codepurse/extension-guard/internal/announce"
 	"github.com/codepurse/extension-guard/internal/auth"
 	"github.com/codepurse/extension-guard/internal/buildinfo"
@@ -30,15 +31,24 @@ type App struct {
 
 // Status is the snapshot the frontend renders.
 type Status struct {
-	ServiceRunning bool           `json:"serviceRunning"`
-	Disabled       bool           `json:"disabled"`
-	LockedCount    int            `json:"lockedCount"`
-	HasPassword    bool           `json:"hasPassword"`
-	Browsers       []BrowserRow   `json:"browsers"`
-	Extensions     []ExtensionRow `json:"extensions"`
-	Blocks         []BlockRow     `json:"blocks"`
-	Domains        []DomainRow    `json:"domains"`
-	Apps           []AppRow       `json:"apps"`
+	ServiceRunning bool `json:"serviceRunning"`
+	// Disabled is whether protection is paused. It keeps its name because that is
+	// what the frontend has always called it; PausedUntil says when it lifts, and
+	// is empty for a pause with no deadline. The two together are what let the
+	// window say "back on at 15:04" instead of leaving the user to remember.
+	Disabled    bool           `json:"disabled"`
+	PausedUntil string         `json:"pausedUntil"`
+	LockedCount int            `json:"lockedCount"`
+	HasPassword bool           `json:"hasPassword"`
+	Browsers    []BrowserRow   `json:"browsers"`
+	Extensions  []ExtensionRow `json:"extensions"`
+	Blocks      []BlockRow     `json:"blocks"`
+	Domains     []DomainRow    `json:"domains"`
+	Apps        []AppRow       `json:"apps"`
+	// UsageError is set when the daily-limit counters could not be read. Every
+	// limit then counts as used up (policy.Spent fails closed), which looks like a
+	// fault from the outside unless the window says what happened.
+	UsageError string `json:"usageError"`
 	// ScheduleError is set when the configured schedule does not validate. The
 	// guard then enforces everything around the clock and ignores the schedule
 	// (policy.EnforcedAt fails closed), so the window must say so rather than
@@ -77,11 +87,23 @@ type AppRow struct {
 // Extensions are pre-rendered by policy so the window and the CLI describe a
 // block identically.
 type BlockRow struct {
-	ID          string `json:"id"`
-	Label       string `json:"label"`
-	Schedule    string `json:"schedule"`
-	Extensions  string `json:"extensions"`
-	Active      bool   `json:"active"`
+	ID         string `json:"id"`
+	Label      string `json:"label"`
+	Schedule   string `json:"schedule"`
+	Extensions string `json:"extensions"`
+	Active     bool   `json:"active"`
+	// Limit is the daily budget ("45m/day"), empty for a block without one. Used
+	// and Left are today's spend and what remains, already rendered - the window
+	// and the CLI describe a limit in the same words because policy formats both.
+	//
+	// InBudget is the state that only a limited block can be in: on, in window, and
+	// not enforcing anything because there is time left. It is separate from Active
+	// so the row can say "42m left today" instead of "Idle", which would read as a
+	// fault in precisely the case the user is checking on.
+	Limit       string `json:"limit"`
+	Used        string `json:"used"`
+	Left        string `json:"left"`
+	InBudget    bool   `json:"inBudget"`
 	Locked      bool   `json:"locked"`
 	LockedUntil string `json:"lockedUntil"`
 }
@@ -117,6 +139,12 @@ type BrowserRow struct {
 func NewApp() *App {
 	p := defaultConfigPath()
 	cfg, _, _ := policy.LoadTrusted(p)
+	// The window runs unprivileged, so it cannot create the activity log and does
+	// not try - it appends to the one the service made. It has to be able to write
+	// at all for one reason: a wrong password typed here is verified locally and
+	// the elevated guard is never launched, so this is the only place that attempt
+	// can be recorded. See internal/activity.
+	activity.Enable(activity.LocalUser())
 	return &App{cfg: cfg, cfgPath: p}
 }
 
@@ -143,7 +171,11 @@ func (a *App) GetStatus() Status {
 	// are the user's own on/off choices - a toggle must not appear to flip itself
 	// when a window closes.
 	now := time.Now()
-	active, _ := a.cfg.EnforcedAt(now)
+	// Read the day's usage once and hand it to everything below, so the block rows,
+	// the app rows and the resolved config all agree about a budget that may run out
+	// while this function is running.
+	spent := a.cfg.SpentAt(now)
+	active, _ := a.cfg.EnforcedAtWith(now, spent)
 	verified := policy.Verify(active)
 	rows := make([]BrowserRow, 0, len(verified))
 	locked := 0
@@ -179,7 +211,13 @@ func (a *App) GetStatus() Status {
 			Label:      b.Label,
 			Schedule:   b.ScheduleSummary(),
 			Extensions: b.GovernedSummary(),
-			Active:     b.Active(now),
+			Active:     b.EnforcingAt(now, spent),
+			Limit:      b.LimitSummary(),
+		}
+		if b.HasLimit() && !spent.Unreadable {
+			row.Used = policy.HumanDuration(spent.On(b.ID))
+			row.Left = policy.HumanDuration(b.Remaining(spent))
+			row.InBudget = !row.Active && b.InWindow(now)
 		}
 		if row.Label == "" {
 			row.Label = b.ID
@@ -251,10 +289,18 @@ func (a *App) GetStatus() Status {
 	if err := a.cfg.Validate(); err != nil {
 		scheduleErr = err.Error()
 	}
+	usageErr := ""
+	if spent.Unreadable {
+		usageErr = "The record of today's usage could not be read, so every daily limit counts as used up. " +
+			"The guard rewrites it from its own running count within half a minute; if it has to be restarted " +
+			"first, today's counts start again from zero and the activity list says so."
+	}
 	_, hasPw := scm.GetPasswordHash()
+	pause := scm.Paused()
 	return Status{
 		ServiceRunning: scm.IsRunning(guardsvc.ServiceName),
-		Disabled:       scm.IsDisabled(),
+		Disabled:       pause.Paused,
+		PausedUntil:    pausedUntilLabel(pause),
 		LockedCount:    locked,
 		HasPassword:    hasPw,
 		Browsers:       rows,
@@ -262,6 +308,7 @@ func (a *App) GetStatus() Status {
 		Blocks:         blocks,
 		Domains:        domains,
 		Apps:           apps,
+		UsageError:     usageErr,
 		ScheduleError:  scheduleErr,
 	}
 }
@@ -292,7 +339,7 @@ func (a *App) BlockDomain(name string) ActionResult {
 	}
 	return a.execGuard(
 		[]string{"-config", a.cfgPath, "block-domain", name},
-		"Blocked, including every subdomain.")
+		withFirefoxNote("Blocked, including every subdomain."))
 }
 
 // UnblockDomain stops filtering a site, keeping it in the list so it can be
@@ -304,18 +351,28 @@ func (a *App) UnblockDomain(name, password string) ActionResult {
 		return ActionResult{Message: "No site selected."}
 	}
 	args := []string{"-config", a.cfgPath}
-	if !scm.IsDisabled() {
-		hash, ok := scm.GetPasswordHash()
-		if !ok {
-			return ActionResult{Message: "No password is set. Install protection first."}
+	if !scm.IsPaused() {
+		pw, bad := passwordArgs(password, "unblocking a site")
+		if bad != nil {
+			return *bad
 		}
-		if !auth.Verify(hash, password) {
-			return ActionResult{Message: "Incorrect password."}
-		}
-		args = append(args, "-password", password)
+		args = append(args, pw...)
 	}
 	args = append(args, "unblock-domain", name)
-	return a.execGuard(args, name+" is no longer filtered.")
+	return a.execGuard(args, withFirefoxNote(name+" is no longer filtered."))
+}
+
+// withFirefoxNote adds the one caveat a site block still has. Chrome, Edge and
+// Brave are made to re-read their policy as part of applying the change, so they
+// honour it within a second or two - but Firefox reads its policies only when it
+// starts and offers no way to reload them, so a change made while Firefox is open
+// does not reach it until it is restarted. Saying so only when Firefox is actually
+// running keeps the message off the machines it does not apply to.
+func withFirefoxNote(msg string) string {
+	if !policy.FirefoxRunning() {
+		return msg
+	}
+	return msg + " Firefox applies this the next time it starts."
 }
 
 // BlockApp adds an application to the block list. Free of the password - it only
@@ -354,15 +411,12 @@ func (a *App) UnblockApp(kind, value, password string) ActionResult {
 		return ActionResult{Message: "No application selected."}
 	}
 	args := []string{"-config", a.cfgPath}
-	if !scm.IsDisabled() {
-		hash, ok := scm.GetPasswordHash()
-		if !ok {
-			return ActionResult{Message: "No password is set. Install protection first."}
+	if !scm.IsPaused() {
+		pw, bad := passwordArgs(password, "unblocking an application")
+		if bad != nil {
+			return *bad
 		}
-		if !auth.Verify(hash, password) {
-			return ActionResult{Message: "Incorrect password."}
-		}
-		args = append(args, "-password", password)
+		args = append(args, pw...)
 	}
 	if k := strings.TrimSpace(kind); k != "" {
 		args = append(args, "-kind", k)
@@ -422,10 +476,14 @@ func capitalize(s string) string {
 // identifiers the rest of the window uses - naming none of them governs
 // everything, which is what the form's "Everything" choice sends.
 type BlockDraft struct {
-	Label      string   `json:"label"`
-	Days       []string `json:"days"`
-	From       string   `json:"from"`
-	To         string   `json:"to"`
+	Label string   `json:"label"`
+	Days  []string `json:"days"`
+	From  string   `json:"from"`
+	To    string   `json:"to"`
+	// Limit is a daily time budget as the form collects it: "45m", "1h30m", or a
+	// number of minutes. Empty means no limit. It may only cover applications, and
+	// the guard refuses it otherwise - see policy.Config.validateLimits.
+	Limit      string   `json:"limit"`
 	Extensions []string `json:"extensions"`
 	Domains    []string `json:"domains"`
 	Apps       []string `json:"apps"`
@@ -449,17 +507,40 @@ func (a *App) CreateBlock(draft BlockDraft, password string) ActionResult {
 	if scheduled && (strings.TrimSpace(draft.From) == "" || strings.TrimSpace(draft.To) == "") {
 		return ActionResult{Message: "A window needs both a start and an end time."}
 	}
+	limit := strings.TrimSpace(draft.Limit)
+	if limit != "" {
+		// Answer both of these here rather than spending a UAC prompt and a password
+		// to be told the same thing. The guard re-checks both - it has to, since the
+		// window is not the only way in - but being refused after typing a password
+		// is a worse experience than being refused before.
+		if _, err := policy.ParseLimit(limit); err != nil {
+			return ActionResult{Message: capitalize(err.Error())}
+		}
+		if len(draft.Apps) == 0 {
+			return ActionResult{Message: "A time limit has to cover applications: the guard measures use by watching " +
+				"programs run, and a browser never reports back how long a site was open."}
+		}
+		if len(draft.Extensions) > 0 || len(draft.Domains) > 0 {
+			return ActionResult{Message: "A time limit can only cover applications, not extensions or sites."}
+		}
+	}
+
+	// A limit narrows enforcement exactly as a window does - an application that was
+	// blocked outright becomes one you may use for forty-five minutes - so it is
+	// gated the same way. policy.Block.Narrows is the one place that decides.
+	narrows := scheduled || limit != ""
 
 	args := []string{"-config", a.cfgPath}
-	if scheduled && !scm.IsDisabled() {
-		hash, ok := scm.GetPasswordHash()
-		if !ok {
-			return ActionResult{Message: "No password is set. Install protection first."}
+	if narrows && !scm.IsPaused() {
+		reason := "putting protection on a schedule"
+		if !scheduled {
+			reason = "allowing a daily amount of time"
 		}
-		if !auth.Verify(hash, password) {
-			return ActionResult{Message: "Incorrect password."}
+		pw, bad := passwordArgs(password, reason)
+		if bad != nil {
+			return *bad
 		}
-		args = append(args, "-password", password)
+		args = append(args, pw...)
 	}
 	args = append(args, "-label", draft.Label)
 	if scheduled {
@@ -467,6 +548,9 @@ func (a *App) CreateBlock(draft BlockDraft, password string) ActionResult {
 		if len(draft.Days) > 0 {
 			args = append(args, "-days", strings.Join(draft.Days, ","))
 		}
+	}
+	if limit != "" {
+		args = append(args, "-limit", limit)
 	}
 	// Naming nothing governs every catalog, so the flags are only passed when the
 	// form actually chose something.
@@ -482,7 +566,10 @@ func (a *App) CreateBlock(draft BlockDraft, password string) ActionResult {
 	args = append(args, "add-block")
 
 	msg := "Created. It is always on, so you can lock it."
-	if scheduled {
+	switch {
+	case limit != "":
+		msg = "Created. That much is allowed each day, and it is blocked once the time is used up."
+	case scheduled:
 		msg = "Created. What it governs is now enforced only during those windows."
 	}
 	return a.execGuard(args, msg)
@@ -498,15 +585,12 @@ func (a *App) RemoveBlock(id, password string) ActionResult {
 		return ActionResult{Message: "No block selected."}
 	}
 	args := []string{"-config", a.cfgPath}
-	if !scm.IsDisabled() {
-		hash, ok := scm.GetPasswordHash()
-		if !ok {
-			return ActionResult{Message: "No password is set. Install protection first."}
+	if !scm.IsPaused() {
+		pw, bad := passwordArgs(password, "removing a scheduled block")
+		if bad != nil {
+			return *bad
 		}
-		if !auth.Verify(hash, password) {
-			return ActionResult{Message: "Incorrect password."}
-		}
-		args = append(args, "-password", password)
+		args = append(args, pw...)
 	}
 	args = append(args, "remove-block", id)
 	return a.execGuard(args, "Removed. What it governed is enforced around the clock again.")
@@ -537,21 +621,77 @@ func (a *App) LockBlock(id, until string) ActionResult {
 // instant feedback, then re-verified by the elevated guard so the gate can't be
 // bypassed from the renderer). Enable turns it back on; because that only
 // strengthens protection it needs admin (a UAC prompt) but no password.
-func (a *App) Disable(password string) ActionResult {
+// A locked block refuses the pause outright, before the password is even looked
+// at - a lock is the one promise the password is not supposed to override, and a
+// pause would lift everything it holds. See policy.CheckPausable. The elevated
+// guard checks this again, so answering here is a courtesy rather than the gate:
+// it saves a UAC prompt spent to be told the same thing, the way BlockDomain
+// answers an unusable site immediately.
+//
+// The config is re-read rather than trusted from the last GetStatus, because a
+// stale copy could refuse a pause that is actually allowed, and being told no
+// when the answer is yes is the one failure mode here with no recourse.
+// pauseFor is how long the pause lasts - "30m", "2h", "1d", or a time - and an
+// empty string pauses until somebody turns protection back on. It is passed
+// through to the guard rather than parsed here, so the window accepts exactly
+// what the CLI does and one place decides what a duration means.
+func (a *App) Disable(password, pauseFor string) ActionResult {
+	cfg := a.cfg
+	if fresh, _, err := policy.LoadTrusted(a.cfgPath); err == nil {
+		cfg = fresh
+	}
+	if err := policy.CheckPausable(cfg, time.Now()); err != nil {
+		// Recorded here because it is recorded nowhere else: this refusal never
+		// reaches the elevated guard, so without this the attempt leaves no trace.
+		activity.Record(activity.Event{Kind: activity.PauseRefused, Detail: err.Error()})
+		return ActionResult{Message: capitalize(err.Error()) +
+			". Uninstalling still works, and takes the blocks with it."}
+	}
 	hash, ok := scm.GetPasswordHash()
 	if !ok {
 		return ActionResult{Message: "No uninstall password is set. Install protection with the installer (or `guard install-service`) first."}
 	}
 	if !auth.Verify(hash, password) {
+		activity.Record(activity.Event{Kind: activity.PasswordFailed, Target: "pausing protection"})
 		return ActionResult{Message: "Incorrect password."}
 	}
-	return a.execGuard([]string{"-config", a.cfgPath, "-password", password, "disable"}, "Protection disabled.")
+	args := []string{"-config", a.cfgPath, "-password", password}
+	msg := "Protection paused until you turn it back on."
+	if d := strings.TrimSpace(pauseFor); d != "" {
+		args = append(args, "-for", d)
+		msg = "Protection paused. It turns itself back on when the time is up."
+	}
+	args = append(args, "disable")
+	return a.execGuard(args, msg)
 }
 
 // Enable restores protection. Free (no password) - it only strengthens - but
 // still elevated (UAC).
 func (a *App) Enable() ActionResult {
 	return a.execGuard([]string{"-config", a.cfgPath, "enable"}, "Protection enabled.")
+}
+
+// PauseChoice is one option in the window's pause menu. Spec is what gets passed
+// to the guard as -for; an empty Spec is the indefinite pause.
+type PauseChoice struct {
+	Label string `json:"label"`
+	Spec  string `json:"spec"`
+}
+
+// PauseChoices are the durations the window offers.
+//
+// A bounded pause is listed first and an indefinite one last, deliberately. An
+// indefinite pause is the one that goes wrong by accident - somebody turns
+// protection off to sort something out and never turns it back on - and it is the
+// only option here that needs a person to remember anything.
+func (a *App) PauseChoices() []PauseChoice {
+	return []PauseChoice{
+		{Label: "15 minutes", Spec: "15m"},
+		{Label: "1 hour", Spec: "1h"},
+		{Label: "4 hours", Spec: "4h"},
+		{Label: "Until tomorrow", Spec: "1d"},
+		{Label: "Until I turn it back on", Spec: ""},
+	}
 }
 
 // EnableExtension starts locking an extension. Free (no password) since it only
@@ -573,18 +713,40 @@ func (a *App) DisableExtension(name, password string) ActionResult {
 		return ActionResult{Message: "No extension selected."}
 	}
 	args := []string{"-config", a.cfgPath}
-	if !scm.IsDisabled() {
-		hash, ok := scm.GetPasswordHash()
-		if !ok {
-			return ActionResult{Message: "No password is set. Install protection first."}
+	if !scm.IsPaused() {
+		pw, bad := passwordArgs(password, "turning an extension off")
+		if bad != nil {
+			return *bad
 		}
-		if !auth.Verify(hash, password) {
-			return ActionResult{Message: "Incorrect password."}
-		}
-		args = append(args, "-password", password)
+		args = append(args, pw...)
 	}
 	args = append(args, "disable-extension", name)
 	return a.execGuard(args, name+" is no longer locked.")
+}
+
+// passwordArgs verifies the uninstall password for an action that weakens
+// protection and returns the flag pair to hand to the elevated guard. The
+// returned result is nil when the password checked out; otherwise it is what the
+// caller should return.
+//
+// It exists so every such action gates and records identically. The window is
+// where a failed attempt has to be recorded: it verifies locally for instant
+// feedback and never launches the guard when the password is wrong, so nothing
+// further down the chain ever learns the attempt happened. what names the action
+// in the record.
+//
+// The elevated guard re-verifies the password itself, so this staying in the
+// renderer is a convenience, not the gate.
+func passwordArgs(password, what string) ([]string, *ActionResult) {
+	hash, ok := scm.GetPasswordHash()
+	if !ok {
+		return nil, &ActionResult{Message: "No password is set. Install protection first."}
+	}
+	if !auth.Verify(hash, password) {
+		activity.Record(activity.Event{Kind: activity.PasswordFailed, Target: what})
+		return nil, &ActionResult{Message: "Incorrect password."}
+	}
+	return []string{"-password", password}, nil
 }
 
 // execGuard runs guard.exe elevated (a UAC prompt), waits, and maps the outcome
@@ -729,4 +891,105 @@ func defaultConfigPath() string {
 func fileExists(p string) bool {
 	_, err := os.Stat(p)
 	return err == nil
+}
+
+// ActivityRow is one entry in the Recent activity list.
+//
+// When and Text are pre-rendered here rather than in the frontend, for the same
+// reason policy renders a block's schedule summary: the window and
+// `guard activity` should describe the same event in the same words. Severity is
+// what the row is coloured by - see activity.Severity* - so the list separates
+// "protection did its job" from "protection was weakened" at a glance, which is
+// the distinction someone scanning it actually cares about.
+type ActivityRow struct {
+	When     string `json:"when"`
+	Text     string `json:"text"`
+	Detail   string `json:"detail"`
+	Actor    string `json:"actor"`
+	Severity string `json:"severity"`
+}
+
+// How many entries the list shows. defaultActivityRows is what the window asks
+// for on open; maxActivityRows caps what it can ask for, so a frontend bug cannot
+// turn one call into a walk over the whole log.
+const (
+	defaultActivityRows = 12
+	maxActivityRows     = 200
+)
+
+// GetActivity returns the recent activity entries, newest first.
+//
+// Read-only and admin-free, deliberately: the record is meant to be readable by
+// everyone it is about, and needing elevation to see it would make that
+// transparency theoretical.
+func (a *App) GetActivity(limit int) []ActivityRow {
+	if limit <= 0 {
+		limit = defaultActivityRows
+	}
+	if limit > maxActivityRows {
+		limit = maxActivityRows
+	}
+	events := activity.Recent(limit)
+	now := time.Now()
+	rows := make([]ActivityRow, 0, len(events))
+	for _, ev := range events {
+		rows = append(rows, ActivityRow{
+			When:     friendlyTime(ev.Time.Local(), now),
+			Text:     activity.Describe(ev),
+			Detail:   ev.Detail,
+			Actor:    ev.Actor,
+			Severity: ev.Severity(),
+		})
+	}
+	return rows
+}
+
+// ActivityPath is where the full record is kept, shown under the list. A parent
+// who wants to keep or read the raw record should not have to be told where to
+// look.
+func (a *App) ActivityPath() string { return activity.Path() }
+
+// friendlyTime renders a timestamp the way someone reading a list of recent
+// events wants it: the time alone for today, the weekday within the last week,
+// and a date once it is older than that. An absolute date on every row would
+// make "this morning" and "last month" look alike at a glance, which is the one
+// distinction the list is scanned for.
+func friendlyTime(t, now time.Time) string {
+	switch days := calendarDaysBetween(t, now); {
+	case days <= 0:
+		return t.Format("15:04")
+	case days == 1:
+		return "Yesterday " + t.Format("15:04")
+	case days < 7:
+		return t.Format("Mon 15:04")
+	default:
+		return t.Format("2 Jan 15:04")
+	}
+}
+
+// calendarDaysBetween counts whole days from t's calendar date to now's.
+//
+// It compares midnights rather than using Truncate, which rounds against the
+// epoch in UTC and so puts the day boundary at the zone's offset instead of at
+// local midnight - on a +08:00 machine everything recorded before eight in the
+// morning would be dated to the day before. The half-day added before dividing
+// absorbs the 23- and 25-hour days daylight saving produces, which would
+// otherwise shift a label by one twice a year.
+func calendarDaysBetween(t, now time.Time) int {
+	midnight := func(v time.Time) time.Time {
+		y, m, d := v.Date()
+		return time.Date(y, m, d, 0, 0, 0, 0, v.Location())
+	}
+	return int((midnight(now).Sub(midnight(t)) + 12*time.Hour) / (24 * time.Hour))
+}
+
+// pausedUntilLabel renders a pause deadline for the window, and is empty both
+// when protection is on and when the pause has no deadline - the frontend tells
+// those apart by the paused flag, and says "until you turn it back on" for the
+// second.
+func pausedUntilLabel(p scm.PauseState) string {
+	if !p.Paused || p.Until.IsZero() {
+		return ""
+	}
+	return p.Until.Local().Format("Mon 2 Jan, 15:04")
 }

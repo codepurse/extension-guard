@@ -102,29 +102,29 @@ func TestWindowUnparseableIsInactive(t *testing.T) {
 	}
 }
 
-func TestBlockWithNoWindowsIsAlwaysActive(t *testing.T) {
+func TestBlockWithNoWindowsIsAlwaysInWindow(t *testing.T) {
 	b := Block{ID: "always"}
 	for day := 17; day <= 23; day++ {
 		for _, hour := range []int{0, 6, 12, 23} {
-			if !b.Active(at(day, hour, 0)) {
+			if !b.InWindow(at(day, hour, 0)) {
 				t.Fatalf("a block with no windows should always be active (day %d, hour %d)", day, hour)
 			}
 		}
 	}
 }
 
-func TestBlockActiveIfAnyWindowMatches(t *testing.T) {
+func TestBlockInWindowIfAnyWindowMatches(t *testing.T) {
 	b := Block{ID: "split", Windows: []Window{
 		{Days: []string{"mon"}, Start: "09:00", End: "12:00"},
 		{Days: []string{"mon"}, Start: "14:00", End: "17:00"},
 	}}
-	if !b.Active(at(17, 10, 0)) {
+	if !b.InWindow(at(17, 10, 0)) {
 		t.Error("morning window should be active")
 	}
-	if b.Active(at(17, 13, 0)) {
+	if b.InWindow(at(17, 13, 0)) {
 		t.Error("the lunch gap should not be active")
 	}
-	if !b.Active(at(17, 15, 0)) {
+	if !b.InWindow(at(17, 15, 0)) {
 		t.Error("afternoon window should be active")
 	}
 }

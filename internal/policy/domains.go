@@ -25,6 +25,13 @@ import (
 // What this does not cover, stated plainly: a browser the guard does not support,
 // and any non-browser application. Those need enforcement below the browser,
 // which is the app/network work still to come.
+//
+// Writing the policy is only half of it: a browser has to re-read it. Chromium is
+// nudged into doing that immediately (see gprefresh_windows.go), and then applies
+// the change to the next navigation - an already-open tab keeps showing what it
+// loaded until it is reloaded. Firefox reads its policies only at startup and has
+// no reload path, so a change made while it is running waits for the next start,
+// which is why the window and the CLI say so when Firefox is open.
 
 // Domain is one blocked site. Name is a hostname; blocking it also blocks every
 // subdomain. Disabled keeps it in the list but stops enforcing it, exactly as it

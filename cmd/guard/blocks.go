@@ -7,9 +7,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/codepurse/extension-guard/internal/activity"
 	"github.com/codepurse/extension-guard/internal/enforce"
 	"github.com/codepurse/extension-guard/internal/policy"
 	"github.com/codepurse/extension-guard/internal/scm"
+	"github.com/codepurse/extension-guard/internal/usage"
 )
 
 // This file holds the commands for scheduled blocks: listing them, locking one
@@ -23,16 +25,31 @@ import (
 // blocksCmd lists each block, whether it is enforcing right now, and its lock.
 // Read-only and admin-free, so it can be run to check a schedule at any time.
 func blocksCmd(cfg policy.Config) {
+	now := time.Now()
+	blocksAt(cfg, now, cfg.SpentAt(now))
+}
+
+// blocksAt is the listing itself, for a given moment and a given set of spent
+// budgets. Both are parameters rather than read here, because what a block's row
+// says depends on the hour and on how much of a limit is left, and a test that had
+// to arrange the real clock and the real ledger to check the wording would end up
+// checking neither.
+func blocksAt(cfg policy.Config, now time.Time, spent policy.Spent) {
 	if len(cfg.Blocks) == 0 {
 		fmt.Println("no blocks configured; every enabled extension is enforced around the clock")
 		return
 	}
-	now := time.Now()
-	fmt.Printf("  %-12s %-8s %-24s %-20s %s\n", "id", "state", "schedule", "extensions", "lock")
+	fmt.Printf("  %-12s %-9s %-22s %-18s %-18s %s\n", "id", "state", "schedule", "governs", "limit", "lock")
 	for _, b := range cfg.Blocks {
+		// Three states rather than two, because a block with a daily limit and budget
+		// left is neither enforcing nor out of window, and calling that "idle" would
+		// read as a fault in the one case where the user most wants to know it isn't.
 		state := "idle"
-		if b.Active(now) {
-			state = "active"
+		switch {
+		case b.EnforcingAt(now, spent):
+			state = "enforcing"
+		case b.HasLimit() && b.InWindow(now):
+			state = "in budget"
 		}
 		lock := "-"
 		if locked, until := b.LockedAt(now); locked {
@@ -42,13 +59,33 @@ func blocksCmd(cfg policy.Config) {
 				lock = "locked until " + until.Local().Format("Mon 2 Jan 15:04")
 			}
 		}
-		fmt.Printf("  %-12s %-8s %-24s %-20s %s\n",
-			b.ID, state, b.ScheduleSummary(), b.GovernedSummary(), lock)
+		fmt.Printf("  %-12s %-9s %-22s %-18s %-18s %s\n",
+			b.ID, state, b.ScheduleSummary(), b.GovernedSummary(), limitColumn(b, spent), lock)
+	}
+	if spent.Unreadable {
+		fmt.Printf("\nwarning: the usage record at %s could not be read\n", usage.Path())
+		fmt.Println("(every daily limit counts as used up until the guard rewrites it, which it does from its own")
+		fmt.Println(" running count within half a minute, or from zero if it has to be restarted)")
 	}
 	if invalid := cfg.Validate(); invalid != nil {
 		fmt.Printf("\nwarning: %v\n", invalid)
 		fmt.Println("(the schedule is being ignored; every enabled extension stays enforced until this is fixed)")
 	}
+}
+
+// limitColumn renders a block's budget and what is left of it, or "-" for a block
+// without one. Both halves are shown because either alone is the wrong number to
+// read: the budget without the spend does not say whether the app opens right now,
+// and the spend without the budget does not say how close it is.
+func limitColumn(b policy.Block, spent policy.Spent) string {
+	limit, ok := b.LimitFor()
+	if !ok {
+		return "-"
+	}
+	if spent.Unreadable {
+		return policy.HumanDuration(limit) + "/day, unknown"
+	}
+	return fmt.Sprintf("%s of %s left", policy.HumanDuration(b.Remaining(spent)), policy.HumanDuration(limit))
 }
 
 // blockSpec is what the add-block flags describe: one block, with at most one
@@ -59,6 +96,7 @@ type blockSpec struct {
 	label      string
 	days       string // "mon,tue" / "weekdays" / "" for every day
 	from, to   string // "HH:MM"; both empty means an always-on block
+	limit      string // daily budget: "45m", "1h30m", or a number of minutes
 	extensions string // comma-separated names; empty with the others means "everything"
 	domains    string
 	apps       string
@@ -73,6 +111,10 @@ type blockSpec struct {
 // windows weakens protection and takes the password, exactly like unblocking a
 // site. A block with no windows is always on: it cannot weaken anything, so it is
 // free. See policy.Block.Narrows.
+//
+// A daily limit is the same inversion, only more obviously so: an application that
+// was blocked outright becomes one you may use for forty-five minutes, which is
+// exactly the kind of change the password exists to gate.
 func addBlockCmd(cfg policy.Config, cfgPath, id string, spec blockSpec, password string) {
 	block, err := buildBlock(cfg, id, spec)
 	if err != nil {
@@ -92,17 +134,35 @@ func addBlockCmd(cfg policy.Config, cfgPath, id string, spec blockSpec, password
 		fmt.Fprintln(os.Stderr, "(nothing was changed)")
 		os.Exit(1)
 	}
-	if block.Narrows() && !scm.IsDisabled() {
-		requirePassword(password)
+	if block.Narrows() && !scm.IsPaused() {
+		requirePassword(password, "putting protection on a schedule")
 	}
 	writeConfig(cfg, cfgPath)
 	must(enforce.Default().Apply(activeNow(cfg)))
+	activity.Record(activity.Event{
+		Kind:   activity.BlockCreated,
+		Target: blockName(block),
+		Detail: blockDetail(block),
+	})
 
 	fmt.Printf("created block %q: %s, governing %s\n", block.ID, block.ScheduleSummary(), block.GovernedSummary())
-	if block.Narrows() {
+	if limit := block.LimitSummary(); limit != "" {
+		fmt.Printf("(%s allowed, and blocked once that is used up - `guard limits` shows what is left)\n", limit)
+	} else if block.Narrows() {
 		fmt.Println("(what it governs is now enforced only during those windows)")
 	}
 	fmt.Printf("lock it with `guard -until 7d lock %s`\n", block.ID)
+}
+
+// blockDetail describes a block for the activity log. The limit is named where
+// there is one, because "created a block governing Steam" and "created a block
+// allowing 45m of Steam a day" are very different facts to find in a record.
+func blockDetail(b policy.Block) string {
+	detail := b.ScheduleSummary() + ", governing " + b.GovernedSummary()
+	if limit := b.LimitSummary(); limit != "" {
+		detail += ", limited to " + limit
+	}
+	return detail
 }
 
 // buildBlock turns the flags into a block, resolving what it governs against the
@@ -110,9 +170,20 @@ func addBlockCmd(cfg policy.Config, cfgPath, id string, spec blockSpec, password
 func buildBlock(cfg policy.Config, id string, spec blockSpec) (policy.Block, error) {
 	b := policy.Block{
 		Label:      strings.TrimSpace(spec.label),
+		Limit:      strings.TrimSpace(spec.limit),
 		Extensions: splitAndTrim(spec.extensions),
 		Domains:    splitAndTrim(spec.domains),
 		Apps:       splitAndTrim(spec.apps),
+	}
+	if b.HasLimit() {
+		// Normalized here rather than left as typed, so that "45" becomes "45m" in the
+		// config and the stored block says what it means. It also fails now, with the
+		// flag in front of the user, instead of inside Validate a few lines later.
+		limit, err := policy.ParseLimit(b.Limit)
+		if err != nil {
+			return policy.Block{}, err
+		}
+		b.Limit = policy.HumanDuration(limit)
 	}
 	b.ID = strings.TrimSpace(id)
 	if b.ID == "" {
@@ -199,11 +270,16 @@ func removeBlockCmd(cfg policy.Config, cfgPath, id, password string) {
 		fmt.Fprintln(os.Stderr, "(nothing was changed)")
 		os.Exit(1)
 	}
-	if !scm.IsDisabled() {
-		requirePassword(password)
+	if !scm.IsPaused() {
+		requirePassword(password, "removing a scheduled block")
 	}
 	writeConfig(proposed, cfgPath)
 	must(enforce.Default().Apply(activeNow(proposed)))
+	activity.Record(activity.Event{
+		Kind:   activity.BlockRemoved,
+		Target: blockName(block),
+		Detail: block.GovernedSummary() + " is enforced around the clock again",
+	})
 	fmt.Printf("removed block %q; %s is enforced around the clock again\n", block.ID, block.GovernedSummary())
 }
 
@@ -248,6 +324,11 @@ func lockCmd(cfg policy.Config, cfgPath, id, until string) {
 		os.Exit(1)
 	}
 	writeConfig(cfg, cfgPath)
+	activity.Record(activity.Event{
+		Kind:   activity.BlockLocked,
+		Target: blockName(block),
+		Detail: "until " + deadline.Local().Format(time.RFC1123),
+	})
 	fmt.Printf("%s is locked until %s\n", block.ID, deadline.Local().Format(time.RFC1123))
 	fmt.Println("it cannot be weakened or removed before then, with or without the password")
 }
@@ -278,7 +359,7 @@ func commitCmd(cfgPath, password string) {
 			os.Exit(1)
 		}
 	}
-	requirePassword(password)
+	requirePassword(password, "committing an edited config")
 	writeConfig(proposed, cfgPath)
 
 	fmt.Println("config committed")
@@ -319,4 +400,14 @@ func parseUntil(s string, now time.Time) (time.Time, error) {
 		}
 	}
 	return time.Time{}, fmt.Errorf("cannot read deadline %q (try 72h, 7d, 2026-09-01, or 2026-09-01T17:00)", s)
+}
+
+// blockName is what a block is called in the activity log: the name the user gave
+// it, falling back to the derived id. The log is read by a person, and "Evenings"
+// says more than "evenings-2".
+func blockName(b policy.Block) string {
+	if name := strings.TrimSpace(b.Label); name != "" {
+		return name
+	}
+	return b.ID
 }

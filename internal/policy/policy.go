@@ -90,6 +90,13 @@ type Config struct {
 	// with a given title. omitempty for the same reason as the two above. See
 	// apps.go.
 	Apps []App `json:"apps,omitempty"`
+	// ResetAt is when a day rolls over for the daily limits, as "HH:MM" in local
+	// time. Empty means midnight (DefaultResetAt). It is a machine-wide setting
+	// rather than a per-block one deliberately: "the day starts at four in the
+	// morning" is a fact about the person using the computer, and letting two
+	// blocks disagree about when today is would buy nothing but a way to be
+	// confused. See limits.go.
+	ResetAt string `json:"resetAt,omitempty"`
 	// AutoUpdate controls how the service reacts to a newer release:
 	// "notify" (default) logs availability, "apply" downloads and installs it
 	// silently, "off" disables the periodic check. See UpdateMode. Silent "apply"
@@ -220,6 +227,7 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 		Blocks     []Block     `json:"blocks"`
 		Domains    []Domain    `json:"domains"`
 		Apps       []App       `json:"apps"`
+		ResetAt    string      `json:"resetAt"`
 		AutoUpdate string      `json:"autoUpdate"`
 	}
 	if err := json.Unmarshal(data, &multi); err != nil {
@@ -233,6 +241,7 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 		c.Blocks = multi.Blocks
 		c.Domains = multi.Domains
 		c.Apps = multi.Apps
+		c.ResetAt = multi.ResetAt
 		c.AutoUpdate = multi.AutoUpdate
 		return nil
 	}

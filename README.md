@@ -34,6 +34,9 @@ not two — see the **Linux** section below.
 | 7 | **Linux** port (managed-policy files + systemd) | 🟡 code-complete; engine compile-verified, UI/scripts need a Linux box |
 | 8 | **Multi-extension** config (lock several extensions at once) | ✅ done |
 | 9 | **In-app updater** (GitHub Releases: auto-check + one-click update) | ✅ done (silent auto-apply gated on signing) |
+| 10 | **Activity log** (append-only local record + "Recent activity" in the window) | ✅ done |
+| 11 | **Held pause** (protection off as a state the service keeps, with a deadline it resumes at) | ✅ done |
+| 11 | **Time limits** (daily budget per block, counted by watching processes) | ✅ done |
 
 ## Prerequisites — Windows build (via winget)
 
@@ -131,10 +134,11 @@ is active, release binaries are unsigned, which is why the warnings above appear
 ### Status window (day-to-day)
 
 `extension-guard-status.exe` shows whether protection is **Active / Paused / Inactive**,
-how many browsers are locked, and the service state. To pause or resume, type the
-password and click **Disable protection** / **Enable protection** — each pops a
-Windows **UAC** prompt, and the guard re-verifies the password itself, so the
-button can't be bypassed from the UI.
+how many browsers are locked, and the service state. To pause or resume, click
+**Disable protection** / **Enable protection** — each pops a Windows **UAC**
+prompt, and the guard re-verifies the password itself, so the button can't be
+bypassed from the UI. Turning protection off asks **how long for** as well as for
+the password; see [Pausing protection](#pausing-protection).
 
 The **Protected extensions** list lets you turn each configured extension on or
 off after install: turning one **on** is free (it only adds protection), turning
@@ -618,9 +622,14 @@ locked so it cannot be released early. Add a `blocks` array alongside
   `end` at or before `start` runs **past midnight**: `22:00`–`06:00` on `fri`
   covers Friday night into Saturday morning. A block with no windows is simply
   always on.
+- **`limit`** — a daily time budget (`"45m"`, `"1h30m"`, or a bare number of
+  minutes). The block enforces nothing until that much time has been used, and
+  blocks from then until the day resets. It may only cover **apps** — see *Time
+  limits* below.
 - **`lockedUntil`** — RFC 3339. While it is in the future the block cannot be
   changed or removed **even with the uninstall password**. Capped at 90 days, so
-  a mistyped year cannot lock someone out for decades.
+  a mistyped year cannot lock someone out for decades. A lock covers the `limit`
+  too: it cannot be raised, lowered, added, or dropped while the lock holds.
 
 A schedule only ever *narrows* enforcement. An extension no block governs is
 enforced around the clock exactly as before, and an extension you switched off
@@ -630,6 +639,7 @@ install unchanged on upgrade.
 
 ```sh
 guard blocks                    # what is configured, what is enforcing now, what is locked
+guard limits                    # each daily limit and how much of today is left
 guard -until 72h lock work      # also 7d, 2026-09-01, 2026-09-01T17:00
 guard commit                    # adopt your edits to extension-ids.json
 
@@ -691,7 +701,12 @@ stays locked until you fix it. `guard blocks` and `guard verify` both say so.
 A lock means the commitment cannot be walked back early through the guard: not
 by editing the file, not with the password, not by rebooting (the deadline lives
 in the same SYSTEM-owned state as everything else, and the service enforces from
-boot). It does **not** survive an authorized uninstall, which still needs only
+boot), and **not by pausing protection** — while any block is locked,
+`guard disable` and the window's Disable button both refuse, and the attempt is
+recorded. Pausing would otherwise be the cheapest way out there is: it lifts
+everything the lock was holding, needs only the password, and leaves the
+commitment nominally in place during exactly the window it is not being kept.
+It does **not** survive an authorized uninstall, which still needs only
 the password. That is the honest ceiling, and it is the same one described in
 `docs/pc-version.md` — the escape hatch is deliberate, because software that
 cannot be removed at all is malware.
@@ -701,3 +716,241 @@ that browser are force-installed. See `docs/pc-version.md` for the full
 per-browser publishing rules — including Edge's "unmanaged devices can only
 force-install from the Edge Add-ons store" restriction, which is why Edge needs
 its own store listing.
+
+## Time limits
+
+A block can carry a **daily budget** instead of - or as well as - a timetable:
+
+```json
+{
+  "resetAt": "04:00",
+  "apps": [{ "kind": "exe", "value": "steam.exe" }],
+  "blocks": [
+    { "id": "games", "label": "Games", "apps": ["steam.exe"], "limit": "45m" }
+  ]
+}
+```
+
+That block enforces nothing while there is time left, and blocks Steam the moment
+the forty-five minutes are gone - closing it if it is running, and refusing to let
+it start after that - until the day rolls over.
+
+```sh
+guard limits                                        # allowed, used, and the state of each limit
+guard -label Games -apps steam.exe -limit 45m add-block
+guard -label Evenings -apps steam.exe -limit 1h -days weekdays -from 18:00 -to 22:00 add-block
+guard -until 7d lock games                          # the budget cannot be raised for a week
+```
+
+`-limit` accepts `45m`, `1h30m`, `1.5h`, or a bare number of minutes, and is capped
+at 24h - a budget longer than the day it resets in could never be reached, which
+would look like protection and be none. In the **status window** the New block form
+has a *Daily limit* field, and a limited block's row reads `33m left today`,
+`Used up`, or `Idle` rather than using one badge for three different states.
+
+**The gate is inverted, like a schedule's, and more obviously so.** An app that was
+blocked outright becomes one you may use for forty-five minutes, so creating a
+limit needs the password. `policy.Block.Narrows` is the one place that decides, and
+the elevated guard re-checks it.
+
+### What is measured, and what is not
+
+- **Apps only.** A limit needs usage measured, and the guard can only measure what
+  it can watch: the process list, once a second, in the same sweep that closes
+  blocked apps. A blocked *site* is enforced by handing the browser a policy and
+  trusting it - nothing comes back - so "thirty minutes of Reddit" would be a
+  promise nothing here could keep. A limit on extensions or domains is **refused by
+  `Validate`**, not accepted and quietly ignored.
+- **Running, not focused.** A game left open in the background spends its budget.
+  Window focus is not visible from a service (session 0 cannot see the user's
+  desktop), so measuring it would depend on the session helper being alive - and a
+  limit that stops counting when nobody is signed in has an obvious way around it.
+  Over-counting fails towards the commitment; under-counting fails away from it.
+- **One budget per block**, shared by everything it covers: "an hour of games", not
+  "an hour of each game". One app per block gives the per-app version for free.
+- **Out-of-window time is not charged.** A block with both a window and a limit
+  reads as "forty-five minutes *during these hours*", so use at an hour the block
+  does not apply to spends nothing.
+- **`resetAt`** (top level, `"HH:MM"`, default midnight) is when the day rolls over.
+  A 4 a.m. reset matches what a person means by "a day" better than the calendar
+  does - somebody still up at 00:30 should not be handed a fresh hour mid-session.
+
+### Where the count lives
+
+`C:\ProgramData\ExtensionGuard\usage.json` (`/var/lib/extension-guard` on
+Linux): one small JSON object, `SYSTEM` and `Administrators` full control, **Users
+read**.
+
+Read matters - the status window is unprivileged and has to be able to show what is
+left, and being able to see where you stand is most of the difference between a
+limit and an ambush. Users get *no* write, not even the append the activity log
+grants them, because there is no unprivileged writer here.
+
+The counters are held in memory and flushed every 30s, plus immediately whenever a
+limit is reached, so the ledger is not rewritten once a second for a number that
+matters at one moment. A power cut can therefore hand back up to half a minute,
+once. The service loads the file on start, so restarting it does not hand back the
+day.
+
+Three things it deliberately refuses to be fooled by:
+
+- **An unreadable ledger fails closed** - every limit counts as spent, because the
+  alternative makes "corrupt the file" mean "reset my limits". Failing closed is a
+  *moment*, not a trap: the service rewrites the file from its own running count at
+  the next flush, and rebuilds it from zero on startup if that is where it finds it -
+  it has to, because a blocked app cannot run, so nothing would ever be charged and
+  nothing flushed. A rebuild from zero is written to the activity log
+  (`usage.reset`), because it is a budget coming back and every other way that can
+  happen is recorded too. The window and `guard limits` both say what happened
+  rather than showing a limit that looks broken.
+- **The clock going back** does not un-spend time: the ledger remembers the latest
+  day it has recorded and refuses to serve an earlier one.
+- **A long gap between observations** is capped, so a machine that slept for eight
+  hours is not charged for them.
+
+And two it cannot. An administrator can **delete** the file, and a missing ledger
+is indistinguishable from a fresh install; and setting the clock *forward* rolls
+into a day nothing has been spent on. Both are the same class of hole as stopping
+the service, and are answered the same way - the watchdog, and the fact that they
+have to be done again every day. (Moving the clock forward and back again does not
+help: the ledger's day only ever advances, so the day you left is not the one you
+return to.) The honest ceiling is the one in `docs/pc-version.md`, and it has not
+moved.
+
+## Pausing protection
+
+Protection can be turned off without uninstalling — but a pause is a **state the
+guard holds**, not a teardown. The service stays installed, stays running and
+stays watched by the watchdog; it simply enforces nothing.
+
+That distinction is the whole feature. A pause used to *be* an uninstall, and
+with the service gone there was nothing left to notice a deadline, nothing to
+resume, nothing re-asserting the trusted config, and nothing writing the activity
+log — during exactly the window protection was off. A pause with a deadline is
+only worth anything if something outlives it.
+
+```powershell
+guard -for 30m disable    # back on in half an hour, by itself
+guard -for 1d disable     # back on tomorrow
+guard disable             # off until you turn it back on
+guard enable              # end a pause now
+```
+
+`-for` takes what `-until` takes: `30m`, `2h`, `1d`, or a time like
+`2026-09-01T17:00`. Pausing needs the password; ending a pause only strengthens
+protection, so it needs admin and no password. In the status window, **Disable
+protection** asks for a duration and the password together, and a bounded choice
+is preselected — an indefinite pause is the one that goes wrong by accident.
+
+**A bounded pause ends by the clock, not by anything running.** The deadline is
+stored, and once it has passed every part of the guard reads protection as on
+again — even if the service was killed, or the machine was off for a week. The
+service noticing is how *enforcement* catches up, usually within a few seconds;
+it is not how the pause ends. A pause value that cannot be read at all also means
+protection is on, so a corrupted deadline fails towards being protected.
+
+**A locked block refuses a pause outright.** See
+[What a lock is and is not](#what-a-lock-is-and-is-not).
+
+While paused, the window shows when protection comes back, and the activity log
+records the pause and its deadline — along with anything that happens during it.
+
+## Activity log
+
+Every other part of the app answers *what is enforced right now*. The activity log
+answers *what happened* — which is the question that matters when nobody was at the
+machine. A refused launch at two in the morning, a pause nobody lifted, a config
+edit the service reverted: each of those was invisible the moment it scrolled past.
+
+The **Recent activity** list near the top of the status window shows the latest
+entries, and `guard activity` prints them:
+
+```powershell
+guard activity            # the last 30 entries, newest first
+guard -n 200 activity     # reach further back
+```
+
+```
+  2026-08-20 21:50:31  Protection paused [Alfon]
+  2026-08-20 02:40:00  Settings were changed outside the app; restored what is enforced - noticed on the periodic check [service]
+  2026-08-20 01:15:00  Wrong password entered for unblocking an application [kid]
+  2026-08-20 01:12:09  Closed steam.exe - matched the rule for Steam [service]
+  2026-08-19 23:31:44  Blocked a launch of steam.exe [kid]
+```
+
+Reading it needs **no admin and no password**. That is deliberate: the record is
+meant to be readable by everyone it is about, and needing elevation to see it
+would make that transparency theoretical.
+
+### What is recorded
+
+| Event | Written when |
+|-------|--------------|
+| `launch.blocked` | a blocked application was started, and refused before it opened |
+| `app.closed` | something already running matched a rule and was closed |
+| `tamper.config` | `extension-ids.json` was edited behind the guard's back, and the trusted copy was restored |
+| `tamper.policy` | a browser policy key was changed, and the guard put it back |
+| `protection.installed` `.removed` `.paused` `.resumed` | protection as a whole was turned on or off |
+| `pause.refused` | somebody tried to pause protection while a block was locked |
+| `service.started` `.stopped` | the guard service came up or went down |
+| `domain.blocked` `.unblocked` | a site was added to, or lifted from, the block list |
+| `app.blocked` `.unblocked` | an application rule was added or lifted |
+| `extension.enabled` `.disabled` | an extension started or stopped being locked |
+| `block.created` `.removed` `.locked` | a scheduled block was created, deleted, or locked |
+| `limit.reached` | a block's daily time budget ran out, so what it covers is blocked until the reset |
+| `usage.reset` | the record of today's usage was unreadable, so the daily counts were started again |
+| `password.changed` | the uninstall password was changed |
+| `password.failed` | a wrong password was entered — and which action it was for |
+| `update.applied` | the binaries were swapped for a newer release |
+| `log.rotated` | the log passed its size cap, and older entries were moved aside |
+
+Each entry also records **who**: the signed-in account for anything done at the
+keyboard, or `service` / `agent` for the guard's own doing. For an action that
+weakens protection, who did it is most of the point of writing it down.
+
+Nothing about browsing is recorded — no URLs, no page content. The log holds the
+guard's own actions. See [PRIVACY.md](PRIVACY.md).
+
+Repeats collapse. The app sweep runs about once a second, so an application that
+relaunches itself is recorded once every five minutes rather than sixty times a
+minute, and corrected tamper is recorded at most once a minute.
+
+The status window colours each row by what it means rather than by which
+subsystem produced it: green for protection doing its job, amber for protection
+being weakened — or somebody trying, which is why a failed password is amber.
+
+### Where it lives, and how tamper-resistant it is
+
+`C:\ProgramData\ExtensionGuard\activity.jsonl` on Windows — one JSON object per
+line, appended and never rewritten. On Linux,
+`/var/log/extension-guard/activity.jsonl`.
+
+The Windows permissions are the interesting part:
+
+| Who | Rights |
+|-----|--------|
+| SYSTEM, Administrators | full control |
+| Users | read, and **append** — not write, not delete |
+
+Read is deliberate, for the transparency reason above. Append is a narrow
+concession, and it buys the single most valuable event: a refused launch is
+reported by a handler Windows starts in the **blocked user's own unprivileged
+session** (see the *Blocked apps* section), so without append it could not record
+itself at all. Only privileged code ever *creates* the log, and the guard takes
+ownership of it — an owner keeps the right to rewrite permissions however the
+permissions read, so letting a standard user create the file would hand them that
+right permanently.
+
+What this does and does not buy, stated plainly:
+
+- A standard user **cannot** delete the file, and cannot remove or alter one entry
+  in it.
+- A standard user **can** append noise, and enough noise eventually rotates older
+  entries out (the log rotates at 2 MB and keeps one previous file). A rotation
+  writes its own marker, so a forced one appears in the record instead of leaving
+  a silent gap.
+- A **local administrator** is outside all of this, exactly as everywhere else in
+  the guard — see the tamper-resistance discussion in `docs/pc-version.md`.
+
+An authorized uninstall does **not** delete the log. It records that protection was
+removed, and a record an uninstall erases is not a record.

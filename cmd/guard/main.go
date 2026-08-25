@@ -22,6 +22,7 @@ import (
 	"github.com/kardianos/service"
 	"golang.org/x/term"
 
+	"github.com/codepurse/extension-guard/internal/activity"
 	"github.com/codepurse/extension-guard/internal/auth"
 	"github.com/codepurse/extension-guard/internal/buildinfo"
 	"github.com/codepurse/extension-guard/internal/enforce"
@@ -29,6 +30,7 @@ import (
 	"github.com/codepurse/extension-guard/internal/policy"
 	"github.com/codepurse/extension-guard/internal/scm"
 	"github.com/codepurse/extension-guard/internal/updater"
+	"github.com/codepurse/extension-guard/internal/usage"
 )
 
 func main() {
@@ -40,15 +42,31 @@ func main() {
 	days := flag.String("days", "", "days a block's window falls on: mon,wed,fri or weekdays/weekends/daily (default every day)")
 	from := flag.String("from", "", "start of a block's window, HH:MM (used by 'add-block')")
 	to := flag.String("to", "", "end of a block's window, HH:MM; before the start means it runs past midnight")
+	limit := flag.String("limit", "", "daily time limit for a block's apps: 45m, 1h30m, or a number of minutes (used by 'add-block')")
 	until := flag.String("until", "", "deadline for 'lock': a duration (72h, 7d) or a time (2026-09-01, 2026-09-01T17:00)")
+	pauseFor := flag.String("for", "", "how long 'disable' pauses protection: 30m, 2h, 1d, or a time. Omit to pause until you turn it back on")
 	kind := flag.String("kind", "", "what a block-app/unblock-app argument is: exe (default), folder, store, or title")
 	label := flag.String("label", "", "friendly name shown in the status window (used by 'block-app' and 'add-block')")
-	flag.Usage = usage
+	count := flag.Int("n", defaultActivityCount, "how many entries 'activity' shows")
+	flag.Usage = printUsage
 	flag.Parse()
+
+	// Attribute whatever this process records to whoever is running it. The
+	// service and the session agent are not people, so they are named as
+	// themselves; every other command is somebody at a keyboard, and for an action
+	// that weakens protection *who* did it is most of the point of writing it down.
+	switch flag.Arg(0) {
+	case "run", "watchdog":
+		activity.Enable(activity.ActorService)
+	case "agent":
+		activity.Enable(activity.ActorAgent)
+	default:
+		activity.Enable(activity.LocalUser())
+	}
 
 	cmd := flag.Arg(0)
 	if cmd == "" || cmd == "help" {
-		usage()
+		printUsage()
 		if cmd == "" {
 			os.Exit(2)
 		}
@@ -65,6 +83,11 @@ func main() {
 		return
 	case "check-update":
 		checkUpdateCmd()
+		return
+	case "activity":
+		// Reading the record needs neither the config nor admin, so it is handled
+		// here with version and check-update rather than below.
+		activityCmd(*count)
 		return
 	case "select":
 		selectConfig(*cfgPath, *extensions)
@@ -108,6 +131,8 @@ func main() {
 		}
 	case "blocks":
 		blocksCmd(cfg)
+	case "limits":
+		limitsCmd(cfg)
 	case "domains":
 		domainsCmd(cfg)
 	case "block-domain":
@@ -130,6 +155,7 @@ func main() {
 			days:       *days,
 			from:       *from,
 			to:         *to,
+			limit:      *limit,
 			extensions: *extensions,
 			domains:    *domains,
 			apps:       *apps,
@@ -144,8 +170,8 @@ func main() {
 		// Disabling an extension weakens protection, so it needs the password -
 		// unless protection is already in the authorized paused state, where there
 		// is no active lock to bypass.
-		if !scm.IsDisabled() {
-			requirePassword(*password)
+		if !scm.IsPaused() {
+			requirePassword(*password, "turning an extension off")
 		}
 		toggleExtension(cfg, *cfgPath, flag.Arg(1), false)
 	case "set-password":
@@ -153,15 +179,15 @@ func main() {
 	case "update":
 		updateCmd(cfg, *cfgPath)
 	case "run", "watchdog", "install-service", "uninstall-service", "start", "stop", "disable", "enable":
-		runService(cmd, cfg, *cfgPath, *password)
+		runService(cmd, cfg, *cfgPath, *password, *pauseFor)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command %q\n\n", cmd)
-		usage()
+		printUsage()
 		os.Exit(2)
 	}
 }
 
-func runService(cmd string, cfg policy.Config, cfgPath, password string) {
+func runService(cmd string, cfg policy.Config, cfgPath, password, pauseFor string) {
 	absCfg, err := filepath.Abs(cfgPath)
 	if err != nil {
 		absCfg = cfgPath
@@ -185,21 +211,66 @@ func runService(cmd string, cfg policy.Config, cfgPath, password string) {
 		}
 	case "install-service":
 		ensurePasswordSet(password)
+		// Elevated, so this may create the activity log; the service would do it
+		// moments later anyway, but doing it here means the install's own entry
+		// lands in the record rather than being dropped in the gap. Only privileged
+		// code may create it - see internal/activity.
+		_ = activity.Provision()
+		// The ledger is created here for the same reason: it must be owned by
+		// something privileged, and the service would do it moments later anyway.
+		// See internal/usage.
+		_ = usage.Provision()
 		mustService(guardsvc.Install(cfg, absCfg), "install")
+		activity.Record(activity.Event{Kind: activity.ProtectionInstalled, Target: buildinfo.Version})
 		fmt.Println("service installed, hardened, and started")
 	case "uninstall-service":
-		requirePassword(password)
+		requirePassword(password, "uninstalling protection")
 		mustService(guardsvc.Uninstall(cfg, absCfg), "uninstall")
 		_ = scm.ClearPasswordHash()
 		_ = scm.ClearTrustedConfig()
+		// The log itself is deliberately left where it is. It records that
+		// protection was removed, and an accountability record an uninstall erases
+		// is not one.
+		activity.Record(activity.Event{Kind: activity.ProtectionRemoved})
 		fmt.Println("service uninstalled")
 	case "disable":
-		requirePassword(password)
-		mustService(guardsvc.Disable(cfg, absCfg), "disable")
-		fmt.Println("protection disabled")
+		// A live lock refuses a pause, because a pause lifts everything the lock was
+		// holding - see policy.CheckPausable for why this is not the same question
+		// CheckLockedBlocks answers, and why uninstalling stays allowed.
+		//
+		// Checked before the password is asked for, the way add-block and commit do
+		// it: being prompted for a password and *then* told no wastes the one step
+		// that costs the user something.
+		if err := policy.CheckPausable(cfg, time.Now()); err != nil {
+			activity.Record(activity.Event{Kind: activity.PauseRefused, Detail: err.Error()})
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			fmt.Fprintln(os.Stderr, "(nothing was changed; uninstalling still works, and takes the blocks with it)")
+			os.Exit(1)
+		}
+		// Parsed before the password too, so a mistyped duration is not something
+		// you find out about after authenticating.
+		deadline, err := pauseDeadline(pauseFor, time.Now())
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		requirePassword(password, "pausing protection")
+		mustService(guardsvc.Pause(cfg, absCfg, deadline), "pause")
+		// Lift here rather than waiting for the service to come round to it. The
+		// service would do it within thirty seconds, but the user has just been told
+		// protection is off, and half a minute of it still being on reads as the
+		// command not having worked.
+		must(enforce.Default().Remove(cfg))
+		activity.Record(activity.Event{Kind: activity.ProtectionPaused, Detail: pauseDetail(deadline)})
+		fmt.Printf("protection paused %s\n", pauseDetail(deadline))
+		fmt.Println("(the guard stays installed and running, so it can turn itself back on)")
 	case "enable":
 		// Enabling only strengthens protection, so it needs admin but no password.
-		mustService(guardsvc.Enable(cfg, absCfg), "enable")
+		_ = activity.Provision()
+		_ = usage.Provision()
+		mustService(guardsvc.Resume(cfg, absCfg), "resume")
+		must(enforce.Default().Apply(activeNow(cfg)))
+		activity.Record(activity.Event{Kind: activity.ProtectionResumed})
 		fmt.Println("protection enabled")
 	case "start":
 		mustService(service.Control(svc, "start"), "start")
@@ -232,7 +303,12 @@ func ensurePasswordSet(flagPW string) {
 
 // requirePassword aborts unless the supplied password matches the stored hash.
 // If no password is set, the action is allowed.
-func requirePassword(flagPW string) {
+//
+// what names the action being attempted, for the activity log. A wrong password
+// is recorded because it is the clearest signal there is that somebody tried to
+// get around the gate - and unlike the action itself, an attempt that fails
+// leaves no other trace at all.
+func requirePassword(flagPW, what string) {
 	hash, ok := scm.GetPasswordHash()
 	if !ok {
 		return
@@ -242,6 +318,7 @@ func requirePassword(flagPW string) {
 		pw = prompt("Enter uninstall password: ")
 	}
 	if !auth.Verify(hash, pw) {
+		activity.Record(activity.Event{Kind: activity.PasswordFailed, Target: what})
 		fmt.Fprintln(os.Stderr, "error: incorrect password")
 		os.Exit(1)
 	}
@@ -252,6 +329,7 @@ func requirePassword(flagPW string) {
 func setPassword(flagPW string) {
 	if hash, ok := scm.GetPasswordHash(); ok {
 		if !auth.Verify(hash, prompt("Current password: ")) {
+			activity.Record(activity.Event{Kind: activity.PasswordFailed, Target: "changing the password"})
 			fmt.Fprintln(os.Stderr, "error: incorrect current password")
 			os.Exit(1)
 		}
@@ -267,6 +345,7 @@ func setPassword(flagPW string) {
 	hash, err := auth.Hash(pw)
 	must(err)
 	mustService(scm.SetPasswordHash(hash), "store password")
+	activity.Record(activity.Event{Kind: activity.PasswordChanged})
 	fmt.Println("password updated")
 }
 
@@ -359,9 +438,11 @@ func toggleExtension(cfg policy.Config, cfgPath, name string, enable bool) {
 	writeConfig(cfg, cfgPath)
 	if enable {
 		must(enforce.Default().Apply(activeNow(cfg)))
+		activity.Record(activity.Event{Kind: activity.ExtensionEnabled, Target: name})
 		fmt.Printf("enabled: %s is now force-installed\n", name)
 	} else {
 		must(policy.Remove(cfg.Only(name)))
+		activity.Record(activity.Event{Kind: activity.ExtensionDisabled, Target: name})
 		fmt.Printf("disabled: %s is no longer locked\n", name)
 	}
 	printStatus(cfg)
@@ -525,6 +606,11 @@ func updateCmd(cfg policy.Config, cfgPath string) {
 			fmt.Fprintf(os.Stderr, "warning: start service: %v\n", err)
 		}
 	}
+	activity.Record(activity.Event{
+		Kind:   activity.UpdateApplied,
+		Target: rel.Version,
+		Detail: "from " + buildinfo.Version,
+	})
 	fmt.Printf("updated to %s. Restart the status window to load the new UI.\n", rel.Version)
 }
 
@@ -552,7 +638,9 @@ func waitForStop(name string, timeout time.Duration) {
 	}
 }
 
-func usage() {
+// printUsage is the help text. It is not called "usage" because that name now
+// belongs to the package that counts how long a limited block has been used.
+func printUsage() {
 	fmt.Println(`Extension Guard
 
 usage: guard [flags] <command>
@@ -583,16 +671,24 @@ application commands:
                                paused); pass the same -kind it was added with
 
 schedule commands:
-  blocks             list each block, whether it is enforcing now, and its lock
+  blocks             list each block, whether it is enforcing now, its daily
+                     limit, and its lock
+  limits             show each daily time limit and how much of today is left
+                     (no admin and no password - the person a limit applies to
+                     is meant to be able to see where they stand)
   add-block          [id]      create a block. -label names it (the id is derived
                                from the label when you omit it), -extensions /
                                -domains / -apps say what it governs (naming none
                                governs everything), and -days -from -to give it a
-                               window. With a window it needs the password: a
-                               schedule enforces things only sometimes, which is
-                               weaker than around the clock. With no window it is
-                               always on, so it is free - that is the shape to
-                               create and then lock.
+                               window. -limit gives it a daily time limit
+                               (45m, 1h30m, or a number of minutes), which may
+                               only cover applications - the guard measures use
+                               by watching processes, and a browser never
+                               reports back. With a window or a limit it needs
+                               the password: both enforce things only sometimes,
+                               which is weaker than around the clock. With
+                               neither it is always on, so it is free - that is
+                               the shape to create and then lock.
   remove-block       <id>      delete a block, returning what it governed to
                                around-the-clock enforcement (password; refused
                                while the block is locked)
@@ -606,8 +702,13 @@ schedule commands:
 service commands (admin):
   install-service    install + harden + start the guard service (sets password)
   uninstall-service  remove the service (requires the password)
-  disable            temporarily turn protection off (requires the password)
-  enable             turn protection back on after a disable (no password; only strengthens)
+  disable            pause protection (requires the password). -for says how long
+                     - 30m, 2h, 1d, or a time - and the guard turns protection
+                     back on by itself when it is up. Omit -for to pause until
+                     you turn it back on. The service stays installed and running
+                     either way, so a pause can end on its own; it is refused
+                     outright while any block is locked
+  enable             end a pause (no password; only strengthens)
   set-password       set or change the uninstall password
   start              start the service
   stop               stop the service
@@ -617,6 +718,14 @@ service commands (admin):
                      this in place of a blocked application)
   agent              sweep window-title rules in the signed-in user's session
                      (internal; spawned by the service, which cannot see them)
+
+record commands:
+  activity           show what the guard did and what was done to it, newest
+                     first: refused launches, pauses, rules added and lifted,
+                     tamper it corrected, wrong passwords. No admin and no
+                     password - the record is meant to be readable by everyone
+                     it is about. Show more with the flag before the command,
+                     as everywhere else here: "guard -n 200 activity".
 
 update commands:
   check-update       report whether a newer release is available (no admin)
@@ -628,4 +737,29 @@ update commands:
 
 flags:`)
 	flag.PrintDefaults()
+}
+
+// pauseDeadline turns the -for flag into a moment to resume at. An empty flag
+// means an indefinite pause, which is the zero time.
+//
+// It accepts what -until accepts, so "30m", "1d" and "2026-09-01T17:00" all mean
+// what they look like and there is one place that decides what a deadline is.
+func pauseDeadline(spec string, now time.Time) (time.Time, error) {
+	if strings.TrimSpace(spec) == "" {
+		return time.Time{}, nil
+	}
+	at, err := parseUntil(spec, now)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("cannot read -for %q: %w", spec, err)
+	}
+	return at, nil
+}
+
+// pauseDetail describes a pause the way both the log and the console should say
+// it, so the record and what the user was told match word for word.
+func pauseDetail(deadline time.Time) string {
+	if deadline.IsZero() {
+		return "until it is turned back on"
+	}
+	return "until " + deadline.Local().Format(time.RFC1123)
 }

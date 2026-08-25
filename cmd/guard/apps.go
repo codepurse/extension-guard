@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/codepurse/extension-guard/internal/activity"
 	"github.com/codepurse/extension-guard/internal/enforce"
 	"github.com/codepurse/extension-guard/internal/guardsvc"
 	"github.com/codepurse/extension-guard/internal/policy"
@@ -73,6 +74,11 @@ func blockAppCmd(cfg policy.Config, cfgPath, kind, value, label string) {
 	}
 	writeConfig(cfg, cfgPath)
 	must(enforce.Default().Apply(activeNow(cfg)))
+	activity.Record(activity.Event{
+		Kind:   activity.AppBlocked,
+		Target: app.Display(),
+		Detail: app.Summary(),
+	})
 	fmt.Printf("blocked: %s (%s)\n", app.Display(), app.Summary())
 	if governed := governingAppBlocks(cfg, app); governed != "" {
 		fmt.Printf("(scheduled by %s, so it is only enforced during those windows)\n", governed)
@@ -88,8 +94,8 @@ func unblockAppCmd(cfg policy.Config, cfgPath, kind, value, password string) {
 		fmt.Fprintln(os.Stderr, "error: application required, e.g. `guard unblock-app steam.exe`")
 		os.Exit(2)
 	}
-	if !scm.IsDisabled() {
-		requirePassword(password)
+	if !scm.IsPaused() {
+		requirePassword(password, "unblocking an application")
 	}
 	app, ok := cfg.SetAppEnabled(kind, value, false)
 	if !ok {
@@ -99,6 +105,7 @@ func unblockAppCmd(cfg policy.Config, cfgPath, kind, value, password string) {
 	}
 	writeConfig(cfg, cfgPath)
 	must(enforce.Default().Apply(activeNow(cfg)))
+	activity.Record(activity.Event{Kind: activity.AppUnblocked, Target: app.Display()})
 	fmt.Printf("unblocked: %s can run again\n", app.Display())
 }
 
@@ -131,6 +138,10 @@ func blockedCmd(args []string) {
 			break
 		}
 	}
+	// Recorded before the message box, which blocks until the user dismisses it.
+	// This is the one event nobody else can report: the launch block stops the
+	// program before it exists, so there is no process for the service to notice.
+	activity.Record(activity.Event{Kind: activity.LaunchBlocked, Target: name})
 	notifyBlocked(name)
 	// Non-zero: the launch did not do what the caller asked. Nothing reads this
 	// today, but a script launching a blocked app should see a failure.
@@ -174,7 +185,7 @@ func runAgent(cfg policy.Config, cfgPath string) {
 	}
 	var lastErr string
 	for {
-		if scm.IsDisabled() || scm.IsUpdating() || !scm.IsRunning(guardsvc.ServiceName) {
+		if scm.IsDisabled() || scm.IsPaused() || scm.IsUpdating() || !scm.IsRunning(guardsvc.ServiceName) {
 			return
 		}
 		// Read the enforced config, not the file: an edited extension-ids.json loses

@@ -123,6 +123,11 @@ func writeNumberedList(path string, entries []string, oldNames []string) error {
 	}
 	defer key.Close()
 
+	// Every caller of this function writes a key a browser reads as policy, and
+	// the browser has to be told to re-read it - see gprefresh_windows.go. Marking
+	// it here rather than in each caller means a policy added later cannot forget.
+	markBrowserPolicyChanged()
+
 	for i, v := range entries {
 		if err := key.SetStringValue(strconv.Itoa(i+1), v); err != nil {
 			return err

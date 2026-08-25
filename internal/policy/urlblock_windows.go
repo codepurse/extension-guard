@@ -45,6 +45,11 @@ func ApplyDomains(cfg Config) error {
 	if err != nil {
 		errs = append(errs, fmt.Sprintf("firefox: %v", err))
 	}
+	// Best effort, and after the writes: a running Chromium browser will not see
+	// any of this until group policy is refreshed. A refresh that fails is retried
+	// on the next reconcile cycle and must not turn a block that *was* written into
+	// an apply failure, so its error is not joined here.
+	_ = refreshBrowserPolicy()
 	if len(errs) > 0 {
 		return fmt.Errorf("%s", strings.Join(errs, "; "))
 	}
@@ -116,6 +121,8 @@ func RemoveDomains(cfg Config) error {
 	if err := syncNumberedList(path, nil, dropExact(mapPatterns(managed, FirefoxBlockPattern))); err != nil {
 		errs = append(errs, fmt.Sprintf("firefox: %v", err))
 	}
+	// Unblocking needs the browser told just as much as blocking did.
+	_ = refreshBrowserPolicy()
 	if len(errs) > 0 {
 		return fmt.Errorf("%s", strings.Join(errs, "; "))
 	}

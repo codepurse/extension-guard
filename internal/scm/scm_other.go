@@ -35,6 +35,12 @@ func IsUpdating() bool { return false }
 // AcquireSingleton always succeeds on non-Windows platforms.
 func AcquireSingleton(name string) bool { return true }
 
+// setPauseValue is a no-op stub on unsupported platforms.
+func setPauseValue(v string) error { return errWindowsOnly }
+
+// pauseValue reports no recorded pause on unsupported platforms.
+func pauseValue() string { return "" }
+
 // SetPasswordHash is a no-op stub on non-Windows platforms.
 func SetPasswordHash(hash string) error { return errWindowsOnly }
 

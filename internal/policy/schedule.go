@@ -61,11 +61,17 @@ type Block struct {
 	//
 	// Apps are listed by the value the rule is stored under - an executable path
 	// or name, a folder, a Store package family name, or a window title.
-	Extensions  []string `json:"extensions,omitempty"`
-	Domains     []string `json:"domains,omitempty"`
-	Apps        []string `json:"apps,omitempty"`
-	Windows     []Window `json:"windows,omitempty"`
-	LockedUntil string   `json:"lockedUntil,omitempty"`
+	Extensions []string `json:"extensions,omitempty"`
+	Domains    []string `json:"domains,omitempty"`
+	Apps       []string `json:"apps,omitempty"`
+	Windows    []Window `json:"windows,omitempty"`
+	// Limit is a daily budget: how long the applications this block covers may be
+	// used before it starts enforcing. Empty means no limit, which is what every
+	// block written before limits existed says. "45m", "1h30m" and "45" all read as
+	// you would expect - see limits.go, which is also where the reasons a limit may
+	// only cover applications are set out.
+	Limit       string `json:"limit,omitempty"`
+	LockedUntil string `json:"lockedUntil,omitempty"`
 }
 
 // parseHM turns "09:00" into minutes since midnight.
@@ -144,9 +150,13 @@ func (w Window) Active(at time.Time) bool {
 	return w.coversDay(yesterday) && mins < end
 }
 
-// Active reports whether the block is enforcing at the given time. A block with
-// no windows is always active.
-func (b Block) Active(at time.Time) bool {
+// InWindow reports whether the given time falls in one of the block's windows. A
+// block with no windows is in window always.
+//
+// This is not the same question as "is it enforcing": a block may also carry a
+// daily limit, and while that limit has budget left the block is in window and
+// enforcing nothing. EnforcingAt is the question with both halves - see limits.go.
+func (b Block) InWindow(at time.Time) bool {
 	if len(b.Windows) == 0 {
 		return true
 	}
@@ -239,10 +249,20 @@ func (b Block) GovernsApp(a App) bool {
 // while one of its blocks is active, and an extension no block governs keeps its
 // configured state.
 //
+// It reads today's usage from the ledger to decide the blocks that carry a limit
+// (see Config.SpentAt). Callers holding fresher counters than the ledger has -
+// which means the service - should use ActiveAtWith instead, so that a budget
+// crossed seconds ago is not resolved against a file that has yet to be flushed.
+func (c Config) ActiveAt(at time.Time) Config {
+	return c.ActiveAtWith(at, c.SpentAt(at))
+}
+
+// ActiveAtWith is ActiveAt against a given set of spent budgets.
+//
 // The returned Config is a copy; the receiver is untouched. A config with no
 // blocks is returned unchanged, which is what keeps every pre-schedule install
 // behaving exactly as before.
-func (c Config) ActiveAt(at time.Time) Config {
+func (c Config) ActiveAtWith(at time.Time, sp Spent) Config {
 	if len(c.Blocks) == 0 {
 		return c
 	}
@@ -258,7 +278,7 @@ func (c Config) ActiveAt(at time.Time) Config {
 		if e.Disabled {
 			continue // switched off outright; a schedule does not resurrect it
 		}
-		if c.outOfWindow(at, func(b Block) bool { return b.Governs(e.Name) }) {
+		if c.notEnforced(at, sp, func(b Block) bool { return b.Governs(e.Name) }) {
 			out.Extensions[i].Disabled = true
 		}
 	}
@@ -266,7 +286,7 @@ func (c Config) ActiveAt(at time.Time) Config {
 		if d.Disabled {
 			continue
 		}
-		if c.outOfWindow(at, func(b Block) bool { return b.GovernsDomain(d.Name) }) {
+		if c.notEnforced(at, sp, func(b Block) bool { return b.GovernsDomain(d.Name) }) {
 			out.Domains[i].Disabled = true
 		}
 	}
@@ -274,24 +294,29 @@ func (c Config) ActiveAt(at time.Time) Config {
 		if a.Disabled {
 			continue
 		}
-		if c.outOfWindow(at, func(b Block) bool { return b.GovernsApp(a) }) {
+		if c.notEnforced(at, sp, func(b Block) bool { return b.GovernsApp(a) }) {
 			out.Apps[i].Disabled = true
 		}
 	}
 	return out
 }
 
-// outOfWindow reports whether an entry that is switched on should nonetheless be
+// notEnforced reports whether an entry that is switched on should nonetheless be
 // treated as off at this moment: some block governs it, and none of the blocks
-// governing it is active. An entry no block governs is never out of window - it
-// is enforced around the clock, which is what a config with no schedule means.
-func (c Config) outOfWindow(at time.Time, governs func(Block) bool) bool {
+// governing it is enforcing. An entry no block governs is always enforced - around
+// the clock, which is what a config with no schedule means.
+//
+// The union is what makes several blocks over one entry safe: it is enforced if
+// *any* block governing it is enforcing, so adding a block can only ever add
+// enforced time. That is also why a limit reaching zero blocks rather than
+// releases - it makes the block start enforcing, and the union grows.
+func (c Config) notEnforced(at time.Time, sp Spent, governs func(Block) bool) bool {
 	governed := false
 	for _, b := range c.Blocks {
 		if !governs(b) {
 			continue
 		}
-		if b.Active(at) {
+		if b.EnforcingAt(at, sp) {
 			return false
 		}
 		governed = true
@@ -309,17 +334,30 @@ func (c Config) outOfWindow(at time.Time, governs func(Block) bool) bool {
 // everything enabled stays enforced until the schedule is corrected. Callers
 // surface the returned error; they must not treat it as a reason to enforce less.
 func (c Config) EnforcedAt(at time.Time) (Config, error) {
+	return c.EnforcedAtWith(at, c.SpentAt(at))
+}
+
+// EnforcedAtWith is EnforcedAt against a given set of spent budgets.
+func (c Config) EnforcedAtWith(at time.Time, sp Spent) (Config, error) {
 	if err := c.Validate(); err != nil {
 		return c, err
 	}
-	return c.ActiveAt(at), nil
+	return c.ActiveAtWith(at, sp), nil
 }
 
 // ActiveSignature is a stable description of what ActiveAt would enforce at the
 // given time. The service compares it between ticks to notice a schedule
 // boundary without touching the registry.
 func (c Config) ActiveSignature(at time.Time) string {
-	active := c.ActiveAt(at)
+	return c.ActiveSignatureWith(at, c.SpentAt(at))
+}
+
+// ActiveSignatureWith is ActiveSignature against a given set of spent budgets.
+// This is how a limit running out becomes enforcement within a second: the
+// signature changes, and the service re-applies on the change exactly as it does
+// for a window opening.
+func (c Config) ActiveSignatureWith(at time.Time, sp Spent) string {
+	active := c.ActiveAtWith(at, sp)
 	names := make([]string, 0, len(active.Extensions)+len(active.Domains)+len(active.Apps))
 	for _, e := range active.Extensions {
 		if !e.Disabled {
@@ -337,7 +375,8 @@ func (c Config) ActiveSignature(at time.Time) string {
 }
 
 // Narrows reports whether this block makes enforcement *less* than around the
-// clock for whatever it governs - which is exactly what having windows means.
+// clock for whatever it governs - which is exactly what having windows, or a
+// daily budget, means.
 //
 // This is the load-bearing fact behind the gate on creating one. Everywhere else
 // in the guard, adding a rule strengthens protection and costs only admin, while
@@ -350,7 +389,10 @@ func (c Config) ActiveSignature(at time.Time) string {
 // answer would mean computing whether the new block's windows cover what some
 // other block already covers, and that is the window-coverage reasoning this file
 // refuses to do, because any gap in it is a way out of a commitment.
-func (b Block) Narrows() bool { return len(b.Windows) > 0 }
+//
+// A limit narrows for the same reason a window does, and more obviously: an app
+// that was blocked outright becomes an app you may use for forty-five minutes.
+func (b Block) Narrows() bool { return len(b.Windows) > 0 || b.HasLimit() }
 
 // AddBlock appends a block, refusing an id that is already taken. The caller is
 // expected to Validate afterwards: this checks only what is about the collection
@@ -454,6 +496,9 @@ func (c Config) Validate() error {
 		return err
 	}
 	if err := c.validateApps(); err != nil {
+		return err
+	}
+	if err := c.validateLimits(); err != nil {
 		return err
 	}
 	seen := make(map[string]bool, len(c.Blocks))
@@ -586,6 +631,14 @@ func sameExceptDeadline(a, b Block) bool {
 	// application a path names, so rewriting one is not an edit, while swapping in
 	// a different app is.
 	if !sameApps(a.Apps, b.Apps) {
+		return false
+	}
+	// The limit is compared as a length of time rather than as text, so rewriting
+	// "90m" as "1h30m" is not an edit while raising the budget is. This comparison
+	// is the reason a lock means anything to a limit at all: without it, a block
+	// locked for a week could have its forty-five minutes a day quietly turned into
+	// ten hours, which is every bit as much a release as deleting the block.
+	if aLimit, bLimit := a.limitOrZero(), b.limitOrZero(); aLimit != bLimit {
 		return false
 	}
 	if len(a.Windows) != len(b.Windows) {
@@ -774,4 +827,42 @@ func (c Config) GovernedBy(name string) bool {
 		}
 	}
 	return false
+}
+
+// CheckPausable reports why protection may not be paused at now.
+//
+// CheckLockedBlocks cannot answer this, because a pause is not a config edit:
+// nothing about the config changes, enforcement simply stops. The effect on a
+// locked block is total all the same - a pause tears the service down and lifts
+// everything it was holding - so a lock has to refuse it. Otherwise "locked until
+// Friday" means "locked until somebody types the password and pauses", which is
+// not a commitment, and the lock is the one promise this tool makes that the
+// password is not supposed to override.
+//
+// Uninstalling stays allowed, deliberately, and the difference is worth being
+// precise about rather than leaving as an apparent inconsistency. An uninstall is
+// the documented escape hatch (see docs/pc-version.md: software that cannot be
+// removed at all is malware). It lifts every enforcement, clears the password and
+// the trusted config, takes the blocks with it, and leaves an entry in the
+// activity log. A pause is none of those things - it is quiet, reversible, and
+// leaves the commitment nominally in place during exactly the window it is not
+// being kept. Refusing the quiet way out while keeping the loud one is the point:
+// there is still a way out, and it costs the install rather than a keystroke.
+//
+// Blunt in the same way CheckLockedBlocks is: any live lock refuses the pause. A
+// pause turns everything off, so there is no narrower version of the question to
+// ask.
+func CheckPausable(cfg Config, now time.Time) error {
+	for _, b := range cfg.Blocks {
+		locked, until := b.LockedAt(now)
+		if !locked {
+			continue
+		}
+		deadline := "an unreadable deadline"
+		if !until.IsZero() {
+			deadline = until.Local().Format(time.RFC1123)
+		}
+		return fmt.Errorf("block %q is locked until %s, so protection cannot be paused until then", b.ID, deadline)
+	}
+	return nil
 }

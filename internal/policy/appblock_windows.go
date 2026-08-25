@@ -12,10 +12,13 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
+
+	"github.com/codepurse/extension-guard/internal/activity"
 )
 
 // This file is the Windows half of application blocking. Two mechanisms, because
@@ -136,12 +139,38 @@ func SweepApps(cfg Config) error {
 		}
 		if err := terminateProcess(p.PID); err != nil {
 			errs = append(errs, fmt.Sprintf("%s (pid %d): %v", p.Name, p.PID, err))
+			continue
 		}
+		recordClosed(apps, p)
 	}
 	if len(errs) > 0 {
 		return fmt.Errorf("close blocked apps: %s", strings.Join(errs, "; "))
 	}
 	return nil
+}
+
+// SampleUsage reports which limited blocks are being used at this moment: in
+// window, with at least one of the applications they cover running. The service
+// calls it once a second and charges the elapsed time to whatever it names.
+//
+// It takes its own snapshot rather than sharing the sweep's. That is a second walk
+// of the process list per second, which is worth stating plainly and then putting
+// in proportion: it only happens when a limit is configured, it asks for image
+// paths and window titles only when a limited rule is matched on them, and sharing
+// the sweep's snapshot would mean threading a process list through the Sweeper
+// interface so that one backend could hand it to a measurement that is not
+// enforcement at all. Measuring is a separate job from enforcing, and it reads
+// better as one.
+func SampleUsage(cfg Config, at time.Time) ([]string, error) {
+	measure, paths, titles := cfg.MeasurementNeeds(at)
+	if !measure {
+		return nil, nil
+	}
+	procs, err := snapshotProcesses(paths, titles)
+	if err != nil {
+		return nil, fmt.Errorf("list processes: %w", err)
+	}
+	return cfg.RunningLimited(at, procs), nil
 }
 
 // VerifyApps reports one status per enabled rule. Read-only, so the status window
@@ -752,4 +781,35 @@ func fileExists(p string) bool {
 func dirExists(p string) bool {
 	st, err := os.Stat(p)
 	return err == nil && st.IsDir()
+}
+
+// appClosedThrottle is how often the same application being closed is written to
+// the activity log. The sweep runs about once a second, so an application that
+// relaunches itself - or one the guard cannot close and keeps trying - would
+// otherwise write the same line sixty times a minute. A repeat inside this window
+// is treated as the same event still happening rather than a new one.
+const appClosedThrottle = 5 * time.Minute
+
+// recordClosed notes a termination in the activity log, naming the rule that
+// matched so the entry says why the application went away rather than only that
+// it did.
+//
+// The rule is looked up a second time rather than threaded out of
+// BlockedProcesses: this runs only for a process that was actually closed, which
+// is rare, and it keeps that matcher's signature to the one thing it is for.
+func recordClosed(apps []App, p Process) {
+	detail := ""
+	for _, a := range apps {
+		if a.Matches(p) {
+			if rule := a.Display(); !strings.EqualFold(rule, p.Name) {
+				detail = "matched the rule for " + rule
+			}
+			break
+		}
+	}
+	activity.RecordThrottled("closed|"+strings.ToLower(p.Name), appClosedThrottle, activity.Event{
+		Kind:   activity.AppClosed,
+		Target: p.Name,
+		Detail: detail,
+	})
 }

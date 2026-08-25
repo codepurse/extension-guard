@@ -24,6 +24,7 @@ const (
 	disabledValue = "GuardDisabled"
 	updatingValue = "GuardUpdating"
 	passwordValue = "PasswordHash"
+	pausedValue   = "GuardPausedUntil"
 	trustedValue  = "TrustedConfig"
 	resetPeriod   = uint32(24 * 60 * 60) // recovery failure-count reset window (seconds)
 )
@@ -194,6 +195,20 @@ func IsUpdating() bool {
 	defer key.Close()
 	d, _, err := key.GetIntegerValue(updatingValue)
 	return err == nil && d != 0
+}
+
+// setPauseValue and pauseValue are the raw store for the pause state; pause.go
+// holds what the string means. An empty value clears it.
+func setPauseValue(v string) error {
+	if v == "" {
+		return deleteValueIn(registry.LOCAL_MACHINE, pausedValue)
+	}
+	return setStringIn(registry.LOCAL_MACHINE, pausedValue, v)
+}
+
+func pauseValue() string {
+	v, _ := getStringIn(registry.LOCAL_MACHINE, pausedValue)
+	return v
 }
 
 // SetPasswordHash stores the bcrypt hash of the uninstall password. GetPasswordHash
