@@ -103,8 +103,16 @@ const (
 	PauseRefused = "pause.refused"
 
 	// Rules added and lifted.
-	DomainBlocked     = "domain.blocked"
-	DomainUnblocked   = "domain.unblocked"
+	DomainBlocked   = "domain.blocked"
+	DomainUnblocked = "domain.unblocked"
+	// The allowlist mode, and the sites let through it. Turning it on blocks the
+	// whole web and turning it off unblocks it, so both are worth a line of their
+	// own rather than being folded in with an ordinary domain; and a site allowed
+	// through is the one kind of "add" in this program that weakens protection.
+	AllowlistOn       = "allowlist.on"
+	AllowlistOff      = "allowlist.off"
+	SiteAllowed       = "site.allowed"
+	SiteUnallowed     = "site.unallowed"
 	AppBlocked        = "app.blocked"
 	AppUnblocked      = "app.unblocked"
 	ExtensionEnabled  = "extension.enabled"
@@ -324,6 +332,14 @@ func Describe(e Event) string {
 		return "Blocked " + or(e.Target, "a site")
 	case DomainUnblocked:
 		return "Stopped blocking " + or(e.Target, "a site")
+	case AllowlistOn:
+		return "Blocked every site except the allowlist"
+	case AllowlistOff:
+		return "Stopped blocking every site"
+	case SiteAllowed:
+		return "Allowed " + or(e.Target, "a site") + " through"
+	case SiteUnallowed:
+		return "Stopped allowing " + or(e.Target, "a site") + " through"
 	case AppBlocked:
 		return "Blocked " + or(e.Target, "an application")
 	case AppUnblocked:
@@ -370,10 +386,11 @@ func (e Event) Severity() string {
 	switch e.Kind {
 	case LaunchBlocked, AppClosed, TamperConfig, TamperPolicy,
 		DomainBlocked, AppBlocked, ExtensionEnabled, BlockCreated, BlockLocked,
-		CategoryBlocked, HardeningEnabled,
+		CategoryBlocked, HardeningEnabled, AllowlistOn, SiteUnallowed,
 		LimitReached, ProtectionInstalled, ProtectionResumed:
 		return SeverityEnforced
 	case DomainUnblocked, AppUnblocked, ExtensionDisabled, BlockRemoved, HardeningDisabled,
+		AllowlistOff, SiteAllowed,
 		ProtectionPaused, ProtectionRemoved, PasswordFailed, UsageReset, PauseRefused:
 		return SeverityWeakened
 	}

@@ -90,6 +90,10 @@ type Config struct {
 	// with a given title. omitempty for the same reason as the two above. See
 	// apps.go.
 	Apps []App `json:"apps,omitempty"`
+	// Allowlist is the other way round from Domains: name what is allowed and block
+	// everything else. A nil pointer means the mode does not exist for this config,
+	// which is what every config written before it says. See allowlist.go.
+	Allowlist *Allowlist `json:"allowlist,omitempty"`
 	// Hardening pins the browser settings that decide whether locking an extension
 	// means anything - private browsing above all, since an extension cannot be
 	// force-installed into an Incognito window. A nil pointer rather than a value
@@ -234,6 +238,7 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 		Blocks     []Block     `json:"blocks"`
 		Domains    []Domain    `json:"domains"`
 		Apps       []App       `json:"apps"`
+		Allowlist  *Allowlist  `json:"allowlist"`
 		Hardening  *Hardening  `json:"hardening"`
 		ResetAt    string      `json:"resetAt"`
 		AutoUpdate string      `json:"autoUpdate"`
@@ -246,12 +251,14 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 	// it by, and falling through to the legacy branch would silently discard it.
 	// Hardening counts for the same reason - a config that only pins browser
 	// settings names no extension, domain or app at all.
-	if len(multi.Extensions) > 0 || len(multi.Domains) > 0 || len(multi.Apps) > 0 || multi.Hardening != nil {
+	if len(multi.Extensions) > 0 || len(multi.Domains) > 0 || len(multi.Apps) > 0 ||
+		multi.Hardening != nil || multi.Allowlist != nil {
 		c.Extensions = multi.Extensions
 		c.Blocks = multi.Blocks
 		c.Domains = multi.Domains
 		c.Apps = multi.Apps
 		c.Hardening = multi.Hardening
+		c.Allowlist = multi.Allowlist
 		c.ResetAt = multi.ResetAt
 		c.AutoUpdate = multi.AutoUpdate
 		return nil

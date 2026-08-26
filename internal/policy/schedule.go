@@ -263,6 +263,12 @@ func (c Config) ActiveAt(at time.Time) Config {
 // blocks is returned unchanged, which is what keeps every pre-schedule install
 // behaving exactly as before.
 func (c Config) ActiveAtWith(at time.Time, sp Spent) Config {
+	// The allowlist resolves first and separately, because it is not governed by a
+	// block - it carries its own windows - and because a config with no blocks at
+	// all can still have one. Resolving it here rather than in the writer is what
+	// makes crossing its window boundary reach ActiveSignatureWith, and therefore
+	// what makes the service re-apply within seconds instead of at the next backstop.
+	c = c.resolveAllowlist(at)
 	if len(c.Blocks) == 0 {
 		return c
 	}
@@ -299,6 +305,26 @@ func (c Config) ActiveAtWith(at time.Time, sp Spent) Config {
 		}
 	}
 	return out
+}
+
+// resolveAllowlist returns a copy whose allowlist mode is switched off when its
+// windows say it does not apply right now. Everything downstream then reads
+// "is the mode on" and gets the answer for this moment, exactly as a domain
+// resolved out of a block's window reads as disabled.
+//
+// The pointer is replaced rather than written through: the receiver is shared with
+// whatever the caller holds, and mutating the pointee would reach back into it.
+func (c Config) resolveAllowlist(at time.Time) Config {
+	if c.Allowlist == nil || !c.Allowlist.On || len(c.Allowlist.Windows) == 0 {
+		return c
+	}
+	if c.Allowlist.InWindow(at) {
+		return c
+	}
+	off := *c.Allowlist
+	off.On = false
+	c.Allowlist = &off
+	return c
 }
 
 // notEnforced reports whether an entry that is switched on should nonetheless be
@@ -369,6 +395,13 @@ func (c Config) ActiveSignatureWith(at time.Time, sp Spent) string {
 	}
 	for _, a := range active.BlockedApps() {
 		names = append(names, "app:"+a.key())
+	}
+	// The allowlist mode is one entry rather than one per site, because what changes
+	// at a window boundary is the mode: its sites are already in the config and do
+	// not come and go. Without this the web would stay shut past the hour the window
+	// closed, until the thirty-second backstop noticed.
+	if active.Allowing().On {
+		names = append(names, "allow:on")
 	}
 	sort.Strings(names)
 	return strings.Join(names, ",")
@@ -517,6 +550,9 @@ func (c Config) Validate() error {
 		return err
 	}
 	if err := c.validateHardening(); err != nil {
+		return err
+	}
+	if err := c.validateAllowlist(); err != nil {
 		return err
 	}
 	seen := make(map[string]bool, len(c.Blocks))

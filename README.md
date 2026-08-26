@@ -41,6 +41,7 @@ not two — see the **Linux** section below.
 | 13 | **Rename-resistant rules** (match the name compiled into an executable, not just the file's) | ✅ done |
 | 14 | **Hardened browser settings** (no private/guest windows, forced SafeSearch) | ✅ done |
 | 15 | **Usage statistics** (per-application time, today and over 60 days) | ✅ done |
+| 16 | **Allowed sites only** (block every site except a list, on a timetable) | ✅ done |
 
 ## Prerequisites — Windows build (via winget)
 
@@ -163,6 +164,12 @@ today and over the last week, with a bar per day underneath. It is the one secti
 that is a record rather than a control - there is nothing to click, and reading it
 needs neither admin nor the password. See [Time used](#time-used).
 
+The **Allowed sites only** section is the block list read the other way round -
+one box, one list, and a button that turns the mode on or off. Turning it on is
+free; turning it off, and letting a site through, need the password. A warning box
+appears when the mode is on with an empty list, because that blocks every page in
+every managed browser. See [Allowed sites only](#allowed-sites-only).
+
 The **Browser settings** section lists the settings the guard pins so the locks
 above hold, each saying which browsers it reaches and — where there is one — which
 it does not. A warning sits above it whenever private browsing is still available
@@ -194,6 +201,7 @@ creating an always-on one, and locking it, does not. See
 `apply`, `remove` write to `HKLM`, so run them from an **elevated** terminal.
 
 ```sh
+guard allowed      # allowed-sites-only: the mode, its timetable, what it lets through
 guard usage        # how long each blocked application actually ran
 guard hardening    # pinned browser settings, and whether private browsing is still open
 guard domains      # blocked sites: which are on the list, which are enforced now
@@ -591,6 +599,120 @@ Refused, with an explanation:
 | `reddit.com, twitter.com` | Add them one at a time. |
 | `old.reddit.com` when `reddit.com` is already blocked | Tightens nothing, and burns one of the 1000 entries browsers honour. |
 | `redditÉ.com` | Use the punycode form (`xn--…`). |
+
+## Allowed sites only
+
+The block list read the other way round: **block every site**, then name the
+exceptions. This is study mode, and it is the one thing Cold Turkey has that a
+list of blocked domains cannot express.
+
+```powershell
+guard allowed                       # the mode, its timetable, and what it lets through
+guard allow-only on                 # admin; no password - it blocks the whole web
+guard allow wikipedia.org           # password while the mode is on - it opens something
+guard unallow wikipedia.org         # admin; no password - it closes it again
+guard allow-only off                # password - it unblocks the whole web
+```
+
+```json
+{
+  "allowlist": {
+    "on": true,
+    "sites": ["wikipedia.org", "github.com"],
+    "windows": [{ "days": ["mon","tue","wed","thu","fri"], "start": "09:00", "end": "17:00" }]
+  }
+}
+```
+
+Same mechanism as [Blocked sites](#blocked-sites), pointed the other way:
+Chromium's `URLBlocklist` takes `*`, which blocks every URL, and `URLAllowlist`
+overrides it entry by entry; Firefox's `WebsiteFilter` takes `<all_urls>` in
+`Block` with the same exceptions in `Exceptions`. So it costs no new enforcement
+surface at all — two more values in the hive the tamper watcher already watches,
+and it ships without waiting on the certificate.
+
+An allowed site covers **every subdomain**, exactly as a blocked one does:
+`wikipedia.org` lets `en.wikipedia.org` through.
+
+### The gate inverts — twice
+
+Read this slowly, because it is the opposite of the block list in **both** halves:
+
+| Action | What it does | Costs |
+|---|---|---|
+| `allow-only on` | blocks the entire web | admin, no password |
+| `allow-only off` | unblocks the entire web | **password** |
+| `allow <site>` | opens something the mode had closed | **password** (while the mode is on) |
+| `unallow <site>` | closes it again | admin, no password |
+
+So on the block list *adding* is free and *removing* costs the password; here it is
+the other way round. `policy.AllowNarrows` is the single place that decides, and
+the elevated guard re-checks it, so the status window cannot skip it.
+
+Allowing a site while the mode is **off** is free, because the allowlist is
+enforcing nothing and adding to it opens nothing — the same reasoning that makes
+creating a windowless block free.
+
+### A timetable, for the study-mode shape
+
+`windows` are when the mode applies, and mean exactly what they mean on a
+[scheduled block](#scheduled-blocks) — including `end` before `start` running past
+midnight. Empty means around the clock.
+
+Outside its window the mode reads as **waiting**, not off. That distinction is the
+point: "off" would say somebody turned it off. Crossing the boundary is picked up by
+the same 5s schedule check a block's window is, because the mode is part of the
+resolved config and therefore part of the signature the service compares.
+
+Giving a mode that is currently on a timetable **narrows** enforcement — it takes
+something applied all day and applies it only sometimes — so it costs the password,
+the same inverted gate `add-block` with a window has. One window from the CLI; a
+second is a config-file job plus `guard commit`.
+
+### Guardrails
+
+**A site cannot be on both lists.** Chromium gives an allowlist entry precedence
+over a blocklist entry of the same specificity, so accepting both would make
+`guard domains` report a site as blocked while the browser let it through — a true
+statement doing the work of a false one. `guard allow` refuses it, naming the
+blocklist entry that covers it and what to do about it, and `Validate` refuses it
+again for a config edited by hand. It covers subdomains too: with `gambling.example`
+blocked, allowing `sports.gambling.example` is refused.
+
+**A bare `*` is still refused as a site.** `NormalizeDomain` has always turned it
+down, because reaching "block every URL" through the box you type `reddit.com` into
+would take the whole web out by typo. That refusal stays — this mode is the
+deliberate door, and it is deliberately somewhere else.
+
+**An empty allowlist with the mode on is allowed, and said out loud.** Every page in
+every managed browser is refused; that is what "block the entire internet" means and
+it is a legitimate thing to want. The CLI prints it in as many words and the status
+window shows a warning box, because it is also the state somebody reaches by
+accident.
+
+**Turning it off is reconciled, not forgotten.** The `*` entry and every exception
+are pruned when the mode goes off, and cleared outright on an authorized
+uninstall — a teardown that left the block-all entry behind would leave a machine
+with no web and no guard to lift it. `RemoveDomains` therefore checks the allowlist
+as well as the block list before deciding there is nothing to undo, since a config
+that only ever used this mode has no blocked domains at all.
+
+### What it does not cover
+
+- **A browser the guard writes no policy for.** This is the feature where that gap
+  goes from a leak to the whole roof: every site blocked in Chrome, Edge, Brave and
+  Firefox is every site reachable through Opera. `guard allow-only on` prints the
+  unmanaged-browser warning underneath for exactly that reason. See
+  [Browsers the guard cannot manage](#browsers-the-guard-cannot-manage).
+- **Anything that is not a browser.** The URL filter is a browser policy; an
+  application reaching the network on its own account is unaffected. Block the
+  *application* instead.
+- **Sign-in and captive-portal pages.** Blocking everything blocks those too. Allow
+  what you need, or turn the mode off for the minute it takes.
+- **Per-browser rows in `verify`.** The mode folds into each browser's existing
+  `domains` row rather than adding one of its own, tallied together so a partial
+  count stays meaningful — half of this mode applied is not the mode, and it must
+  not read as `ok`.
 
 ## Blocked apps
 
@@ -1297,6 +1419,8 @@ would make that transparency theoretical.
 | `pause.refused` | somebody tried to pause protection while a block was locked |
 | `service.started` `.stopped` | the guard service came up or went down |
 | `domain.blocked` `.unblocked` | a site was added to, or lifted from, the block list |
+| `allowlist.on` `.off` | every site was blocked except the allowlist, or that was lifted |
+| `site.allowed` `.unallowed` | a site was let through the allowlist mode, or closed again |
 | `app.blocked` `.unblocked` | an application rule was added or lifted |
 | `extension.enabled` `.disabled` | an extension started or stopped being locked |
 | `hardening.enabled` `.disabled` | a browser setting started or stopped being pinned |

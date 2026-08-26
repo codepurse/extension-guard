@@ -325,6 +325,24 @@
   <div class="rows" id="domain-rows"></div>
   <p class="exthint" id="domain-empty" style="display:none;">Nothing blocked yet.</p>
 
+  <div id="allow-section">
+    <div class="section-head">
+      <div class="section-title">Allowed sites only</div>
+      <button id="allow-toggle" class="ghost small">Turn on</button>
+    </div>
+    <p class="exthint">Blocks every site except the ones below. Turning it on is free; turning it off &mdash; and letting a site through &mdash; needs the password, because that is the direction that opens things.</p>
+    <div id="allow-shut" class="card warnbox" style="display:none; margin-bottom:6px;">
+      <div class="lbl">Every site is blocked</div>
+      <div class="announce-msg">The allowlist is empty and the mode is on, so no page loads in Chrome, Edge, Brave or Firefox. That is what this mode means &mdash; add the sites you need below if it was not what you wanted.</div>
+    </div>
+    <div class="addrow">
+      <input id="allow-input" type="text" placeholder="wikipedia.org" autocomplete="off" spellcheck="false" />
+      <button id="allow-add">Allow</button>
+    </div>
+    <div class="rows" id="allow-rows"></div>
+    <p class="exthint" id="allow-empty" style="display:none;">Nothing allowed yet.</p>
+  </div>
+
   <div class="section-title">Block a category</div>
   <p class="exthint">A category blocks a whole set at once &mdash; its apps and its sites &mdash; around the clock. Adding one is free; taking it off again needs the password.</p>
   <div class="rows" id="cat-rows"></div>
@@ -917,6 +935,7 @@
 
     renderUnmanaged(s);
     renderHardening(s);
+    renderAllowlist(s);
     renderUsage(s);
     renderDomains(s);
     renderCategories(s);
@@ -1317,6 +1336,113 @@
       line.appendChild(num);
       daysBox.appendChild(line);
     });
+  }
+
+  // renderAllowlist is the block list read the other way round: name what is
+  // allowed and block the rest. The section is deliberately shaped like Blocked
+  // sites - one box, one list - because it is the same mechanism, and the only thing
+  // a reader has to hold in mind is that the gate is inverted.
+  function renderAllowlist(s) {
+    const a = s.allowlist || {};
+    const rows = document.getElementById('allow-rows');
+    const empty = document.getElementById('allow-empty');
+    const toggle = document.getElementById('allow-toggle');
+    const shut = document.getElementById('allow-shut');
+    const sites = a.sites || [];
+
+    // Three states, not two. On-and-outside-its-window is not off, and calling it
+    // off would read as somebody having turned it off.
+    let state = 'Turn on';
+    if (a.on && a.enforcing) { state = 'On \u2014 turn off'; }
+    else if (a.on) { state = 'Waiting (' + (a.schedule || '') + ') \u2014 turn off'; }
+    toggle.textContent = state;
+    toggle.title = a.on
+      ? 'Unblocks the whole web again \u2014 needs the password'
+      : 'Blocks every site except the list below';
+
+    shut.style.display = a.shut ? '' : 'none';
+    rows.innerHTML = '';
+    empty.style.display = sites.length ? 'none' : '';
+
+    sites.forEach(function (host) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      const name = document.createElement('span');
+      name.className = 'dname';
+      name.textContent = host;
+      row.appendChild(name);
+
+      if (a.on && !a.enforcing) {
+        const badge = document.createElement('span');
+        badge.className = 'badge idlewin';
+        badge.textContent = 'Waiting';
+        badge.title = 'The mode is on, but outside its window right now';
+        row.appendChild(badge);
+      }
+
+      const btn = document.createElement('button');
+      btn.className = 'toggle on';
+      btn.textContent = 'Allowed';
+      btn.title = 'Stop allowing this site (free \u2014 it only closes something)';
+      btn.style.marginLeft = (a.on && !a.enforcing) ? '8px' : 'auto';
+      btn.addEventListener('click', function () { unallowSite(host); });
+      row.appendChild(btn);
+      rows.appendChild(row);
+    });
+  }
+
+  // toggleAllowOnly turns the mode on or off. On costs the Windows prompt alone;
+  // off asks for the password first, because it hands back the entire web.
+  async function toggleAllowOnly() {
+    if (!bound() || !window.go.main.App.AllowOnly) { return; }
+    const on = !((current.allowlist || {}).on);
+    let pw = '';
+    if (!on) {
+      let needs = true;
+      try { needs = await window.go.main.App.AllowNeedsPassword('off'); } catch (e) { needs = true; }
+      if (needs) {
+        pw = await askPassword('Enter the password to unblock the whole web again');
+        if (pw === null) { return; }
+      }
+    }
+    setMsg('Approve the Windows permission prompt...');
+    let res;
+    try { res = await window.go.main.App.AllowOnly(on, pw); } catch (e) { res = { ok: false, message: String(e) }; }
+    setMsg(res.message, res.ok ? 'ok' : 'err');
+    await refresh();
+  }
+
+  // allowSite adds a site to the allowlist. This is the one "add" in the window that
+  // weakens protection, so it asks for the password whenever the mode is actually
+  // enforcing - and the guard asks again.
+  async function allowSite() {
+    if (!bound() || !window.go.main.App.Allow) { return; }
+    const input = document.getElementById('allow-input');
+    const value = input.value.trim();
+    if (!value) { setMsg('Type a site to allow.', 'err'); input.focus(); return; }
+    let pw = '';
+    let needs = false;
+    try { needs = await window.go.main.App.AllowNeedsPassword('allow'); } catch (e) { needs = false; }
+    if (needs) {
+      pw = await askPassword('Enter the password to let ' + value + ' through');
+      if (pw === null) { return; }
+    }
+    setMsg('Approve the Windows permission prompt...');
+    let res;
+    try { res = await window.go.main.App.Allow(value, pw); } catch (e) { res = { ok: false, message: String(e) }; }
+    setMsg(res.message, res.ok ? 'ok' : 'err');
+    if (res.ok) { input.value = ''; }
+    await refresh();
+  }
+
+  // unallowSite closes a site again. Free, like blocking one.
+  async function unallowSite(host) {
+    if (!bound() || !window.go.main.App.Unallow) { return; }
+    setMsg('Approve the Windows permission prompt...');
+    let res;
+    try { res = await window.go.main.App.Unallow(host); } catch (e) { res = { ok: false, message: String(e) }; }
+    setMsg(res.message, res.ok ? 'ok' : 'err');
+    await refresh();
   }
 
   // renderCategories offers each built-in set as one card. The button says what
@@ -2052,6 +2178,12 @@
   document.getElementById('domain-add').addEventListener('click', addDomain);
   document.getElementById('domain-input').addEventListener('keydown', function (e) {
     if (e.key === 'Enter') { e.preventDefault(); addDomain(); }
+  });
+
+  document.getElementById('allow-toggle').addEventListener('click', toggleAllowOnly);
+  document.getElementById('allow-add').addEventListener('click', allowSite);
+  document.getElementById('allow-input').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); allowSite(); }
   });
 
   document.getElementById('block-new').addEventListener('click', newBlock);

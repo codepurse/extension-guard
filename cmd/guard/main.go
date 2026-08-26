@@ -144,6 +144,14 @@ func main() {
 		blockDomainCmd(cfg, *cfgPath, flag.Arg(1))
 	case "unblock-domain":
 		unblockDomainCmd(cfg, *cfgPath, flag.Arg(1), *password)
+	case "allowed":
+		allowedCmd(cfg)
+	case "allow-only":
+		allowOnlyCmd(cfg, *cfgPath, flag.Arg(1), *password)
+	case "allow":
+		allowCmd(cfg, *cfgPath, flag.Arg(1), *password)
+	case "unallow":
+		unallowCmd(cfg, *cfgPath, flag.Arg(1))
 	case "apps":
 		appsCmd(cfg)
 	case "categories":
@@ -713,6 +721,16 @@ domain commands:
   block-domain       <domain>  block a domain and all its subdomains (admin; no
                                password - it only adds protection)
   unblock-domain     <domain>  stop filtering a domain (password, unless paused)
+  allowed            list the allowed-sites-only mode, its timetable, and the
+                     sites it lets through
+  allow-only         on|off    block every site except the allowlist. Turning it
+                               on only strengthens (admin, no password); turning
+                               it off unblocks the whole web (password)
+  allow              <domain>  let a site through the mode - the one kind of
+                               "add" here that weakens protection, so it takes
+                               the password while the mode is on
+  unallow            <domain>  stop letting a site through (admin; no password -
+                               it only closes something)
 
 application commands:
   usage              [days]    how long each blocked application actually ran -

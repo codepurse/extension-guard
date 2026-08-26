@@ -55,6 +55,10 @@ type Status struct {
 	// locking an extension means anything inside the browsers the guard *does*
 	// manage.
 	Hardening []HardeningRow `json:"hardening"`
+	// Allowlist is the "only these sites" mode: the other way round from Domains,
+	// and the one place in this window where adding to a list weakens protection
+	// rather than strengthening it.
+	Allowlist AllowlistPanel `json:"allowlist"`
 	// Usage is how long each blocked application actually ran. It comes down with
 	// the rest of the status for the reason the category rows do: everything here
 	// arrives in one round trip, and a second call would let this disagree with the
@@ -87,6 +91,25 @@ type Status struct {
 	// (policy.EnforcedAt fails closed), so the window must say so rather than
 	// show windows that are not actually running.
 	ScheduleError string `json:"scheduleError"`
+}
+
+// AllowlistPanel is the allowed-sites-only mode as the window offers it.
+//
+// On is what the config says and Enforcing is whether it applies at this moment -
+// the two differ while the mode has a timetable whose window is shut, and the window
+// says "waiting" for that rather than "off", because "off" would read as somebody
+// having turned it off.
+type AllowlistPanel struct {
+	On        bool     `json:"on"`
+	Enforcing bool     `json:"enforcing"`
+	Schedule  string   `json:"schedule"`
+	Sites     []string `json:"sites"`
+	// Shut is the state worth its own flag: the mode is on and the allowlist is
+	// empty, so every page in every managed browser is refused. It is a legitimate
+	// thing to want - it is what "block the entire internet" means - and it is also
+	// the state somebody reaches by accident, so the window says which it is looking
+	// at rather than showing an empty list.
+	Shut bool `json:"shut"`
 }
 
 // UsagePanel is the record of how long each blocked application actually ran.
@@ -514,6 +537,15 @@ func (a *App) GetStatus() Status {
 		hardening = append(hardening, row)
 	}
 
+	allow := a.cfg.Allowing()
+	allowPanel := AllowlistPanel{
+		On:        allow.On,
+		Enforcing: a.cfg.AllowlistOn(now),
+		Schedule:  allow.ScheduleSummary(),
+		Sites:     allow.AllowedSites(),
+	}
+	allowPanel.Shut = allow.On && len(allowPanel.Sites) == 0
+
 	usagePanel := buildUsagePanel(a.cfg.UsageStats(now, usageWindowDays))
 
 	scheduleErr := ""
@@ -542,6 +574,7 @@ func (a *App) GetStatus() Status {
 		Categories:          cats,
 		Hardening:           hardening,
 		Usage:               usagePanel,
+		Allowlist:           allowPanel,
 		PrivateBrowsingOpen: a.cfg.PrivateBrowsingOpen(),
 		Unmanaged:           unmanaged,
 		UnmanagedScanned:    policy.BrowserScanSupported(),
@@ -884,6 +917,100 @@ func (a *App) Unharden(id, password string) ActionResult {
 		msg += " Private windows work again, and a locked extension does not run in one."
 	}
 	return a.execGuard(args, withFirefoxNote(msg))
+}
+
+// AllowOnly turns the allowed-sites-only mode on or off.
+//
+// On only strengthens - it blocks the entire web - so it costs the Windows prompt
+// alone. Off unblocks the entire web, which is the largest single weakening in this
+// program, so it takes the password. policy.AllowNarrows decides and the elevated
+// guard re-checks it.
+func (a *App) AllowOnly(on bool, password string) ActionResult {
+	if a.cfg.Allowing().On == on {
+		state := "off"
+		if on {
+			state = "on"
+		}
+		return ActionResult{OK: true, Message: "Allowed sites only is already " + state + "."}
+	}
+	action := policy.AllowActionOn
+	arg := "on"
+	if !on {
+		action, arg = policy.AllowActionOff, "off"
+	}
+	args := []string{"-config", a.cfgPath}
+	if policy.AllowNarrows(action) && !scm.IsPaused() {
+		pw, bad := passwordArgs(password, "turning off allowed-sites-only")
+		if bad != nil {
+			return *bad
+		}
+		args = append(args, pw...)
+	}
+	args = append(args, "allow-only", arg)
+
+	msg := "Every site is blocked now except the allowlist."
+	if !on {
+		msg = "The web is reachable again, except what is on the block list."
+	} else if len(a.cfg.Allowing().AllowedSites()) == 0 {
+		msg = "Every site is blocked now - the allowlist is empty. Add the ones you need below."
+	}
+	return a.execGuard(args, withFirefoxNote(msg))
+}
+
+// Allow lets a site through the mode. This is the one "add" in the window that
+// weakens protection, so while the mode is on it takes the password - the mirror of
+// UnblockDomain, and the opposite of BlockDomain.
+func (a *App) Allow(name, password string) ActionResult {
+	if strings.TrimSpace(name) == "" {
+		return ActionResult{Message: "Type a site to allow."}
+	}
+	if _, err := policy.NormalizeDomain(name); err != nil {
+		// Answer an obviously bad entry immediately rather than spending a UAC prompt
+		// to be told the same thing.
+		return ActionResult{Message: capitalize(err.Error())}
+	}
+	// The contradiction guardrail, answered here as well as in the guard: a site the
+	// block list covers would be let through by the browser anyway, and finding that
+	// out after the prompt would be worse.
+	if covered, ok := a.cfg.CoveredBy(name); ok {
+		return ActionResult{Message: "That site is on the block list (as " + covered +
+			"), so allowing it would contradict it. Stop blocking " + covered + " first."}
+	}
+	args := []string{"-config", a.cfgPath}
+	if a.cfg.Allowing().On && !scm.IsPaused() {
+		pw, bad := passwordArgs(password, "allowing a site through")
+		if bad != nil {
+			return *bad
+		}
+		args = append(args, pw...)
+	}
+	args = append(args, "allow", name)
+	return a.execGuard(args, withFirefoxNote("Allowed, including every subdomain."))
+}
+
+// Unallow closes a site again. Free of the password - it only strengthens, the
+// mirror of BlockDomain.
+func (a *App) Unallow(name string) ActionResult {
+	if strings.TrimSpace(name) == "" {
+		return ActionResult{Message: "No site selected."}
+	}
+	return a.execGuard(
+		[]string{"-config", a.cfgPath, "unallow", name},
+		withFirefoxNote(name+" is no longer allowed through."))
+}
+
+// AllowNeedsPassword lets the window prompt only when the change actually calls for
+// one, instead of asking on every click or discovering the requirement after the UAC
+// prompt has been spent. The answer is not trusted: the guard re-checks it.
+func (a *App) AllowNeedsPassword(action string) bool {
+	if scm.IsPaused() {
+		return false
+	}
+	if action == policy.AllowActionAllow && !a.cfg.Allowing().On {
+		// Nothing is being enforced, so adding to the list opens nothing.
+		return false
+	}
+	return policy.AllowNarrows(action)
 }
 
 // BrowseForExe opens the Windows file picker and returns the chosen executable's
