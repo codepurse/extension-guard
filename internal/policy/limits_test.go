@@ -12,7 +12,7 @@ import (
 // blocked, and a block that allows forty-five minutes of it a day.
 func limitedConfig() Config {
 	return Config{
-		Apps: []App{{Kind: AppExe, Value: "steam.exe"}, {Kind: AppExe, Value: "game.exe"}},
+		Apps: []App{{Kind: AppExe, Value: "steam.exe"}, {Kind: AppExe, Value: "mygame.exe"}},
 		Blocks: []Block{{
 			ID:    "games",
 			Label: "Games",
@@ -181,8 +181,8 @@ func TestActiveAtWithResolvesALimit(t *testing.T) {
 
 	withBudget := cfg.ActiveAtWith(now, spentOf(map[string]time.Duration{"games": 10 * time.Minute}))
 	blocked := withBudget.BlockedApps()
-	if len(blocked) != 1 || blocked[0].Value != "game.exe" {
-		t.Errorf("with budget left: blocked = %+v, want only game.exe", blocked)
+	if len(blocked) != 1 || blocked[0].Value != "mygame.exe" {
+		t.Errorf("with budget left: blocked = %+v, want only mygame.exe", blocked)
 	}
 	// It has to be reported as inactive rather than simply missing, because that is
 	// what tells ApplyApps to take the launch block away again.
@@ -462,29 +462,53 @@ func TestRunningLimitedIgnoresOutOfWindowTime(t *testing.T) {
 // expensive parts only when a limited rule is matched on them.
 func TestMeasurementNeedsAsksForTheLeast(t *testing.T) {
 	plain := Config{Apps: []App{{Kind: AppExe, Value: "steam.exe"}}}
-	if measure, _, _ := plain.MeasurementNeeds(at(20, 19, 0)); measure {
+	if measure, _ := plain.MeasurementNeeds(at(20, 19, 0)); measure {
 		t.Error("a config with no limits wants to measure")
 	}
 
 	cfg := limitedConfig()
-	measure, paths, titles := cfg.MeasurementNeeds(at(20, 19, 0))
+	measure, needs := cfg.MeasurementNeeds(at(20, 19, 0))
 	if !measure {
 		t.Error("a limited block in window does not want to measure")
 	}
-	if paths || titles {
-		t.Errorf("a bare image-name rule asked for paths=%v titles=%v, want neither", paths, titles)
+	// A bare image-name rule now asks for the name compiled into the executable,
+	// so that renaming steam.exe does not hand back an unlimited evening - and
+	// reading that name requires the image path. This is the one place the cost of
+	// closing the rename bypass shows up: the cheapest kind of rule stopped being
+	// free. It does not ask for window titles, which nothing here is matched on.
+	if !needs.Originals {
+		t.Error("a bare image-name rule did not ask for the compiled-in name")
+	}
+	if !needs.WantPaths() {
+		t.Error("asking for compiled-in names did not imply asking for paths")
+	}
+	if needs.Titles {
+		t.Error("a bare image-name rule asked for window titles")
 	}
 
 	cfg.Apps = append(cfg.Apps, App{Kind: AppTitle, Value: "Solitaire"})
 	cfg.Blocks[0].Apps = append(cfg.Blocks[0].Apps, "Solitaire")
-	if _, _, titles := cfg.MeasurementNeeds(at(20, 19, 0)); !titles {
+	if _, needs := cfg.MeasurementNeeds(at(20, 19, 0)); !needs.Titles {
 		t.Error("a window-title rule under a limit did not ask for titles")
+	}
+
+	// A limit covering only a folder rule wants paths, and has no bare name to
+	// need a compiled-in one for.
+	folder := limitedConfig()
+	folder.Apps = []App{{Kind: AppFolder, Value: `C:\Games\Steam`}}
+	folder.Blocks[0].Apps = []string{`C:\Games\Steam`}
+	_, folderNeeds := folder.MeasurementNeeds(at(20, 19, 0))
+	if !folderNeeds.Paths {
+		t.Error("a folder rule under a limit did not ask for paths")
+	}
+	if folderNeeds.Originals {
+		t.Error("a folder rule asked for compiled-in names, which cannot help it")
 	}
 
 	// Out of window there is nothing to measure, whatever the rules need.
 	windowed := limitedConfig()
 	windowed.Blocks[0].Windows = []Window{{Start: "18:00", End: "22:00"}}
-	if measure, _, _ := windowed.MeasurementNeeds(at(20, 9, 0)); measure {
+	if measure, _ := windowed.MeasurementNeeds(at(20, 9, 0)); measure {
 		t.Error("an out-of-window limit wants to measure")
 	}
 }

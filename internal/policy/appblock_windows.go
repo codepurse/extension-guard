@@ -125,7 +125,7 @@ func SweepApps(cfg Config) error {
 	if len(apps) == 0 {
 		return nil
 	}
-	procs, err := snapshotProcesses(NeedsPaths(apps), NeedsTitles(apps))
+	procs, err := snapshotProcesses(SnapshotNeedsFor(apps))
 	if err != nil {
 		return fmt.Errorf("list processes: %w", err)
 	}
@@ -162,11 +162,11 @@ func SweepApps(cfg Config) error {
 // enforcement at all. Measuring is a separate job from enforcing, and it reads
 // better as one.
 func SampleUsage(cfg Config, at time.Time) ([]string, error) {
-	measure, paths, titles := cfg.MeasurementNeeds(at)
+	measure, needs := cfg.MeasurementNeeds(at)
 	if !measure {
 		return nil, nil
 	}
-	procs, err := snapshotProcesses(paths, titles)
+	procs, err := snapshotProcesses(needs)
 	if err != nil {
 		return nil, fmt.Errorf("list processes: %w", err)
 	}
@@ -180,7 +180,7 @@ func VerifyApps(cfg Config) []AppStatus {
 	if len(apps) == 0 {
 		return nil
 	}
-	procs, err := snapshotProcesses(NeedsPaths(apps), NeedsTitles(apps))
+	procs, err := snapshotProcesses(SnapshotNeedsFor(apps))
 	if err != nil {
 		procs = nil // report on what we can; a rule with no snapshot is not "running"
 	}
@@ -536,7 +536,7 @@ func ourDebugger(v string) bool {
 // are only gathered when a rule needs them: the first costs a handle per process
 // and the second a pass over every top-level window, and most block lists need
 // neither.
-func snapshotProcesses(withPaths, withTitles bool) ([]Process, error) {
+func snapshotProcesses(needs SnapshotNeeds) ([]Process, error) {
 	snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
 	if err != nil {
 		return nil, err
@@ -544,17 +544,21 @@ func snapshotProcesses(withPaths, withTitles bool) ([]Process, error) {
 	defer windows.CloseHandle(snap)
 
 	var titles map[uint32][]string
-	if withTitles {
+	if needs.Titles {
 		titles = windowTitles()
 	}
+	wantPaths := needs.WantPaths()
 
 	var e windows.ProcessEntry32
 	e.Size = uint32(unsafe.Sizeof(e))
 	var out []Process
 	for err = windows.Process32First(snap, &e); err == nil; err = windows.Process32Next(snap, &e) {
 		p := Process{PID: e.ProcessID, Name: windows.UTF16ToString(e.ExeFile[:])}
-		if withPaths && p.PID > 4 {
+		if wantPaths && p.PID > 4 {
 			p.Path = imagePath(p.PID)
+		}
+		if needs.Originals && p.Path != "" {
+			p.OriginalName = originalFileName(p.Path)
 		}
 		if titles != nil {
 			p.Titles = titles[p.PID]

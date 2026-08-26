@@ -99,7 +99,10 @@ func refreshMachinePolicy() error {
 // restarted. Best effort: if the process list cannot be read, this says no rather
 // than warning about a browser that may not even be open.
 func FirefoxRunning() bool {
-	procs, err := snapshotProcesses(false, false)
+	// No needs: this asks only whether a process called firefox.exe exists, which
+	// the plain snapshot answers. Nothing here is a block rule, so nothing here
+	// wants paths, titles, or the name compiled into the image.
+	procs, err := snapshotProcesses(SnapshotNeeds{})
 	if err != nil && len(procs) == 0 {
 		return false
 	}

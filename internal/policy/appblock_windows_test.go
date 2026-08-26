@@ -58,12 +58,12 @@ func imageKey(t *testing.T, name string) registry.Key {
 // Debugger and no filter.
 func TestLaunchBlockByName(t *testing.T) {
 	withTestIFEO(t)
-	cfg := Config{Apps: []App{{Kind: AppExe, Value: "some-game.exe"}}}
+	cfg := Config{Apps: []App{{Kind: AppExe, Value: "some-mygame.exe"}}}
 
 	if err := syncLaunchBlocks(cfg.BlockedApps()); err != nil {
 		t.Fatalf("syncLaunchBlocks: %v", err)
 	}
-	key := imageKey(t, "some-game.exe")
+	key := imageKey(t, "some-mygame.exe")
 	defer key.Close()
 	dbg, _, err := key.GetStringValue(debuggerValue)
 	if err != nil {
@@ -75,7 +75,7 @@ func TestLaunchBlockByName(t *testing.T) {
 	if _, _, err := key.GetIntegerValue(useFilterValue); err == nil {
 		t.Error("UseFilter is set for a rule that should block every copy")
 	}
-	if !launchBlocked("some-game.exe") {
+	if !launchBlocked("some-mygame.exe") {
 		t.Error("launchBlocked = false right after writing the block")
 	}
 }
@@ -84,12 +84,12 @@ func TestLaunchBlockByName(t *testing.T) {
 // filter subkey naming the path.
 func TestLaunchBlockByPath(t *testing.T) {
 	withTestIFEO(t)
-	const path = `C:\Games\Some\some-game.exe`
+	const path = `C:\Games\Some\some-mygame.exe`
 	if err := syncLaunchBlocks([]App{{Kind: AppExe, Value: path}}); err != nil {
 		t.Fatalf("syncLaunchBlocks: %v", err)
 	}
 
-	key := imageKey(t, "some-game.exe")
+	key := imageKey(t, "some-mygame.exe")
 	filter, _, err := key.GetIntegerValue(useFilterValue)
 	if err != nil || filter != 1 {
 		t.Errorf("UseFilter = %v, %v; want 1", filter, err)
@@ -106,10 +106,10 @@ func TestLaunchBlockByPath(t *testing.T) {
 	if !launchBlocked(path) {
 		t.Error("launchBlocked = false for the blocked path")
 	}
-	if launchBlocked(`D:\Elsewhere\some-game.exe`) {
+	if launchBlocked(`D:\Elsewhere\some-mygame.exe`) {
 		t.Error("launchBlocked = true for a copy the rule does not name")
 	}
-	if launchBlocked("some-game.exe") {
+	if launchBlocked("some-mygame.exe") {
 		t.Error("launchBlocked = true for the bare name, but only one path is filtered")
 	}
 }
@@ -120,13 +120,13 @@ func TestLaunchBlockByPath(t *testing.T) {
 func TestLaunchBlockNameBeatsPath(t *testing.T) {
 	withTestIFEO(t)
 	apps := []App{
-		{Kind: AppExe, Value: `C:\Games\some-game.exe`},
-		{Kind: AppExe, Value: "some-game.exe"},
+		{Kind: AppExe, Value: `C:\Games\some-mygame.exe`},
+		{Kind: AppExe, Value: "some-mygame.exe"},
 	}
 	if err := syncLaunchBlocks(apps); err != nil {
 		t.Fatalf("syncLaunchBlocks: %v", err)
 	}
-	key := imageKey(t, "some-game.exe")
+	key := imageKey(t, "some-mygame.exe")
 	defer key.Close()
 	if _, _, err := key.GetStringValue(debuggerValue); err != nil {
 		t.Error("no unfiltered Debugger, so copies outside the named path would run")
@@ -134,7 +134,7 @@ func TestLaunchBlockNameBeatsPath(t *testing.T) {
 	if _, _, err := key.GetIntegerValue(useFilterValue); err == nil {
 		t.Error("UseFilter is still set, which makes the unfiltered Debugger ignored")
 	}
-	if !launchBlocked(`D:\Anywhere\some-game.exe`) {
+	if !launchBlocked(`D:\Anywhere\some-mygame.exe`) {
 		t.Error("a copy elsewhere is not blocked")
 	}
 }
@@ -143,7 +143,7 @@ func TestLaunchBlockNameBeatsPath(t *testing.T) {
 // switched off, or deleted from the config outright, must lose its launch block.
 func TestSyncLaunchBlocksPrunesWhatIsNoLongerWanted(t *testing.T) {
 	base := withTestIFEO(t)
-	if err := syncLaunchBlocks([]App{{Kind: AppExe, Value: "some-game.exe"}}); err != nil {
+	if err := syncLaunchBlocks([]App{{Kind: AppExe, Value: "some-mygame.exe"}}); err != nil {
 		t.Fatalf("syncLaunchBlocks: %v", err)
 	}
 	// The rule vanishes entirely - not merely disabled - which is what a
@@ -151,10 +151,10 @@ func TestSyncLaunchBlocksPrunesWhatIsNoLongerWanted(t *testing.T) {
 	if err := syncLaunchBlocks(nil); err != nil {
 		t.Fatalf("syncLaunchBlocks (empty): %v", err)
 	}
-	if launchBlocked("some-game.exe") {
+	if launchBlocked("some-mygame.exe") {
 		t.Error("the launch block survived the rule being removed")
 	}
-	if _, err := registry.OpenKey(ifeoHive, base+`\some-game.exe`, registry.QUERY_VALUE); err == nil {
+	if _, err := registry.OpenKey(ifeoHive, base+`\some-mygame.exe`, registry.QUERY_VALUE); err == nil {
 		t.Error("an empty key was left behind")
 	}
 }
@@ -173,7 +173,7 @@ func TestSyncLaunchBlocksLeavesForeignEntriesAlone(t *testing.T) {
 	}
 	key.Close()
 
-	if err := syncLaunchBlocks([]App{{Kind: AppExe, Value: "some-game.exe"}}); err != nil {
+	if err := syncLaunchBlocks([]App{{Kind: AppExe, Value: "some-mygame.exe"}}); err != nil {
 		t.Fatalf("syncLaunchBlocks: %v", err)
 	}
 	if err := syncLaunchBlocks(nil); err != nil {
@@ -193,7 +193,7 @@ func TestSyncLaunchBlocksLeavesForeignEntriesAlone(t *testing.T) {
 // app and the user needs to know why the launch block is absent.
 func TestLaunchBlockRefusesToClobberForeignDebugger(t *testing.T) {
 	base := withTestIFEO(t)
-	key, _, err := registry.CreateKey(ifeoHive, base+`\some-game.exe`, registry.ALL_ACCESS)
+	key, _, err := registry.CreateKey(ifeoHive, base+`\some-mygame.exe`, registry.ALL_ACCESS)
 	if err != nil {
 		t.Fatalf("seed foreign key: %v", err)
 	}
@@ -202,11 +202,11 @@ func TestLaunchBlockRefusesToClobberForeignDebugger(t *testing.T) {
 	}
 	key.Close()
 
-	err = syncLaunchBlocks([]App{{Kind: AppExe, Value: "some-game.exe"}})
+	err = syncLaunchBlocks([]App{{Kind: AppExe, Value: "some-mygame.exe"}})
 	if err == nil {
 		t.Fatal("expected a foreign debugger to be reported rather than replaced")
 	}
-	if !strings.Contains(err.Error(), "some-game.exe") {
+	if !strings.Contains(err.Error(), "some-mygame.exe") {
 		t.Errorf("error should name the executable, got %q", err)
 	}
 }
@@ -216,8 +216,8 @@ func TestLaunchBlockRefusesToClobberForeignDebugger(t *testing.T) {
 func TestRemoveAppsClearsLaunchBlocks(t *testing.T) {
 	withTestIFEO(t)
 	cfg := Config{Apps: []App{
-		{Kind: AppExe, Value: "some-game.exe"},
-		{Kind: AppExe, Value: `C:\Games\other-game.exe`},
+		{Kind: AppExe, Value: "some-mygame.exe"},
+		{Kind: AppExe, Value: `C:\Games\other-mygame.exe`},
 	}}
 	if err := syncLaunchBlocks(cfg.BlockedApps()); err != nil {
 		t.Fatalf("syncLaunchBlocks: %v", err)
@@ -225,7 +225,7 @@ func TestRemoveAppsClearsLaunchBlocks(t *testing.T) {
 	if err := RemoveApps(cfg); err != nil {
 		t.Fatalf("RemoveApps: %v", err)
 	}
-	if launchBlocked("some-game.exe") || launchBlocked(`C:\Games\other-game.exe`) {
+	if launchBlocked("some-mygame.exe") || launchBlocked(`C:\Games\other-mygame.exe`) {
 		t.Error("a launch block survived RemoveApps")
 	}
 }

@@ -103,6 +103,13 @@ type program struct {
 	// (every thirty).
 	lastSampleErr string
 	lastUsageErr  string
+	// enforcers is the set the service drives, and pausedAt reads the pause
+	// state. Both are fields rather than direct calls to enforce.Default and
+	// scm.Paused so the loop can be tested at all: those two reach the real
+	// registry and the real browser policy, which is not something a test may
+	// touch, and between them they decide everything reapply does.
+	enforcers enforce.Set
+	pausedAt  func() scm.PauseState
 	// paused latches whether the last cycle found protection paused, so the
 	// transitions either side of a pause happen exactly once: enforcement is lifted
 	// when one starts, and re-applied when one ends. Without it the service would
@@ -131,7 +138,13 @@ type program struct {
 // walking up the tree. Flags precede the subcommand because Go's flag parser
 // stops at the first non-flag argument.
 func New(cfg policy.Config, configPath string) (service.Service, error) {
-	prg := &program{cfg: cfg, configPath: configPath, quit: make(chan struct{})}
+	prg := &program{
+		cfg:        cfg,
+		configPath: configPath,
+		quit:       make(chan struct{}),
+		enforcers:  enforce.Default(),
+		pausedAt:   scm.Paused,
+	}
 	conf := &service.Config{
 		Name:        ServiceName,
 		DisplayName: "Extension Guard",
@@ -532,10 +545,10 @@ func (p *program) reapply(reason string) {
 	// Remove on every cycle would rewrite the same keys for the length of the
 	// pause, and would fight anything else that legitimately set them while
 	// protection was off.
-	if pause := scm.Paused(); pause.Paused {
+	if pause := p.pausedAt(); pause.Paused {
 		if !p.paused {
 			p.paused = true
-			if err := enforce.Default().Remove(p.cfg); err != nil {
+			if err := p.enforcers.Remove(p.cfg); err != nil {
 				p.logger.Errorf("lift protection for the pause (%s): %v", reason, err)
 			}
 			stopSessionAgent(p.agent)
@@ -561,7 +574,7 @@ func (p *program) reapply(reason string) {
 	// there.
 	p.activeSig = p.cfg.ActiveSignatureWith(now, spent)
 
-	set := enforce.Default()
+	set := p.enforcers
 	before := enforce.EnforcedCount(set.Verify(active))
 	if err := set.Apply(active); err != nil {
 		p.logger.Errorf("apply (%s): %v", reason, err)
@@ -586,13 +599,22 @@ func (p *program) reapply(reason string) {
 // policy key that the guard then corrected. A re-apply triggered by the guard's
 // own write is excluded for free: nothing had drifted, so the count is unchanged.
 func (p *program) recordPolicyTamper(reason string, before, after int) {
-	if reason != reasonRegistryChange || after <= before {
+	if !isCorrectedTamper(reason, before, after) {
 		return
 	}
 	activity.RecordThrottled("tamper.policy", tamperThrottle, activity.Event{
 		Kind:   activity.TamperPolicy,
 		Detail: fmt.Sprintf("a policy key had been changed; enforcement went from %d back to %d", before, after),
 	})
+}
+
+// isCorrectedTamper is the rule recordPolicyTamper applies, split out so it can
+// be pinned by a test: it decides whether a line saying protection was tampered
+// with appears in somebody's record, and getting it wrong in either direction is
+// worse than most bugs here - a false one is an accusation, a missed one is the
+// event the log exists for.
+func isCorrectedTamper(reason string, before, after int) bool {
+	return reason == reasonRegistryChange && after > before
 }
 
 // ensureAgent keeps the session helper running while a window-title rule needs it,
@@ -674,7 +696,7 @@ func (p *program) resolve(now time.Time, spent policy.Spent) policy.Config {
 // watcher because the command that starts one lifts enforcement itself.
 func (p *program) checkPause() {
 	p.applyMu.Lock()
-	ended := p.paused && !scm.IsPaused()
+	ended := p.paused && !p.pausedAt().Paused
 	p.applyMu.Unlock()
 	if !ended {
 		return
@@ -860,7 +882,7 @@ func (p *program) sweepApps() {
 	}
 	now := time.Now()
 	active, _ := p.cfg.EnforcedAtWith(now, p.spent(now))
-	err := enforce.Default().Sweep(active)
+	err := p.enforcers.Sweep(active)
 	msg := ""
 	if err != nil {
 		msg = err.Error()

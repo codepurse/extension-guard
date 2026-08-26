@@ -111,6 +111,17 @@ const (
 	ExtensionDisabled = "extension.disabled"
 	LimitReached      = "limit.reached" // a block's daily time budget ran out
 	UsageReset        = "usage.reset"   // the record of today's usage was unreadable and was started again
+	// CategoryBlocked is a built-in category expanded into the config. It is one
+	// event rather than the thirty the expansion performs: "blocked social media"
+	// is the fact somebody reading this record is looking for, and thirty lines
+	// of Discord.exe, Telegram.exe, facebook.com would bury it.
+	CategoryBlocked = "category.blocked"
+	// HardeningEnabled and HardeningDisabled are a pinned browser setting being
+	// turned on and off - private browsing above all. The disabled half is the one
+	// worth recording: it hands back the window a locked extension does not run in,
+	// so it belongs in the record next to unblocking a site.
+	HardeningEnabled  = "hardening.enabled"
+	HardeningDisabled = "hardening.disabled"
 	BlockCreated      = "block.created"
 	BlockRemoved      = "block.removed"
 	BlockLocked       = "block.locked"
@@ -321,6 +332,12 @@ func Describe(e Event) string {
 		return "Started protecting " + or(e.Target, "an extension")
 	case ExtensionDisabled:
 		return "Stopped protecting " + or(e.Target, "an extension")
+	case CategoryBlocked:
+		return "Blocked the " + or(e.Target, "") + " category"
+	case HardeningEnabled:
+		return "Pinned the browser setting " + or(e.Target, "")
+	case HardeningDisabled:
+		return "Stopped pinning the browser setting " + or(e.Target, "")
 	case BlockCreated:
 		return "Created the scheduled block " + or(e.Target, "")
 	case BlockRemoved:
@@ -353,9 +370,10 @@ func (e Event) Severity() string {
 	switch e.Kind {
 	case LaunchBlocked, AppClosed, TamperConfig, TamperPolicy,
 		DomainBlocked, AppBlocked, ExtensionEnabled, BlockCreated, BlockLocked,
+		CategoryBlocked, HardeningEnabled,
 		LimitReached, ProtectionInstalled, ProtectionResumed:
 		return SeverityEnforced
-	case DomainUnblocked, AppUnblocked, ExtensionDisabled, BlockRemoved,
+	case DomainUnblocked, AppUnblocked, ExtensionDisabled, BlockRemoved, HardeningDisabled,
 		ProtectionPaused, ProtectionRemoved, PasswordFailed, UsageReset, PauseRefused:
 		return SeverityWeakened
 	}

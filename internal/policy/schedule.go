@@ -424,6 +424,21 @@ func (c *Config) RemoveBlock(id string) bool {
 	return false
 }
 
+// ReplaceBlock swaps the block carrying b's id for b, reporting whether one was
+// there to replace. Like RemoveBlock it does not decide whether the change is
+// allowed: CheckLockedBlocks compares the whole config on the way out and is
+// what refuses a replacement that would weaken a locked block.
+func (c *Config) ReplaceBlock(b Block) bool {
+	want := strings.ToLower(strings.TrimSpace(b.ID))
+	for i := range c.Blocks {
+		if strings.ToLower(c.Blocks[i].ID) == want {
+			c.Blocks[i] = b
+			return true
+		}
+	}
+	return false
+}
+
 // NewBlockID derives a block id from a label, keeping it short, lowercase and
 // free of anything that would need quoting on a command line - the id is what
 // `guard lock` and `guard remove-block` take as an argument. A collision gets a
@@ -499,6 +514,9 @@ func (c Config) Validate() error {
 		return err
 	}
 	if err := c.validateLimits(); err != nil {
+		return err
+	}
+	if err := c.validateHardening(); err != nil {
 		return err
 	}
 	seen := make(map[string]bool, len(c.Blocks))

@@ -304,7 +304,7 @@ func anyRunning(apps []App, procs []Process) bool {
 // the sample is the expensive part: an image path costs a handle per process and a
 // window title costs a pass over every top-level window. A machine with no limits,
 // or with all of them out of window, does not look at the process list at all.
-func (c Config) MeasurementNeeds(at time.Time) (measure, paths, titles bool) {
+func (c Config) MeasurementNeeds(at time.Time) (measure bool, needs SnapshotNeeds) {
 	for _, b := range c.Blocks {
 		if !b.HasLimit() || !b.InWindow(at) {
 			continue
@@ -314,10 +314,9 @@ func (c Config) MeasurementNeeds(at time.Time) (measure, paths, titles bool) {
 			continue // nothing it covers is switched on, so there is nothing to count
 		}
 		measure = true
-		paths = paths || NeedsPaths(apps)
-		titles = titles || NeedsTitles(apps)
+		needs = needs.Or(SnapshotNeedsFor(apps))
 	}
-	return measure, paths, titles
+	return measure, needs
 }
 
 // validateLimits reports the first thing about a limit that would make it behave in

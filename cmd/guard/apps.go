@@ -24,6 +24,7 @@ import (
 func appsCmd(cfg policy.Config) {
 	if !cfg.AnyApps() {
 		fmt.Println("no applications blocked; add one with `guard block-app \"C:\\Games\\Steam\\steam.exe\"`")
+		fmt.Println("or a whole category with `guard block-category social`")
 		return
 	}
 	active := activeNow(cfg)
@@ -32,8 +33,51 @@ func appsCmd(cfg policy.Config) {
 		blockedNow[strings.ToLower(a.Kind)+"|"+strings.ToLower(a.Value)] = true
 	}
 
-	fmt.Printf("  %-46s %-7s %-8s %s\n", "app", "kind", "state", "note")
+	// Rules a category added are listed under it rather than mixed into one flat
+	// list. Thirty ungrouped entries is a list nobody reads, and the point of a
+	// category is to be understood as one decision rather than thirty.
+	byCategory := make(map[string][]policy.App)
+	var loose []policy.App
 	for _, a := range cfg.Apps {
+		if cat, ok := appCategory(a); ok {
+			byCategory[cat] = append(byCategory[cat], a)
+			continue
+		}
+		loose = append(loose, a)
+	}
+
+	fmt.Printf("  %-46s %-7s %-8s %s\n", "app", "kind", "state", "note")
+	printAppRows(loose, blockedNow)
+	for _, id := range policy.CategoryIDs() {
+		rules := byCategory[id]
+		if len(rules) == 0 {
+			continue
+		}
+		label := id
+		if cat, ok := policy.LookupCategory(id); ok {
+			label = cat.Label
+		}
+		fmt.Printf("\n  %s (category - `guard block-category %s` to top up)\n", label, id)
+		printAppRows(rules, blockedNow)
+	}
+}
+
+// appCategory reports the category a rule came from, if it came from one. A
+// source naming a category the catalog no longer carries still groups under that
+// id rather than falling back into the loose list: the config recorded where the
+// rule came from, and a build that dropped the category does not change that.
+func appCategory(a policy.App) (string, bool) {
+	src := strings.TrimSpace(a.Source)
+	if !strings.HasPrefix(src, policy.SourcePrefix) {
+		return "", false
+	}
+	return strings.TrimPrefix(src, policy.SourcePrefix), true
+}
+
+// printAppRows renders one run of rules, sharing the column layout of the header
+// printed above them.
+func printAppRows(apps []policy.App, blockedNow map[string]bool) {
+	for _, a := range apps {
 		n, err := policy.NormalizeApp(a.Kind, a.Value, a.Label)
 		if err != nil {
 			fmt.Printf("  %-46s %-7s %-8s %v\n", a.Value, a.Kind, "invalid", err)

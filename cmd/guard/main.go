@@ -47,6 +47,7 @@ func main() {
 	pauseFor := flag.String("for", "", "how long 'disable' pauses protection: 30m, 2h, 1d, or a time. Omit to pause until you turn it back on")
 	kind := flag.String("kind", "", "what a block-app/unblock-app argument is: exe (default), folder, store, or title")
 	label := flag.String("label", "", "friendly name shown in the status window (used by 'block-app' and 'add-block')")
+	level := flag.String("level", "", "how strict a hardened setting is: moderate or strict (used by 'harden safe-search'; default strict)")
 	count := flag.Int("n", defaultActivityCount, "how many entries 'activity' shows")
 	flag.Usage = printUsage
 	flag.Parse()
@@ -129,6 +130,8 @@ func main() {
 		for _, k := range []policy.Kind{policy.Chrome, policy.Edge, policy.Brave, policy.Firefox} {
 			fmt.Printf("  %-8s %v\n", k, detected[k])
 		}
+	case "browsers":
+		browsersCmd(cfg)
 	case "blocks":
 		blocksCmd(cfg)
 	case "limits":
@@ -141,6 +144,16 @@ func main() {
 		unblockDomainCmd(cfg, *cfgPath, flag.Arg(1), *password)
 	case "apps":
 		appsCmd(cfg)
+	case "categories":
+		categoriesCmd(cfg, flag.Arg(1))
+	case "block-category":
+		blockCategoryCmd(cfg, *cfgPath, flag.Arg(1))
+	case "hardening":
+		hardeningCmd(cfg)
+	case "harden":
+		hardenCmd(cfg, *cfgPath, flag.Arg(1), *level, *password)
+	case "unharden":
+		unhardenCmd(cfg, *cfgPath, flag.Arg(1), *password)
 	case "agent":
 		// Internal: the service starts this in the signed-in user's session, because
 		// a service cannot see that session's windows. See runAgent.
@@ -381,11 +394,31 @@ func activeNow(cfg policy.Config) policy.Config {
 // what should be locked at this moment" - outside a block's window its
 // extensions are supposed to be absent, and showing that as a failure would be
 // wrong.
+//
+// The browser warning underneath is not a row in the table on purpose. The table
+// reports what the guard enforces, and an unmanaged browser is the opposite of
+// that - see internal/policy/browsers.go. But a table saying every browser is
+// locked, printed on a machine where Opera is filtering nothing, is a true
+// statement doing the work of a false one, so it does not get to be the last word
+// on the screen.
 func printStatus(cfg policy.Config) {
-	cfg = activeNow(cfg)
+	active := activeNow(cfg)
 	fmt.Printf("  %-11s %-8s %-8s %-9s %s\n", "area", "target", "present", "enforced", "detail")
-	for _, s := range enforce.Default().Verify(cfg) {
+	for _, s := range enforce.Default().Verify(active) {
 		fmt.Printf("  %-11s %-8s %-8v %-9v %s\n", s.Enforcer, s.Target, s.Present, s.Enforced, s.Detail)
+	}
+	// The whole config, not the resolved one: this warns about browsers nothing on
+	// the block list covers, and a browser blocked on a schedule is covered even
+	// while its window is shut. See policy.UnblockedBrowsers.
+	if w := unmanagedBrowserWarning(cfg); w != "" {
+		fmt.Fprintf(os.Stderr, "\n%s\n", w)
+	}
+	// The same reasoning one step inside the browsers the guard *does* manage: an
+	// extension it force-installs does not run in a private window, so a table of
+	// locked browsers over an available Ctrl+Shift+N is the same true statement
+	// doing the same false work. See policy.Config.PrivateBrowsingOpen.
+	if w := privateBrowsingWarning(cfg); w != "" {
+		fmt.Fprintf(os.Stderr, "\n%s\n", w)
 	}
 }
 
@@ -652,6 +685,27 @@ policy commands (admin):
   detect             list which supported browsers are installed
   select             enable only -extensions, disable the rest (used by the installer)
 
+browser commands:
+  browsers           list every browser on this machine and what the guard can do
+                     about each: filtered (it reads the guard's policy), blocked,
+                     or reachable - a browser the guard neither filters nor blocks,
+                     through which every blocked site is one click away. Needs no
+                     admin and no password, like 'activity'
+
+browser setting commands:
+  hardening          list the pinned browser settings, where each reaches, and
+                     whether private browsing is still open - which is the hole
+                     that makes a locked extension optional, since one cannot be
+                     force-installed into a private or guest window. Needs no
+                     admin and no password, like 'activity'
+  harden             <setting>  pin a browser setting (admin; no password - it
+                                only adds protection):
+                                  private-browsing  no private or guest windows
+                                  safe-search       SafeSearch + YouTube
+                                                    restricted mode; -level takes
+                                                    moderate or strict (default)
+  unharden           <setting>  hand a setting back (password, unless paused)
+
 domain commands:
   domains            list the blocked domains and whether each is enforced now
   block-domain       <domain>  block a domain and all its subdomains (admin; no
@@ -669,6 +723,19 @@ application commands:
                                -label sets the name the status window shows
   unblock-app        <app>     let an application run again (password, unless
                                paused); pass the same -kind it was added with
+  categories         [id]      list the built-in categories and which are
+                               blocked. Name one to see everything it covers,
+                               and which of it is blocked already - worth doing
+                               before block-category, since a category is
+                               agreed to all at once
+  block-category     <id>      block a whole category at once - every application
+                               and site it names, governed by one always-on block
+                               under the category's id (admin; no password - like
+                               block-app it only adds protection). Run it again
+                               after an update to take whatever the category has
+                               gained. To lift one, remove-block its id and
+                               unblock-app what you want back: those take the
+                               password, because those are what weakens
 
 schedule commands:
   blocks             list each block, whether it is enforcing now, its daily

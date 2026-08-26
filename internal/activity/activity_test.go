@@ -361,7 +361,7 @@ func TestDescribeHasASentenceForEveryKind(t *testing.T) {
 		LaunchBlocked, AppClosed, TamperConfig, TamperPolicy,
 		ProtectionInstalled, ProtectionRemoved, ProtectionPaused, ProtectionResumed,
 		ServiceStarted, ServiceStopped, PauseRefused,
-		DomainBlocked, DomainUnblocked, AppBlocked, AppUnblocked,
+		DomainBlocked, DomainUnblocked, AppBlocked, AppUnblocked, CategoryBlocked,
 		ExtensionEnabled, ExtensionDisabled, LimitReached, UsageReset,
 		BlockCreated, BlockRemoved, BlockLocked,
 		PasswordChanged, PasswordFailed, UpdateApplied, LogRotated,
