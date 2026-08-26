@@ -40,6 +40,7 @@ not two — see the **Linux** section below.
 | 12 | **Unmanaged browsers** (find the browsers the guard cannot filter, and block them) | ✅ done |
 | 13 | **Rename-resistant rules** (match the name compiled into an executable, not just the file's) | ✅ done |
 | 14 | **Hardened browser settings** (no private/guest windows, forced SafeSearch) | ✅ done |
+| 15 | **Usage statistics** (per-application time, today and over 60 days) | ✅ done |
 
 ## Prerequisites — Windows build (via winget)
 
@@ -157,6 +158,11 @@ anything is Reachable, because a window saying "protection active" over a browse
 that filters nothing is the one thing this app must not do. See
 [Browsers the guard cannot manage](#browsers-the-guard-cannot-manage).
 
+The **Time used** section shows how long each blocked application actually ran,
+today and over the last week, with a bar per day underneath. It is the one section
+that is a record rather than a control - there is nothing to click, and reading it
+needs neither admin nor the password. See [Time used](#time-used).
+
 The **Browser settings** section lists the settings the guard pins so the locks
 above hold, each saying which browsers it reaches and — where there is one — which
 it does not. A warning sits above it whenever private browsing is still available
@@ -188,6 +194,7 @@ creating an always-on one, and locking it, does not. See
 `apply`, `remove` write to `HKLM`, so run them from an **elevated** terminal.
 
 ```sh
+guard usage        # how long each blocked application actually ran
 guard hardening    # pinned browser settings, and whether private browsing is still open
 guard domains      # blocked sites: which are on the list, which are enforced now
 guard apps         # blocked applications: same, per rule
@@ -1105,6 +1112,113 @@ have to be done again every day. (Moving the clock forward and back again does n
 help: the ledger's day only ever advances, so the day you left is not the one you
 return to.) The honest ceiling is the one in `docs/pc-version.md`, and it has not
 moved.
+
+## Time used
+
+A limit answers *how much is left*. This answers *where the time actually went* —
+per application, today and over the past weeks.
+
+```powershell
+guard usage         # the last 7 days
+guard usage 30      # reach further back (the record keeps 60 days)
+```
+
+```
+  application                  today      7 days
+  Steam                        1h30m      4h20m
+  Discord                      25m        40m
+  Solitaire                    4m         4m
+
+  time with any of them open   1h42m      4h40m
+
+  2026-08-26  1h42m      ##################
+  2026-08-25  2h33m      ############################
+  2026-08-24  5m         #
+  2026-08-23  0m
+```
+
+Needs **no admin and no password**, like `guard limits` and `guard activity`, and
+for the same reason: the record is about the person using the machine, and one
+they cannot read is one they can only argue with. The status window shows the same
+thing as a **Time used** section, capped at the busiest eight rules.
+
+**It cost almost nothing to add.** The sweep already walks the process list once a
+second and matches every rule against it, and the ledger has kept sixty days of
+counters since limits shipped — the comment on `keepDays` has said all along that
+*"how much did I actually use this week" is the obvious next question*. What was
+missing was only that the answer was filed per **limited block** and then never
+read. There is **no config change**: nothing new in `extension-ids.json`, nothing
+to turn on.
+
+### Two totals, because they answer different questions
+
+An hour with Steam and Discord both open is **two hours of rules** and **one hour
+of the afternoon**. Both are printed rather than choosing one: the per-rule rows
+answer *what cost me the most*, and `time with any of them open` answers *how much
+of the day went*. The second is counted once per second however many rules matched,
+so it never exceeds the day.
+
+### What is counted, and what is not
+
+- **Every enabled application rule**, not only the ones a limit covers. Otherwise
+  a machine that blocks Steam outright — the common case — would have no record at
+  all, which is exactly where "how much is this actually being used" is worth
+  knowing.
+- **Out-of-window time counts.** A limit refuses to charge time outside its window
+  because it is a budget for those hours; this is a record of use, and an hour
+  spent at an hour the block does not cover is still an hour spent. So the two
+  numbers legitimately differ, and `guard limits` remains the one that says what is
+  left.
+- **It keeps counting while protection is paused.** That is the same choice the
+  activity log makes — it records what happens *during* a pause — and it fails the
+  right way: a record that went quiet during exactly the window usage runs highest
+  would be worse than no record. The pause is in the log next to it, so an unusual
+  evening is explainable rather than mysterious. A **budget** is still never
+  charged during a pause.
+- **Running, not focused**, and per rule rather than per process — the same two
+  properties limits have, for the same reasons (see [Time limits](#time-limits)).
+  Two copies of the same game are not two hours of it.
+- **A rule you later unblock keeps its history**, marked `*` in the CLI and
+  `unblocked` in the window. Dropping those rows would make last week's total
+  change when a rule was deleted.
+- **Applications only.** A blocked *site* is enforced by handing the browser a
+  policy and trusting it; nothing comes back, so there is no browsing time to
+  report. That is the same wall that stops a limit covering a domain, and closing
+  it needs the browser to talk back — see the extension bridge in the roadmap.
+
+### What it deliberately does not do
+
+It does not watch the whole machine. Cold Turkey's statistics screen finds
+distractions you had not thought to name, because it records every process; this
+records the rules the config already names. That is a real capability difference
+and it is chosen rather than overlooked — a full history of every program somebody
+ran is a different product from a guard whose record is readable by the person it
+is about, and [PRIVACY.md](PRIVACY.md) is the promise being kept.
+
+### What it costs
+
+Measuring used to happen only when a limit was configured. It now happens whenever
+any application rule is, because the record comes from the same sample — so a
+machine with rules and no limits pays for a second walk of the process list per
+second, which it did not before. The sweep's own walk is the reference for what
+that is: **8.6ms** for names alone and **19ms** with compiled-in names warm, on a
+325-process desktop. A machine with **no** application rules — every install that
+only locks extensions and blocks sites — pays nothing at all, and a test holds
+that.
+
+### Where it lives
+
+The same ledger as the limits, `C:\ProgramData\ExtensionGuard\usage.json`
+(`/var/lib/extension-guard` on Linux), under a separate `apps` key so the counters
+a limit reads keep meaning exactly one thing. Retention went from 14 days to
+**60** now that something reads the older days.
+
+A damaged record here does **not** fail closed. A limit treats an unreadable
+ledger as every budget spent, because the alternative makes "corrupt the file" mean
+"reset my limits"; there is no budget in this half, so there is nothing to fail
+closed *to*, and refusing to show today because last Tuesday is corrupt would help
+nobody. Both the CLI and the window say the history is missing rather than showing
+zeroes as if they were measurements.
 
 ## Pausing protection
 

@@ -155,22 +155,33 @@ func SweepApps(cfg Config) error {
 //
 // It takes its own snapshot rather than sharing the sweep's. That is a second walk
 // of the process list per second, which is worth stating plainly and then putting
-// in proportion: it only happens when a limit is configured, it asks for image
-// paths and window titles only when a limited rule is matched on them, and sharing
-// the sweep's snapshot would mean threading a process list through the Sweeper
-// interface so that one backend could hand it to a measurement that is not
-// enforcement at all. Measuring is a separate job from enforcing, and it reads
-// better as one.
-func SampleUsage(cfg Config, at time.Time) ([]string, error) {
+// in proportion: it asks for image paths and window titles only when a rule is
+// matched on them, and sharing the sweep's snapshot would mean threading a process
+// list through the Sweeper interface so that one backend could hand it to a
+// measurement that is not enforcement at all. Measuring is a separate job from
+// enforcing, and it reads better as one.
+//
+// It used to happen only when a limit was configured. It now happens whenever any
+// application rule is, because the record behind `guard usage` is measured from the
+// same sample - so a machine with rules and no limits pays for a second walk it did
+// not pay for before. The sweep's own walk is the reference for what that costs:
+// 8.6ms for names alone and 19ms with compiled-in names warm, on a 325-process
+// desktop, so this is the same again once a second. There is nothing to pay on a
+// machine with no application rules, which is every install that only locks
+// extensions and blocks sites.
+func SampleUsage(cfg Config, at time.Time) (Sample, error) {
 	measure, needs := cfg.MeasurementNeeds(at)
 	if !measure {
-		return nil, nil
+		return Sample{}, nil
 	}
 	procs, err := snapshotProcesses(needs)
 	if err != nil {
-		return nil, fmt.Errorf("list processes: %w", err)
+		return Sample{}, fmt.Errorf("list processes: %w", err)
 	}
-	return cfg.RunningLimited(at, procs), nil
+	return Sample{
+		Blocks: cfg.RunningLimited(at, procs),
+		Apps:   cfg.RunningApps(procs),
+	}, nil
 }
 
 // VerifyApps reports one status per enabled rule. Read-only, so the status window

@@ -741,15 +741,10 @@ func (p *program) measureUsage() bool {
 	p.applyMu.Lock()
 	defer p.applyMu.Unlock()
 
-	if p.paused {
-		// Protection is off, so a daily budget must not be running down. Charging
-		// time here would mean an hour's pause quietly spends an hour of an
-		// allowance that was not being enforced for any of it - the budget would be
-		// gone by the time protection came back, for something the guard explicitly
-		// permitted.
+	if p.usage == nil {
 		return false
 	}
-	if p.usage == nil || !p.cfg.AnyLimits() {
+	if !p.cfg.AnyLimits() && !p.cfg.AnyApps() {
 		return false // nothing configured; do not even look at the process list
 	}
 	now := time.Now()
@@ -758,7 +753,7 @@ func (p *program) measureUsage() bool {
 		p.usageDay, p.exhausted = day, map[string]bool{}
 	}
 
-	running, err := policy.SampleUsage(p.cfg, now)
+	sample, err := policy.SampleUsage(p.cfg, now)
 	if err != nil {
 		// Same throttling reasoning as the sweep: this runs every second, so a
 		// persistent failure is logged when it changes and then held.
@@ -766,7 +761,24 @@ func (p *program) measureUsage() bool {
 		return false
 	}
 	p.logUsage("")
-	p.usage.Observe(now, day, running)
+
+	if p.paused {
+		// Protection is off, so a daily budget must not be running down. Charging a
+		// block here would mean an hour's pause quietly spends an hour of an
+		// allowance that was not being enforced for any of it - the budget would be
+		// gone by the time protection came back, for something the guard explicitly
+		// permitted.
+		//
+		// The record is charged anyway, and that is the opposite decision on purpose.
+		// It is not a budget, nothing is enforced from it, and it is the same choice
+		// the activity log makes by recording what happens during a pause: a history
+		// that went quiet during exactly the window usage runs highest would be worse
+		// than no history. The pause itself is in the log next to it, so a reader can
+		// see why an evening looks the way it does.
+		p.usage.Observe(now, day, nil, sample.Apps)
+		return false
+	}
+	p.usage.Observe(now, day, sample.Blocks, sample.Apps)
 
 	// Report the transition, not the state. A block that ran out an hour ago is
 	// still out, and saying so every second would bury everything else in the log.

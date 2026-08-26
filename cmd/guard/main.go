@@ -136,6 +136,8 @@ func main() {
 		blocksCmd(cfg)
 	case "limits":
 		limitsCmd(cfg)
+	case "usage":
+		usageCmd(cfg, flag.Arg(1))
 	case "domains":
 		domainsCmd(cfg)
 	case "block-domain":
@@ -713,6 +715,10 @@ domain commands:
   unblock-domain     <domain>  stop filtering a domain (password, unless paused)
 
 application commands:
+  usage              [days]    how long each blocked application actually ran -
+                               today and over the last 7 days, or the number of
+                               days given. Needs no admin and no password, like
+                               'activity' and 'limits'
   apps               list the blocked applications and whether each is enforced now
   block-app          <app>     keep an application closed (admin; no password -
                                it only adds protection). -kind picks what <app> is:

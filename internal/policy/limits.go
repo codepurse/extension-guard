@@ -302,8 +302,16 @@ func anyRunning(apps []App, procs []Process) bool {
 //
 // All three answers are needed before taking the sample rather than after, because
 // the sample is the expensive part: an image path costs a handle per process and a
-// window title costs a pass over every top-level window. A machine with no limits,
-// or with all of them out of window, does not look at the process list at all.
+// window title costs a pass over every top-level window. A machine with no
+// application rules at all does not look at the process list from here.
+//
+// There are two reasons to measure and they do not have the same conditions. A
+// *limit* needs its block in window, because out-of-window time does not spend a
+// budget for those hours. The *record* behind `guard usage` needs only that a rule
+// is switched on, since an hour spent is an hour spent whatever a block was doing
+// at the time. So the needs are the union of both, and stats alone are enough to
+// take the sample - which is what gives a machine that blocks Steam outright a
+// record instead of nothing.
 func (c Config) MeasurementNeeds(at time.Time) (measure bool, needs SnapshotNeeds) {
 	for _, b := range c.Blocks {
 		if !b.HasLimit() || !b.InWindow(at) {
@@ -313,6 +321,10 @@ func (c Config) MeasurementNeeds(at time.Time) (measure bool, needs SnapshotNeed
 		if len(apps) == 0 {
 			continue // nothing it covers is switched on, so there is nothing to count
 		}
+		measure = true
+		needs = needs.Or(SnapshotNeedsFor(apps))
+	}
+	if apps := c.BlockedApps(); len(apps) > 0 {
 		measure = true
 		needs = needs.Or(SnapshotNeedsFor(apps))
 	}

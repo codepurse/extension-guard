@@ -459,11 +459,22 @@ func TestRunningLimitedIgnoresOutOfWindowTime(t *testing.T) {
 }
 
 // Nothing to measure means no process snapshot at all, and a snapshot asks for the
-// expensive parts only when a limited rule is matched on them.
+// expensive parts only when a rule is matched on them.
 func TestMeasurementNeedsAsksForTheLeast(t *testing.T) {
+	// No application rule of any kind is the only case that measures nothing. This
+	// is every install that locks extensions and blocks sites, and it must keep
+	// paying nothing for a process walk.
+	none := Config{Extensions: []Extension{{Name: "blocknsfw"}}, Domains: []Domain{{Name: "reddit.com"}}}
+	if measure, _ := none.MeasurementNeeds(at(20, 19, 0)); measure {
+		t.Error("a config with no application rules wants to measure")
+	}
+
+	// An app rule and no limit does measure, because the record behind `guard usage`
+	// is taken from the same sample - which is what gives a machine that blocks
+	// Steam outright a history instead of nothing.
 	plain := Config{Apps: []App{{Kind: AppExe, Value: "steam.exe"}}}
-	if measure, _ := plain.MeasurementNeeds(at(20, 19, 0)); measure {
-		t.Error("a config with no limits wants to measure")
+	if measure, _ := plain.MeasurementNeeds(at(20, 19, 0)); !measure {
+		t.Error("an app rule with no limit does not want to measure, so it would have no record")
 	}
 
 	cfg := limitedConfig()
@@ -505,11 +516,17 @@ func TestMeasurementNeedsAsksForTheLeast(t *testing.T) {
 		t.Error("a folder rule asked for compiled-in names, which cannot help it")
 	}
 
-	// Out of window there is nothing to measure, whatever the rules need.
+	// Out of window the *budget* is not charged - RunningLimited above is what holds
+	// that - but the rule is still switched on, so the record still wants the sample.
+	// The two conditions differ on purpose: a limit is a budget for those hours, and
+	// a record is a record of an hour spent.
 	windowed := limitedConfig()
 	windowed.Blocks[0].Windows = []Window{{Start: "18:00", End: "22:00"}}
-	if measure, _ := windowed.MeasurementNeeds(at(20, 9, 0)); measure {
-		t.Error("an out-of-window limit wants to measure")
+	if measure, _ := windowed.MeasurementNeeds(at(20, 9, 0)); !measure {
+		t.Error("an out-of-window limit measures nothing, so its rules would have no record")
+	}
+	if got := windowed.RunningLimited(at(20, 9, 0), []Process{{PID: 1, Name: "steam.exe"}}); len(got) != 0 {
+		t.Errorf("out of window the budget was charged: %v", got)
 	}
 }
 

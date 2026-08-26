@@ -55,6 +55,11 @@ type Status struct {
 	// locking an extension means anything inside the browsers the guard *does*
 	// manage.
 	Hardening []HardeningRow `json:"hardening"`
+	// Usage is how long each blocked application actually ran. It comes down with
+	// the rest of the status for the reason the category rows do: everything here
+	// arrives in one round trip, and a second call would let this disagree with the
+	// app rows it sits beside.
+	Usage UsagePanel `json:"usage"`
 	// PrivateBrowsingOpen is the hole those settings close, reported whether or not
 	// anything is hardened: an extension cannot be force-installed into a private
 	// or guest window, so while this is true every filter the guard installs is one
@@ -82,6 +87,58 @@ type Status struct {
 	// (policy.EnforcedAt fails closed), so the window must say so rather than
 	// show windows that are not actually running.
 	ScheduleError string `json:"scheduleError"`
+}
+
+// UsagePanel is the record of how long each blocked application actually ran.
+//
+// Durations arrive pre-formatted rather than as numbers, for the reason the block
+// rows do: policy.HumanDuration is what the CLI prints, and two renderers of the
+// same duration eventually disagree about what "1h30m" looks like.
+//
+// Span and the sum of the rows are both reported because they answer different
+// questions - an hour with two applications open is two hours of rules and one hour
+// of the afternoon. See policy.UsageReport.
+type UsagePanel struct {
+	Rows  []UsageRow `json:"rows"`
+	Days  []UsageDay `json:"days"`
+	Today string     `json:"today"`
+	Total string     `json:"total"`
+	// Span is how many days Total covers, so the column can be labelled without the
+	// frontend hard-coding a number the backend chose.
+	Span int `json:"span"`
+	// Measured is false when no application rule is configured, so the window says
+	// there is nothing to measure rather than showing an empty list that reads as a
+	// broken feature.
+	Measured bool `json:"measured"`
+	// Unreadable means the record could not be parsed. Unlike a limit it does not
+	// fail closed - there is no budget here to protect - so the window says the
+	// history is missing and shows nothing rather than showing zeroes as if they
+	// were measurements.
+	Unreadable bool `json:"unreadable"`
+}
+
+// UsageRow is one application's share of the record. Gone marks one the block list
+// no longer holds; those rows stay, because time spent on something later unblocked
+// is still time spent.
+type UsageRow struct {
+	Label  string `json:"label"`
+	Detail string `json:"detail"`
+	Today  string `json:"today"`
+	Total  string `json:"total"`
+	Gone   bool   `json:"gone"`
+	// Percent is this row's share of the busiest row, for the bar width. Computed
+	// here so the bar cannot disagree with the number printed next to it.
+	Percent int `json:"percent"`
+}
+
+// UsageDay is one day of the span. Label is the weekday and date as a person reads
+// it; Percent is scaled to the busiest day rather than to a fixed number of hours,
+// because a fixed scale makes a quiet week look like a broken feature.
+type UsageDay struct {
+	Day     string `json:"day"`
+	Label   string `json:"label"`
+	Spent   string `json:"spent"`
+	Percent int    `json:"percent"`
 }
 
 // HardeningRow is one pinned browser setting as the window offers it. State is
@@ -457,6 +514,8 @@ func (a *App) GetStatus() Status {
 		hardening = append(hardening, row)
 	}
 
+	usagePanel := buildUsagePanel(a.cfg.UsageStats(now, usageWindowDays))
+
 	scheduleErr := ""
 	if err := a.cfg.Validate(); err != nil {
 		scheduleErr = err.Error()
@@ -470,19 +529,19 @@ func (a *App) GetStatus() Status {
 	_, hasPw := scm.GetPasswordHash()
 	pause := scm.Paused()
 	return Status{
-		ServiceRunning: scm.IsRunning(guardsvc.ServiceName),
-		Disabled:       pause.Paused,
-		PausedUntil:    pausedUntilLabel(pause),
-		LockedCount:    locked,
-		HasPassword:    hasPw,
-		Browsers:       rows,
-		Extensions:     exts,
-		Blocks:         blocks,
-		Domains:        domains,
-		Apps:           apps,
-		Categories:     cats,
-		Hardening:      hardening,
-
+		ServiceRunning:      scm.IsRunning(guardsvc.ServiceName),
+		Disabled:            pause.Paused,
+		PausedUntil:         pausedUntilLabel(pause),
+		LockedCount:         locked,
+		HasPassword:         hasPw,
+		Browsers:            rows,
+		Extensions:          exts,
+		Blocks:              blocks,
+		Domains:             domains,
+		Apps:                apps,
+		Categories:          cats,
+		Hardening:           hardening,
+		Usage:               usagePanel,
 		PrivateBrowsingOpen: a.cfg.PrivateBrowsingOpen(),
 		Unmanaged:           unmanaged,
 		UnmanagedScanned:    policy.BrowserScanSupported(),
@@ -642,6 +701,95 @@ func (a *App) BlockCategory(id string) ActionResult {
 	}
 	args := []string{"-config", a.cfgPath, "block-category", cat.ID}
 	return a.execGuard(args, cat.Label+" is blocked, around the clock.")
+}
+
+// usageWindowDays is the span the window shows. A week is the unit people think
+// in, and seven bars fit a narrow panel; `guard usage <days>` reaches further back
+// into the same record.
+const usageWindowDays = 7
+
+// usageTopRows caps how many applications the window lists. The point of the panel
+// is "what is taking the time", which the top few answer; a machine with a blocked
+// category has forty rules and a list of forty rows nobody reads is not a better
+// answer. The CLI prints them all.
+const usageTopRows = 8
+
+// buildUsagePanel turns the report into rows the window can render, scaling each
+// bar to the busiest entry in its own list.
+func buildUsagePanel(rep policy.UsageReport) UsagePanel {
+	panel := UsagePanel{
+		Span:       len(rep.Days),
+		Measured:   rep.Measured,
+		Unreadable: rep.Unreadable,
+		Today:      policy.HumanDuration(rep.TodaySpan),
+		Total:      policy.HumanDuration(rep.TotalSpan),
+	}
+	if rep.Unreadable {
+		return panel
+	}
+
+	rows := rep.Rows
+	if len(rows) > usageTopRows {
+		rows = rows[:usageTopRows]
+	}
+	var peakRow time.Duration
+	for _, r := range rows {
+		if r.Total > peakRow {
+			peakRow = r.Total
+		}
+	}
+	for _, r := range rows {
+		panel.Rows = append(panel.Rows, UsageRow{
+			Label:   r.Label,
+			Detail:  r.Detail,
+			Today:   policy.HumanDuration(r.Today),
+			Total:   policy.HumanDuration(r.Total),
+			Gone:    r.Gone,
+			Percent: sharePercent(r.Total, peakRow),
+		})
+	}
+
+	var peakDay time.Duration
+	for _, d := range rep.ByDay {
+		if d > peakDay {
+			peakDay = d
+		}
+	}
+	for i, day := range rep.Days {
+		spent := rep.ByDay[i]
+		panel.Days = append(panel.Days, UsageDay{
+			Day:     day,
+			Label:   dayLabel(day),
+			Spent:   policy.HumanDuration(spent),
+			Percent: sharePercent(spent, peakDay),
+		})
+	}
+	return panel
+}
+
+// sharePercent is one value's share of the largest, floored at 1% for anything
+// non-zero: a day with four minutes on it must not draw as an empty one, because an
+// empty bar reads as "nothing happened" rather than "a little happened".
+func sharePercent(v, peak time.Duration) int {
+	if peak <= 0 || v <= 0 {
+		return 0
+	}
+	pct := int(int64(v) * 100 / int64(peak))
+	if pct == 0 {
+		pct = 1
+	}
+	return pct
+}
+
+// dayLabel renders a ledger day key as a person reads it. An unparseable key is
+// returned as it stands rather than replaced with a guess - it came from a file, and
+// showing what is actually in there is more use than hiding it.
+func dayLabel(day string) string {
+	t, err := time.Parse("2006-01-02", day)
+	if err != nil {
+		return day
+	}
+	return t.Format("Mon 2 Jan")
 }
 
 // hardeningBrowsers names the browsers a setting can be enforced in, and

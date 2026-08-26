@@ -38,7 +38,7 @@ func SweepApps(cfg Config) error {
 // that measured nothing would read as a budget nobody ever spends - that is, as no
 // limit at all. It returns no error because ApplyApps already refuses the app rules
 // such a block has to cover, and one refusal per cycle is enough.
-func SampleUsage(cfg Config, at time.Time) ([]string, error) { return nil, nil }
+func SampleUsage(cfg Config, at time.Time) (Sample, error) { return Sample{}, nil }
 
 // VerifyApps reports every configured rule as unenforced, with the reason, rather
 // than reporting nothing - a rule the user set up must not simply disappear from

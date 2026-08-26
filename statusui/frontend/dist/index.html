@@ -197,6 +197,15 @@
   .picker .item .kind { margin-left: auto; font-size: 10px; color: var(--faint); }
   .picker .item label { font-size: 12px; display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
   .picker .item span.nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .usebar { height: 4px; border-radius: 999px; background: var(--surface2); margin-top: 5px; overflow: hidden; }
+  .usebar > span { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
+  .row .usenum { font-size: 12px; color: var(--muted); margin-left: auto; white-space: nowrap; text-align: right; }
+  .row .usenum b { color: var(--text); font-weight: 600; }
+  .useday { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 12px; color: var(--muted); }
+  .useday .udlabel { width: 82px; flex: none; }
+  .useday .udbar { flex: 1; height: 6px; border-radius: 999px; background: var(--surface2); overflow: hidden; }
+  .useday .udbar > span { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
+  .useday .udnum { width: 54px; flex: none; text-align: right; }
   .warnbox { border-color: var(--warn); }
   .warnbox .lbl { color: var(--warn); font-weight: 600; }
   .lock-choices { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
@@ -319,6 +328,14 @@
   <div class="section-title">Block a category</div>
   <p class="exthint">A category blocks a whole set at once &mdash; its apps and its sites &mdash; around the clock. Adding one is free; taking it off again needs the password.</p>
   <div class="rows" id="cat-rows"></div>
+
+  <div id="usage-section">
+    <div class="section-title">Time used</div>
+    <p class="exthint">How long each blocked application actually ran &mdash; counted while it is running, not only while you are looking at it. Kept on this PC only.</p>
+    <div class="rows" id="usage-rows"></div>
+    <p class="exthint" id="usage-empty" style="display:none;"></p>
+    <div id="usage-days"></div>
+  </div>
 
   <div class="section-title">Blocked apps</div>
   <p class="exthint">A blocked application does not start, and is closed if it is already running. Adding one is free; removing one needs the password.</p>
@@ -900,6 +917,7 @@
 
     renderUnmanaged(s);
     renderHardening(s);
+    renderUsage(s);
     renderDomains(s);
     renderCategories(s);
     renderApps(s);
@@ -1196,6 +1214,109 @@
     try { res = await window.go.main.App.Harden(h.id, level, pw); } catch (e) { res = { ok: false, message: String(e) }; }
     setMsg(res.message, res.ok ? 'ok' : 'err');
     await refresh();
+  }
+
+  // renderUsage lists how long each blocked application ran, and a bar per day
+  // underneath. There is nothing to click: this is the one section that is a record
+  // rather than a control, which is also why it needs neither the password nor the
+  // Windows prompt to read.
+  //
+  // Every duration and every bar width is computed in the backend. The window could
+  // work out a percentage itself, but then the bar and the number beside it would be
+  // two independent renderings of the same fact, and eventually they would disagree.
+  function renderUsage(s) {
+    const rows = document.getElementById('usage-rows');
+    const empty = document.getElementById('usage-empty');
+    const daysBox = document.getElementById('usage-days');
+    const u = s.usage || {};
+    const list = u.rows || [];
+    rows.innerHTML = '';
+    daysBox.innerHTML = '';
+
+    // Three different empty states, said differently on purpose. "Nothing is
+    // blocked" is a setup step, "the record is missing" is a fault, and "nothing ran
+    // yet" is the ordinary case on a quiet week - one message for all three would
+    // read as a broken feature in two of them.
+    let note = '';
+    if (!u.measured) {
+      note = 'No applications are blocked, so there is nothing to measure. Sites and extensions cannot be measured — the guard hands the browser a policy and gets nothing back.';
+    } else if (u.unreadable) {
+      note = 'The usage record could not be read, so there is no history to show. The guard rewrites it from its own running count within half a minute.';
+    } else if (!list.length) {
+      note = 'Nothing recorded yet. Time is counted while a blocked application is running; one that never starts records nothing.';
+    }
+    empty.style.display = note ? '' : 'none';
+    empty.textContent = note;
+    if (note) { return; }
+
+    list.forEach(function (r) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      const info = document.createElement('div');
+      info.className = 'ainfo';
+      const name = document.createElement('div');
+      name.className = 'aname';
+      name.textContent = r.label;
+      if (r.gone) {
+        const tag = document.createElement('span');
+        tag.className = 'schedtag';
+        tag.textContent = 'unblocked';
+        tag.title = 'No longer on the block list; the time it was used is kept';
+        name.appendChild(tag);
+      }
+      const note2 = document.createElement('div');
+      note2.className = 'anote';
+      note2.textContent = r.detail || '';
+      const bar = document.createElement('div');
+      bar.className = 'usebar';
+      const fill = document.createElement('span');
+      fill.style.width = (r.percent || 0) + '%';
+      bar.appendChild(fill);
+      info.appendChild(name);
+      info.appendChild(note2);
+      info.appendChild(bar);
+      row.appendChild(info);
+
+      const num = document.createElement('div');
+      num.className = 'usenum';
+      // Today in bold and the span behind it: "how long today" is the question being
+      // asked, and the week is the context that makes the answer mean something.
+      num.innerHTML = '<b></b><br><span></span>';
+      num.querySelector('b').textContent = r.today;
+      num.querySelector('span').textContent = r.total + ' / ' + u.span + 'd';
+      row.appendChild(num);
+      rows.appendChild(row);
+    });
+
+    // The total with any of them open, which is not the sum of the rows above: an
+    // hour with two applications running is two hours of rules and one hour of the
+    // afternoon. Both are true and people mean the second one.
+    const head = document.createElement('div');
+    head.className = 'useday';
+    head.innerHTML = '<div class="udlabel" style="width:auto;flex:1;"></div><div class="udnum" style="width:auto;"></div>';
+    head.querySelector('.udlabel').textContent = 'Any of them open';
+    head.querySelector('.udnum').textContent = u.today + ' today, ' + u.total + ' in ' + u.span + ' days';
+    daysBox.appendChild(head);
+
+    (u.days || []).forEach(function (d) {
+      const line = document.createElement('div');
+      line.className = 'useday';
+      const label = document.createElement('div');
+      label.className = 'udlabel';
+      label.textContent = d.label;
+      const bar = document.createElement('div');
+      bar.className = 'udbar';
+      const fill = document.createElement('span');
+      fill.style.width = (d.percent || 0) + '%';
+      bar.appendChild(fill);
+      const num = document.createElement('div');
+      num.className = 'udnum';
+      num.textContent = d.spent;
+      line.appendChild(label);
+      line.appendChild(bar);
+      line.appendChild(num);
+      daysBox.appendChild(line);
+    });
   }
 
   // renderCategories offers each built-in set as one card. The button says what
