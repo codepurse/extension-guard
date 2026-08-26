@@ -3,8 +3,10 @@
 //
 // Originally there was exactly one kind - browser extensions, locked via the
 // enterprise force-install policy - and the service called into package policy
-// directly. There are three now: extensions, blocked sites, and blocked
-// applications, with blocking sites outside the browser still to come. They share
+// directly. There are four now: extensions, the browser settings that decide
+// whether locking an extension means anything (hardening), blocked sites, and
+// blocked applications, with blocking sites outside the browser still to come.
+// They share
 // nothing with the registry writes that lock an extension except the lifecycle
 // around them: apply on start, re-apply on tamper, verify for the status display,
 // lift on an authorized teardown. This package names that lifecycle so a new
@@ -71,7 +73,7 @@ type Sweeper interface {
 type Set []Enforcer
 
 // Default is the set the guard runs. New backends are added here.
-func Default() Set { return Set{Extensions{}, Domains{}, Apps{}} }
+func Default() Set { return Set{Extensions{}, Hardening{}, Domains{}, Apps{}} }
 
 // Apply applies every enforcer, joining any errors. It deliberately does not
 // stop at the first failure: one backend failing (a browser policy key that

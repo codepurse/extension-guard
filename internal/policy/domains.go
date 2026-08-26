@@ -39,6 +39,10 @@ import (
 type Domain struct {
 	Name     string `json:"name"`
 	Disabled bool   `json:"disabled,omitempty"`
+	// Source records where the domain came from, exactly as App.Source does for a
+	// rule - "category:social" for one a category added, empty for one added by
+	// hand. See App.Source for why it is provenance only and why it is omitempty.
+	Source string `json:"source,omitempty"`
 }
 
 // maxDomainEntries is the ceiling Chromium puts on URLBlocklist. Going over it
@@ -279,6 +283,22 @@ func (c *Config) SetDomainEnabled(name string, enabled bool) (string, bool) {
 	}
 	c.Domains[i].Disabled = !enabled
 	return host, true
+}
+
+// SetDomainSource stamps provenance on one listed domain, exactly as
+// SetAppSource does for a rule, and leaves the decision of whether to stamp to
+// the caller for the same reason.
+func (c *Config) SetDomainSource(name, source string) bool {
+	host, err := NormalizeDomain(name)
+	if err != nil {
+		return false
+	}
+	i, ok := c.findDomain(host)
+	if !ok {
+		return false
+	}
+	c.Domains[i].Source = strings.TrimSpace(source)
+	return true
 }
 
 // validateDomains checks the configured list, and is called by Validate.

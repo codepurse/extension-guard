@@ -84,7 +84,7 @@ func TestFlushRepeatedlyWithRealPermissions(t *testing.T) {
 	for round := 0; round < 3; round++ {
 		for i := 0; i < 10; i++ {
 			now = now.Add(time.Second)
-			tr.Observe(now, day1, []string{"games"})
+			tr.Observe(now, day1, []string{"games"}, nil)
 		}
 		if err := tr.Flush(); err != nil {
 			t.Fatalf("flush %d: %v", round, err)

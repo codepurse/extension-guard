@@ -171,7 +171,7 @@ func TestAppMatches(t *testing.T) {
 		Name: "Calculator.exe",
 		Path: `C:\Program Files\WindowsApps\Microsoft.WindowsCalculator_11.2.2.0_x64__8wekyb3d8bbwe\Calculator.exe`,
 	}
-	titled := Process{PID: 103, Name: "game.exe", Titles: []string{"Spider Solitaire - Free"}}
+	titled := Process{PID: 103, Name: "mygame.exe", Titles: []string{"Spider Solitaire - Free"}}
 
 	cases := []struct {
 		name string
@@ -205,13 +205,13 @@ func TestBlockedProcessesNeverTouchesProtected(t *testing.T) {
 	apps := []App{
 		{Kind: AppTitle, Value: "Program Manager"}, // explorer.exe's own window
 		{Kind: AppExe, Value: "guard.exe"},         // refused at input, but assume it got in
-		{Kind: AppExe, Value: "game.exe"},
+		{Kind: AppExe, Value: "mygame.exe"},
 	}
 	procs := []Process{
 		{PID: 4, Name: "System"},
 		{PID: 900, Name: "explorer.exe", Titles: []string{"Program Manager"}},
 		{PID: 901, Name: "guard.exe", Path: `C:\Program Files\Extension Guard\guard.exe`},
-		{PID: 902, Name: "game.exe", Path: `C:\Games\game.exe`},
+		{PID: 902, Name: "mygame.exe", Path: `C:\Games\mygame.exe`},
 	}
 	got := BlockedProcesses(apps, procs)
 	if len(got) != 1 || got[0].PID != 902 {
@@ -361,7 +361,7 @@ func TestAppsOmittedWhenUnused(t *testing.T) {
 
 func appScheduleConfig() Config {
 	return Config{
-		Apps: []App{{Kind: AppExe, Value: "steam.exe"}, {Kind: AppExe, Value: "game.exe"}},
+		Apps: []App{{Kind: AppExe, Value: "steam.exe"}, {Kind: AppExe, Value: "mygame.exe"}},
 		Blocks: []Block{{
 			ID:      "evenings",
 			Apps:    []string{"steam.exe"},
@@ -382,14 +382,14 @@ func TestActiveAtResolvesApps(t *testing.T) {
 		t.Errorf("inside the window: %d apps blocked, want 2", got)
 	}
 	out := cfg.ActiveAt(outside).BlockedApps()
-	if len(out) != 1 || out[0].Value != "game.exe" {
-		t.Errorf("outside the window: blocked = %+v, want only game.exe", out)
+	if len(out) != 1 || out[0].Value != "mygame.exe" {
+		t.Errorf("outside the window: blocked = %+v, want only mygame.exe", out)
 	}
 	// The unscheduled app keeps its own state; the schedule does not resurrect an
 	// app that was switched off outright.
 	cfg.Apps[1].Disabled = true
 	if got := len(cfg.ActiveAt(inside).BlockedApps()); got != 1 {
-		t.Errorf("with game.exe switched off: %d apps blocked, want 1", got)
+		t.Errorf("with mygame.exe switched off: %d apps blocked, want 1", got)
 	}
 }
 

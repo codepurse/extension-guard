@@ -91,7 +91,13 @@ const (
 	// anything; the rest are kept because "how much did I actually use this week"
 	// is the obvious next question, and discarding the answer every night would
 	// make it unanswerable later.
-	keepDays = 14
+	//
+	// It was fourteen while nothing read the older days. `guard usage` reads them
+	// now, and "how did this month go" is the question people actually ask of a
+	// record like this, so it is two months. The cost is bounded and small: one
+	// short integer per rule per day, so sixty days of twenty rules is a few tens
+	// of kilobytes.
+	keepDays = KeepDays
 	// maxCharge caps what a single observation can add. Observations are a second
 	// apart, so this only matters when the gap is much larger than that: a busy
 	// machine that ran late (charge it, the app really was running) or one that was
@@ -100,6 +106,10 @@ const (
 	// error down to seconds.
 	maxCharge = 15 * time.Second
 )
+
+// KeepDays is keepDays, exported so `guard usage` can say how far back the record
+// reaches instead of quietly answering for a shorter span than it was asked for.
+const KeepDays = 60
 
 var (
 	// dir is where the ledger lives. A var so tests can point it somewhere other
@@ -127,8 +137,30 @@ var (
 // is served as LastDay instead, so time spent today stays spent whatever the clock
 // says afterwards.
 type Ledger struct {
-	Days    map[string]map[string]int `json:"days"`
-	LastDay string                    `json:"lastDay,omitempty"`
+	Days map[string]map[string]int `json:"days"`
+	// Apps is the same shape keyed by application rule instead of by block: seconds
+	// spent per rule, per day. It is a separate map rather than more entries in Days
+	// because the two answer different questions and only one of them decides
+	// anything. Days is enforcement state - a limit reads it and blocks - so it has
+	// to keep meaning exactly "seconds against this block". Apps is a record, read
+	// by `guard usage` and the status window and by nothing that enforces. Mixing
+	// them would also make a block whose id happened to match a rule key silently
+	// share a counter.
+	//
+	// omitempty for the reason every field added since v1 carries it: a ledger
+	// written before this existed must still encode the same way, and a fresh
+	// install with no app rules should not grow an empty object.
+	Apps map[string]map[string]int `json:"apps,omitempty"`
+	// Span is seconds per day during which *at least one* configured application
+	// rule was running, counted once however many were.
+	//
+	// It exists because the obvious sum of Apps is not the number a person means by
+	// "how long was I on this stuff today". An hour with Steam and Discord both open
+	// is two hours of rules and one hour of the afternoon, and only one of those is
+	// screen time. Keeping both is cheaper than choosing: the sum answers "which
+	// rule cost me the most", and this answers "how much of the day went".
+	Span    map[string]int `json:"span,omitempty"`
+	LastDay string         `json:"lastDay,omitempty"`
 }
 
 // Path is the ledger's full path. Exported so the CLI and the window can point at
@@ -178,7 +210,84 @@ func Spent(day string) (map[string]time.Duration, State) {
 // Spent returns one day's counters as durations, resolving the day through the
 // clock-rollback guard.
 func (l Ledger) Spent(day string) map[string]time.Duration {
-	counts := l.Days[l.effectiveDay(day)]
+	return asDurations(l.Days[l.effectiveDay(day)])
+}
+
+// addSpan charges seconds to the day's span counter, under the same day and
+// clock rules as everything else here.
+func (l *Ledger) addSpan(day string, seconds int) {
+	if seconds <= 0 {
+		return
+	}
+	day = l.effectiveDay(day)
+	if l.Span == nil {
+		l.Span = map[string]int{}
+	}
+	l.Span[day] += seconds
+	if day > l.LastDay {
+		l.LastDay = day
+	}
+}
+
+// SpanOn is how long at least one rule was running on one day.
+func (l Ledger) SpanOn(day string) time.Duration {
+	return time.Duration(l.Span[day]) * time.Second
+}
+
+// SpanTotal is SpanOn summed over several days.
+func (l Ledger) SpanTotal(days []string) time.Duration {
+	var out time.Duration
+	for _, day := range days {
+		out += time.Duration(l.Span[day]) * time.Second
+	}
+	return out
+}
+
+// AppSpent returns one day's per-rule counters as durations. Unlike Spent it does
+// *not* resolve the day through the rollback guard: this is a record of what
+// happened, and a reader asking about Tuesday wants Tuesday or nothing. The guard
+// exists to stop a budget being handed back, and there is no budget here.
+func (l Ledger) AppSpent(day string) map[string]time.Duration {
+	return asDurations(l.Apps[day])
+}
+
+// AppTotals sums the per-rule counters across several days, for "the last week"
+// and "the last month" without every caller writing the same loop.
+func (l Ledger) AppTotals(days []string) map[string]time.Duration {
+	out := map[string]time.Duration{}
+	for _, day := range days {
+		for key, secs := range l.Apps[day] {
+			out[key] += time.Duration(secs) * time.Second
+		}
+	}
+	return out
+}
+
+// AppDayTotal is everything spent on one day across every rule, which is what a
+// per-day bar in the window is made of.
+//
+// It is a sum of rules, not of wall-clock time, so two rules used in the same
+// minute count twice and the total can exceed the day. SpanOn is the other reading,
+// and the CLI shows both rather than picking one - see the Span field.
+func (l Ledger) AppDayTotal(day string) time.Duration {
+	var out time.Duration
+	for _, secs := range l.Apps[day] {
+		out += time.Duration(secs) * time.Second
+	}
+	return out
+}
+
+// RecordedDays lists every day the per-rule record holds, newest first.
+func (l Ledger) RecordedDays() []string {
+	days := make([]string, 0, len(l.Apps))
+	for d := range l.Apps {
+		days = append(days, d)
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(days)))
+	return days
+}
+
+func asDurations(counts map[string]int) map[string]time.Duration {
 	out := make(map[string]time.Duration, len(counts))
 	for id, secs := range counts {
 		out[id] = time.Duration(secs) * time.Second
@@ -200,6 +309,23 @@ func (l Ledger) effectiveDay(day string) string {
 // write into a day earlier than the latest recorded, so time cannot be un-spent by
 // moving the clock back.
 func (l *Ledger) add(day, id string, seconds int) {
+	if l.Days == nil {
+		l.Days = map[string]map[string]int{}
+	}
+	l.addTo(l.Days, day, id, seconds)
+}
+
+// addApp is add for the per-rule record. It shares every rule about days and the
+// clock with add, and differs only in which map it lands in - which is the whole
+// reason both go through addTo rather than being written twice.
+func (l *Ledger) addApp(day, key string, seconds int) {
+	if l.Apps == nil {
+		l.Apps = map[string]map[string]int{}
+	}
+	l.addTo(l.Apps, day, key, seconds)
+}
+
+func (l *Ledger) addTo(into map[string]map[string]int, day, id string, seconds int) {
 	if seconds <= 0 {
 		return
 	}
@@ -208,31 +334,43 @@ func (l *Ledger) add(day, id string, seconds int) {
 		return
 	}
 	day = l.effectiveDay(day)
-	if l.Days == nil {
-		l.Days = map[string]map[string]int{}
+	if into[day] == nil {
+		into[day] = map[string]int{}
 	}
-	if l.Days[day] == nil {
-		l.Days[day] = map[string]int{}
-	}
-	l.Days[day][id] += seconds
+	into[day][id] += seconds
 	if day > l.LastDay {
 		l.LastDay = day
 	}
 }
 
-// prune drops all but the most recent keepDays days, so the file cannot grow
-// without bound on a machine that has had a limit configured for years.
+// prune drops all but the most recent keepDays days from both records, so the file
+// cannot grow without bound on a machine that has had a rule configured for years.
 func (l *Ledger) prune() {
-	if len(l.Days) <= keepDays {
+	pruneDays(l.Days)
+	pruneDays(l.Apps)
+	if len(l.Span) > keepDays {
+		days := make([]string, 0, len(l.Span))
+		for d := range l.Span {
+			days = append(days, d)
+		}
+		sort.Sort(sort.Reverse(sort.StringSlice(days)))
+		for _, d := range days[keepDays:] {
+			delete(l.Span, d)
+		}
+	}
+}
+
+func pruneDays(m map[string]map[string]int) {
+	if len(m) <= keepDays {
 		return
 	}
-	days := make([]string, 0, len(l.Days))
-	for d := range l.Days {
+	days := make([]string, 0, len(m))
+	for d := range m {
 		days = append(days, d)
 	}
 	sort.Sort(sort.Reverse(sort.StringSlice(days)))
 	for _, d := range days[keepDays:] {
-		delete(l.Days, d)
+		delete(m, d)
 	}
 }
 
@@ -358,14 +496,19 @@ func (t *Tracker) State() State {
 	return t.state
 }
 
-// Observe charges the time since the previous call to every block in ids, and
-// returns how much was charged. The first call establishes the baseline and
-// charges nothing.
+// Observe charges the time since the previous call to every limited block in
+// blocks and every application rule in apps, and returns how much was charged. The
+// first call establishes the baseline and charges nothing.
+//
+// The two lists are charged from one interval on purpose. They come from a single
+// sample of the process list, and giving each its own baseline would let a tick
+// that charged one and not the other drift them apart against a clock that only
+// moved once.
 //
 // A negative interval means the clock moved backwards. Nothing is charged for it,
 // and the baseline is left where it was, so winding the clock back cannot make the
 // next observation charge a negative or enormous amount.
-func (t *Tracker) Observe(now time.Time, day string, ids []string) time.Duration {
+func (t *Tracker) Observe(now time.Time, day string, blocks, apps []string) time.Duration {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -379,7 +522,7 @@ func (t *Tracker) Observe(now time.Time, day string, ids []string) time.Duration
 	}
 	t.last = now
 
-	if len(ids) == 0 {
+	if len(blocks) == 0 && len(apps) == 0 {
 		t.carry = 0 // nothing was running, so there is no remainder to owe
 		return 0
 	}
@@ -389,11 +532,29 @@ func (t *Tracker) Observe(now time.Time, day string, ids []string) time.Duration
 		return 0 // less than a second so far; it is held in carry, not lost
 	}
 	t.carry -= time.Duration(secs) * time.Second
-	for _, id := range ids {
+	for _, id := range blocks {
 		t.led.add(day, id, secs)
+	}
+	for _, key := range apps {
+		t.led.addApp(day, key, secs)
+	}
+	// The span is charged once for the interval however many rules matched, which is
+	// the whole difference between it and the sum of those rules. It follows apps
+	// rather than blocks because it is a record of the rules, and a machine with app
+	// rules and no limits has no blocks to report.
+	if len(apps) > 0 {
+		t.led.addSpan(day, secs)
 	}
 	t.dirty = true
 	return time.Duration(secs) * time.Second
+}
+
+// AppSpent returns the day's per-rule counters from the live in-memory ledger, so
+// a reader in-process sees what has been charged since the last flush.
+func (t *Tracker) AppSpent(day string) map[string]time.Duration {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.led.AppSpent(day)
 }
 
 // Spent returns the day's counters from the live in-memory ledger. The service
@@ -434,13 +595,30 @@ func (t *Tracker) Flush() error {
 // across a file write - the observation every second matters more than the write
 // every thirty.
 func (l Ledger) clone() Ledger {
-	out := Ledger{LastDay: l.LastDay, Days: make(map[string]map[string]int, len(l.Days))}
-	for day, counts := range l.Days {
+	out := Ledger{LastDay: l.LastDay, Days: cloneDays(l.Days), Apps: cloneDays(l.Apps)}
+	if l.Span != nil {
+		out.Span = make(map[string]int, len(l.Span))
+		for day, secs := range l.Span {
+			out.Span[day] = secs
+		}
+	}
+	return out
+}
+
+// cloneDays copies one of the two day maps. A nil map clones to nil rather than to
+// an empty one, so a ledger that has never recorded an app rule keeps encoding
+// without the "apps" key at all.
+func cloneDays(m map[string]map[string]int) map[string]map[string]int {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string]map[string]int, len(m))
+	for day, counts := range m {
 		day2 := make(map[string]int, len(counts))
 		for id, secs := range counts {
 			day2[id] = secs
 		}
-		out.Days[day] = day2
+		out[day] = day2
 	}
 	return out
 }

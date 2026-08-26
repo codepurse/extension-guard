@@ -56,6 +56,11 @@
   .row .toggle.off, .row .toggle.off:hover { background: var(--surface2); color: var(--muted); }
   .row .toggle:hover { filter: brightness(1.2); }
   .exthint { font-size: 12px; color: var(--muted); margin: -6px 0 0; }
+  /* An empty-state line sits below a (possibly empty) list rather than under a
+     heading, so it must not carry .exthint's negative top margin - with nothing in
+     the list it would ride up onto the section's own hint and read as one mangled
+     paragraph. */
+  .emptyhint { font-size: 12px; color: var(--muted); margin: 8px 0 0; }
   .row .extname { text-transform: none; }
   input[type=password], input[type=text] {
     background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
@@ -100,6 +105,9 @@
   .addrow { display: flex; gap: 8px; margin-bottom: 6px; }
   .addrow input[type=text] { flex: 1; min-width: 0; }
   .badge.idlewin { color: var(--warn); background: var(--warn-bg); }
+  /* A browser the guard can neither filter nor block. Amber, like everything else
+     here that means protection is not applying. */
+  .badge.reachable { color: var(--warn); background: var(--warn-bg); }
   .row .dname { font-size: 13px; text-transform: none; word-break: break-all; }
   /* Application block list. Four ways in, because "the app I want gone" is a
      file, a folder, a Store app, or just a window. */
@@ -109,6 +117,39 @@
   .row .ainfo { min-width: 0; }
   .row .aname { font-size: 13px; word-break: break-all; }
   .row .anote { font-size: 11px; color: var(--faint); word-break: break-all; }
+  /* Category cards. A category is one decision covering thirty rules, so it is
+     offered as a card with its own button rather than as another list row. */
+  .catrow { display: flex; align-items: flex-start; gap: 10px; }
+  .catrow .ainfo { flex: 1; }
+  .catrow .aname { font-size: 13px; font-weight: 600; }
+  .catrow button { flex-shrink: 0; padding: 6px 12px; font-size: 12px; }
+  .catnote { font-size: 11px; color: var(--faint); margin-top: 6px; line-height: 1.45; }
+  /* The contents list. Shown on demand rather than always: a category is worth
+     offering as one line, but agreeing to it is agreeing to every entry, so the
+     list has to be one click away and not buried in a separate window. */
+  .catmore {
+    background: none; border: none; color: var(--accent); padding: 4px 0 0;
+    font-size: 11px; font-weight: 600; cursor: pointer;
+  }
+  .catmore:hover { background: none; color: var(--accent); text-decoration: underline; }
+  .catlist {
+    margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 3px 10px;
+  }
+  .catlist .item { font-size: 11px; color: var(--muted); display: flex; align-items: baseline; gap: 5px; }
+  /* An entry already in the block list is dimmed and ticked, so a top-up of
+     three reads as three rather than as the whole list over again. */
+  .catlist .item.have { color: var(--faint); }
+  .catlist .item .tick { color: var(--ok); font-size: 10px; }
+  .catlist .item .kind { color: var(--faint); font-size: 10px; margin-left: auto; }
+  .catlisthead { font-size: 11px; color: var(--faint); margin: 8px 0 0; }
+  /* Heading above the run of rules one category contributed. Indented rather
+     than styled as a section title: it sits inside the blocked-apps list, and
+     reading as a peer of "Blocked apps" would suggest it is a separate list. */
+  .grouphead {
+    font-size: 11px; color: var(--faint); text-transform: uppercase; letter-spacing: .04em;
+    margin: 8px 0 2px 2px;
+  }
   .picker { max-height: 230px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
   .picker button {
     width: 100%; text-align: left; background: var(--surface2); color: var(--text);
@@ -161,6 +202,15 @@
   .picker .item .kind { margin-left: auto; font-size: 10px; color: var(--faint); }
   .picker .item label { font-size: 12px; display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
   .picker .item span.nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .usebar { height: 4px; border-radius: 999px; background: var(--surface2); margin-top: 5px; overflow: hidden; }
+  .usebar > span { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
+  .row .usenum { font-size: 12px; color: var(--muted); margin-left: auto; white-space: nowrap; text-align: right; }
+  .row .usenum b { color: var(--text); font-weight: 600; }
+  .useday { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 12px; color: var(--muted); }
+  .useday .udlabel { width: 82px; flex: none; }
+  .useday .udbar { flex: 1; height: 6px; border-radius: 999px; background: var(--surface2); overflow: hidden; }
+  .useday .udbar > span { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
+  .useday .udnum { width: 54px; flex: none; text-align: right; }
   .warnbox { border-color: var(--warn); }
   .warnbox .lbl { color: var(--warn); font-weight: 600; }
   .lock-choices { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
@@ -246,9 +296,30 @@
   <div class="section-title">Browsers</div>
   <div class="rows" id="rows"></div>
 
+  <div id="unmanaged-section">
+    <div class="section-title">Other browsers on this machine</div>
+    <p class="exthint">The guard filters inside the browsers above by writing policy they read. A browser that reads none of it carries none of the locked extensions and none of the blocked sites &mdash; so it has to be blocked instead of filtered.</p>
+    <div id="unmanaged-warning" class="card warnbox" style="display:none; margin-bottom:6px;">
+      <div class="lbl">Protection does not reach every browser here</div>
+      <div class="announce-msg" id="unmanaged-warning-msg"></div>
+      <div class="announce-msg">Block the ones the guard knows by name from &ldquo;Unmanaged browsers&rdquo; under <b>Block a category</b>. For anything that list misses, use <b>Add .exe file</b> under Blocked apps and pick the executable shown here.</div>
+    </div>
+    <div class="rows" id="unmanaged-rows"></div>
+    <p class="exthint" id="unmanaged-empty" style="display:none;">Nothing else is installed &mdash; every browser here is one the guard filters.</p>
+  </div>
+
   <div class="section-title">Protected extensions</div>
   <p class="exthint" id="exthint">Turning one on adds protection (free). Turning one off needs the password.</p>
   <div class="rows" id="ext-rows"></div>
+
+  <div class="section-title">Browser settings</div>
+  <p class="exthint">Settings the guard pins so the locks above hold. Pinning one is free; handing one back needs the password.</p>
+  <div id="harden-warning" class="card warnbox" style="display:none; margin-bottom:6px;">
+    <div class="lbl">A private window carries none of the locked extensions</div>
+    <div class="announce-msg">An extension cannot be force-installed into an Incognito, private or guest window &mdash; so while private browsing is available, every filter above can be sidestepped with Ctrl+Shift+N.</div>
+    <div class="announce-msg">Pin <b>Private browsing and guest profiles</b> below to close it.</div>
+  </div>
+  <div class="rows" id="harden-rows"></div>
 
   <div class="section-title">Blocked sites</div>
   <p class="exthint">Blocking a site covers every subdomain, in all supported browsers. Adding one is free; removing one needs the password.</p>
@@ -258,6 +329,36 @@
   </div>
   <div class="rows" id="domain-rows"></div>
   <p class="exthint" id="domain-empty" style="display:none;">Nothing blocked yet.</p>
+
+  <div id="allow-section">
+    <div class="section-head">
+      <div class="section-title">Allowed sites only</div>
+      <button id="allow-toggle" class="ghost small">Turn on</button>
+    </div>
+    <p class="exthint">Blocks every site except the ones below. Turning it on is free; turning it off &mdash; and letting a site through &mdash; needs the password, because that is the direction that opens things.</p>
+    <div id="allow-shut" class="card warnbox" style="display:none; margin-bottom:6px;">
+      <div class="lbl">Every site is blocked</div>
+      <div class="announce-msg">The allowlist is empty and the mode is on, so no page loads in Chrome, Edge, Brave or Firefox. That is what this mode means &mdash; add the sites you need below if it was not what you wanted.</div>
+    </div>
+    <div class="addrow">
+      <input id="allow-input" type="text" placeholder="wikipedia.org" autocomplete="off" spellcheck="false" />
+      <button id="allow-add">Allow</button>
+    </div>
+    <div class="rows" id="allow-rows"></div>
+    <p class="exthint" id="allow-empty" style="display:none;">Nothing allowed yet.</p>
+  </div>
+
+  <div class="section-title">Block a category</div>
+  <p class="exthint">A category blocks a whole set at once &mdash; its apps and its sites &mdash; around the clock. Adding one is free; taking it off again needs the password.</p>
+  <div class="rows" id="cat-rows"></div>
+
+  <div id="usage-section">
+    <div class="section-title">Time used</div>
+    <p class="exthint">How long each blocked application actually ran &mdash; counted while it is running, not only while you are looking at it. Kept on this PC only.</p>
+    <div class="rows" id="usage-rows"></div>
+    <p class="emptyhint" id="usage-empty" style="display:none;"></p>
+    <div id="usage-days"></div>
+  </div>
 
   <div class="section-title">Blocked apps</div>
   <p class="exthint">A blocked application does not start, and is closed if it is already running. Adding one is free; removing one needs the password.</p>
@@ -837,9 +938,129 @@
       extRows.appendChild(row);
     });
 
+    renderUnmanaged(s);
+    renderHardening(s);
+    renderAllowlist(s);
+    renderUsage(s);
     renderDomains(s);
+    renderCategories(s);
     renderApps(s);
     renderBlocks(s);
+  }
+
+  // renderUnmanaged lists the browsers installed here that the guard writes no
+  // policy for. Every other list in this window is something the guard is doing;
+  // this one is what it cannot do, which is why it sits directly under the four
+  // browsers it does manage rather than further down with the block lists.
+  //
+  // Blocked browsers stay in the list rather than disappearing once they are
+  // handled. A section that emptied itself would take away the only place to see
+  // that Opera is still installed and still covered - and the only place a newly
+  // installed browser would show up next to it.
+  function renderUnmanaged(s) {
+    const section = document.getElementById('unmanaged-section');
+    const rows = document.getElementById('unmanaged-rows');
+    const empty = document.getElementById('unmanaged-empty');
+    const warn = document.getElementById('unmanaged-warning');
+    rows.innerHTML = '';
+
+    // A scan that could not run says nothing at all. "Every browser here is one
+    // the guard filters" is a claim, and printing it on a platform that never
+    // looked would be the window inventing reassurance.
+    //
+    // The warning and the empty hint are cleared before returning, not just left
+    // hidden with their parent: they are the only two things in this section that
+    // assert something, and leaving either one populated behind a hidden section
+    // is how a later change that shows the section again ships a stale claim.
+    if (!s.unmanagedScanned) {
+      warn.style.display = 'none';
+      empty.style.display = 'none';
+      section.style.display = 'none';
+      return;
+    }
+    section.style.display = '';
+
+    const list = s.unmanaged || [];
+    // The warning is about gaps, so it counts browsers that are not on the block
+    // list at all - not ones that are on it and merely outside their window right
+    // now. Those are badged "Waiting", the same as a scheduled site, because a
+    // schedule is a decision the user made and nagging about it every evening
+    // would be complaining about their own configuration.
+    //
+    // A registration whose file is gone is excluded for a different reason: there
+    // is nothing there to run, so calling it a gap would put a permanent warning
+    // on any machine that ever uninstalled a browser.
+    const open = list.filter(function (b) { return !b.listed && !b.missing; });
+    const gone = list.filter(function (b) { return b.missing && b.listed; });
+    empty.style.display = list.length ? 'none' : '';
+
+    list.forEach(function (b) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      const info = document.createElement('div');
+      info.className = 'ainfo';
+      const name = document.createElement('div');
+      name.className = 'aname';
+      name.textContent = b.label;
+      const note = document.createElement('div');
+      note.className = 'anote';
+      // The path, because it is what the user needs in order to block a browser
+      // the built-in category does not name.
+      note.textContent = b.exe || 'the registration names no executable';
+      info.appendChild(name);
+      info.appendChild(note);
+      row.appendChild(info);
+
+      const badge = document.createElement('span');
+      if (b.missing) {
+        badge.className = 'badge reachable';
+        badge.textContent = 'File gone';
+        badge.title = 'Registered as a browser, but the executable it names is not there - either it was uninstalled, or the file was renamed';
+      } else if (b.blocked) {
+        badge.className = 'badge locked';
+        badge.textContent = 'Blocked';
+        badge.title = 'On the block list and enforced right now';
+      } else if (b.listed) {
+        badge.className = 'badge idlewin';
+        badge.textContent = 'Waiting';
+        badge.title = 'On the block list, but outside its schedule window right now - reachable until it comes back';
+      } else {
+        badge.className = 'badge reachable';
+        badge.textContent = 'Reachable';
+        badge.title = 'Neither filtered nor blocked: every blocked site is reachable through this browser';
+      }
+      row.appendChild(badge);
+      rows.appendChild(row);
+    });
+
+    const said = [];
+    if (open.length) {
+      const one = open.length === 1;
+      said.push((one ? '1 browser here is' : open.length + ' browsers here are') +
+        ' neither filtered nor blocked: ' +
+        open.map(function (b) { return b.label; }).join(', ') + '. ' +
+        'Every blocked site is reachable through ' + (one ? 'it' : 'them') +
+        ', and none of the protected extensions are loaded.');
+    }
+    // Only for browsers that were blocked. A browser nobody blocked whose file has
+    // gone was almost certainly uninstalled, and saying so would put a permanent
+    // warning on any machine that ever removed one - which teaches the reader to
+    // ignore this box, including on the day it matters.
+    if (gone.length) {
+      const one = gone.length === 1;
+      said.push((one ? '1 browser on the block list has' : gone.length + ' browsers on the block list have') +
+        ' no executable at the path registered for ' + (one ? 'it' : 'them') + ': ' +
+        gone.map(function (b) { return b.label; }).join(', ') + '. ' +
+        'That means it was uninstalled, or the file was renamed to get around the block. ' +
+        'Rules naming a bare executable also match the name built into the program, ' +
+        'so a plain rename does not get past them.');
+    }
+    if (said.length) {
+      document.getElementById('unmanaged-warning-msg').textContent = said.join(' ');
+      warn.style.display = '';
+    } else {
+      warn.style.display = 'none';
+    }
   }
 
   // renderDomains lists the site block list. A site can be switched on yet not
@@ -917,10 +1138,457 @@
     await refresh();
   }
 
+  // renderHardening lists the pinned browser settings. The warning above it is
+  // shown from privateBrowsingOpen rather than from the row's own state, because
+  // the case that matters is the machine where nobody has turned this on yet - the
+  // same reason the unmanaged-browser warning appears whether or not anything is
+  // blocked.
+  //
+  // Each row says where the setting reaches and, when there is one, where it does
+  // not. A row reading "On" over a browser it is silently absent from would be the
+  // half-truth this window exists to avoid.
+  function renderHardening(s) {
+    const rows = document.getElementById('harden-rows');
+    const warn = document.getElementById('harden-warning');
+    const list = s.hardening || [];
+    warn.style.display = s.privateBrowsingOpen ? '' : 'none';
+    rows.innerHTML = '';
+
+    list.forEach(function (h) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      const info = document.createElement('div');
+      info.className = 'ainfo';
+      const name = document.createElement('div');
+      name.className = 'aname';
+      name.textContent = h.label;
+      const note = document.createElement('div');
+      note.className = 'anote';
+      // What it covers, and what it misses. Both on one line: the gap is only ever
+      // a clause long, and a second line would push the toggles apart unevenly.
+      note.textContent = h.on
+        ? (h.state === 'blocked' ? 'Pinned in ' : h.state + ' in ') + h.browsers + (h.gap ? ' — ' + h.gap : '')
+        : 'Not pinned. Covers ' + h.browsers + '.';
+      info.appendChild(name);
+      info.appendChild(note);
+      row.appendChild(info);
+
+      // The level switch, for the one setting that has two on-states. Going up is
+      // free; going down asks for the password, because it is a request to filter
+      // less - HardenNeedsPassword is asked, and the guard re-checks it.
+      if (h.on && h.level) {
+        const other = h.level === 'strict' ? 'moderate' : 'strict';
+        const lvl = document.createElement('button');
+        lvl.className = 'ghost small';
+        lvl.style.marginLeft = 'auto';
+        lvl.textContent = 'Use ' + other;
+        lvl.title = other === 'moderate'
+          ? 'Filter less than now — needs the password'
+          : 'Filter more than now';
+        lvl.addEventListener('click', function () { setHardenLevel(h, other); });
+        row.appendChild(lvl);
+      }
+
+      const tog = document.createElement('button');
+      tog.className = 'toggle ' + (h.on ? 'on' : 'off');
+      tog.textContent = h.on ? 'On' : 'Off';
+      tog.style.marginLeft = (h.on && h.level) ? '8px' : 'auto';
+      tog.addEventListener('click', function () { toggleHardening(h); });
+      row.appendChild(tog);
+      rows.appendChild(row);
+    });
+  }
+
+  // toggleHardening pins a setting or hands it back. Pinning only strengthens, so
+  // it costs the Windows prompt alone; handing one back needs the password, unless
+  // protection is already in the authorized paused state.
+  async function toggleHardening(h) {
+    if (!bound() || !window.go.main.App.Harden) { return; }
+    let res;
+    if (h.on) {
+      let pw = '';
+      if (!current.disabled) {
+        pw = await askPassword('Enter the password to stop pinning ' + h.label.toLowerCase());
+        if (pw === null) { return; }
+      }
+      setMsg('Approve the Windows permission prompt...');
+      try { res = await window.go.main.App.Unharden(h.id, pw); } catch (e) { res = { ok: false, message: String(e) }; }
+    } else {
+      setMsg('Approve the Windows permission prompt...');
+      try { res = await window.go.main.App.Harden(h.id, '', ''); } catch (e) { res = { ok: false, message: String(e) }; }
+    }
+    setMsg(res.message, res.ok ? 'ok' : 'err');
+    await refresh();
+  }
+
+  // setHardenLevel changes how strict a pinned setting is. The password is asked
+  // for only when the change weakens protection, and the answer to that question
+  // comes from the guard rather than from a rule written twice.
+  async function setHardenLevel(h, level) {
+    if (!bound() || !window.go.main.App.Harden) { return; }
+    let pw = '';
+    let needs = false;
+    try { needs = await window.go.main.App.HardenNeedsPassword(h.id, level); } catch (e) { needs = false; }
+    if (needs) {
+      pw = await askPassword('Enter the password to filter less than ' + h.label.toLowerCase() + ' does now');
+      if (pw === null) { return; }
+    }
+    setMsg('Approve the Windows permission prompt...');
+    let res;
+    try { res = await window.go.main.App.Harden(h.id, level, pw); } catch (e) { res = { ok: false, message: String(e) }; }
+    setMsg(res.message, res.ok ? 'ok' : 'err');
+    await refresh();
+  }
+
+  // renderUsage lists how long each blocked application ran, and a bar per day
+  // underneath. There is nothing to click: this is the one section that is a record
+  // rather than a control, which is also why it needs neither the password nor the
+  // Windows prompt to read.
+  //
+  // Every duration and every bar width is computed in the backend. The window could
+  // work out a percentage itself, but then the bar and the number beside it would be
+  // two independent renderings of the same fact, and eventually they would disagree.
+  function renderUsage(s) {
+    const rows = document.getElementById('usage-rows');
+    const empty = document.getElementById('usage-empty');
+    const daysBox = document.getElementById('usage-days');
+    const u = s.usage || {};
+    const list = u.rows || [];
+    rows.innerHTML = '';
+    daysBox.innerHTML = '';
+
+    // Three different empty states, said differently on purpose. "Nothing is
+    // blocked" is a setup step, "the record is missing" is a fault, and "nothing ran
+    // yet" is the ordinary case on a quiet week - one message for all three would
+    // read as a broken feature in two of them.
+    let note = '';
+    if (!u.measured) {
+      note = 'No applications are blocked, so there is nothing to measure. Sites and extensions cannot be measured — the guard hands the browser a policy and gets nothing back.';
+    } else if (u.unreadable) {
+      note = 'The usage record could not be read, so there is no history to show. The guard rewrites it from its own running count within half a minute.';
+    } else if (!list.length) {
+      note = 'Nothing recorded yet. Time is counted while a blocked application is running; one that never starts records nothing.';
+    }
+    empty.style.display = note ? '' : 'none';
+    empty.textContent = note;
+    if (note) { return; }
+
+    list.forEach(function (r) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      const info = document.createElement('div');
+      info.className = 'ainfo';
+      const name = document.createElement('div');
+      name.className = 'aname';
+      name.textContent = r.label;
+      if (r.gone) {
+        const tag = document.createElement('span');
+        tag.className = 'schedtag';
+        tag.textContent = 'unblocked';
+        tag.title = 'No longer on the block list; the time it was used is kept';
+        name.appendChild(tag);
+      }
+      const note2 = document.createElement('div');
+      note2.className = 'anote';
+      note2.textContent = r.detail || '';
+      const bar = document.createElement('div');
+      bar.className = 'usebar';
+      const fill = document.createElement('span');
+      fill.style.width = (r.percent || 0) + '%';
+      bar.appendChild(fill);
+      info.appendChild(name);
+      info.appendChild(note2);
+      info.appendChild(bar);
+      row.appendChild(info);
+
+      const num = document.createElement('div');
+      num.className = 'usenum';
+      // Today in bold and the span behind it: "how long today" is the question being
+      // asked, and the week is the context that makes the answer mean something.
+      num.innerHTML = '<b></b><br><span></span>';
+      num.querySelector('b').textContent = r.today;
+      num.querySelector('span').textContent = r.total + ' / ' + u.span + 'd';
+      row.appendChild(num);
+      rows.appendChild(row);
+    });
+
+    // The total with any of them open, which is not the sum of the rows above: an
+    // hour with two applications running is two hours of rules and one hour of the
+    // afternoon. Both are true and people mean the second one.
+    const head = document.createElement('div');
+    head.className = 'useday';
+    head.innerHTML = '<div class="udlabel" style="width:auto;flex:1;"></div><div class="udnum" style="width:auto;"></div>';
+    head.querySelector('.udlabel').textContent = 'Any of them open';
+    head.querySelector('.udnum').textContent = u.today + ' today, ' + u.total + ' in ' + u.span + ' days';
+    daysBox.appendChild(head);
+
+    (u.days || []).forEach(function (d) {
+      const line = document.createElement('div');
+      line.className = 'useday';
+      const label = document.createElement('div');
+      label.className = 'udlabel';
+      label.textContent = d.label;
+      const bar = document.createElement('div');
+      bar.className = 'udbar';
+      const fill = document.createElement('span');
+      fill.style.width = (d.percent || 0) + '%';
+      bar.appendChild(fill);
+      const num = document.createElement('div');
+      num.className = 'udnum';
+      num.textContent = d.spent;
+      line.appendChild(label);
+      line.appendChild(bar);
+      line.appendChild(num);
+      daysBox.appendChild(line);
+    });
+  }
+
+  // renderAllowlist is the block list read the other way round: name what is
+  // allowed and block the rest. The section is deliberately shaped like Blocked
+  // sites - one box, one list - because it is the same mechanism, and the only thing
+  // a reader has to hold in mind is that the gate is inverted.
+  function renderAllowlist(s) {
+    const a = s.allowlist || {};
+    const rows = document.getElementById('allow-rows');
+    const empty = document.getElementById('allow-empty');
+    const toggle = document.getElementById('allow-toggle');
+    const shut = document.getElementById('allow-shut');
+    const sites = a.sites || [];
+
+    // Three states, not two. On-and-outside-its-window is not off, and calling it
+    // off would read as somebody having turned it off.
+    let state = 'Turn on';
+    if (a.on && a.enforcing) { state = 'On \u2014 turn off'; }
+    else if (a.on) { state = 'Waiting (' + (a.schedule || '') + ') \u2014 turn off'; }
+    toggle.textContent = state;
+    toggle.title = a.on
+      ? 'Unblocks the whole web again \u2014 needs the password'
+      : 'Blocks every site except the list below';
+
+    shut.style.display = a.shut ? '' : 'none';
+    rows.innerHTML = '';
+    empty.style.display = sites.length ? 'none' : '';
+
+    sites.forEach(function (host) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      const name = document.createElement('span');
+      name.className = 'dname';
+      name.textContent = host;
+      row.appendChild(name);
+
+      if (a.on && !a.enforcing) {
+        const badge = document.createElement('span');
+        badge.className = 'badge idlewin';
+        badge.textContent = 'Waiting';
+        badge.title = 'The mode is on, but outside its window right now';
+        row.appendChild(badge);
+      }
+
+      const btn = document.createElement('button');
+      btn.className = 'toggle on';
+      btn.textContent = 'Allowed';
+      btn.title = 'Stop allowing this site (free \u2014 it only closes something)';
+      btn.style.marginLeft = (a.on && !a.enforcing) ? '8px' : 'auto';
+      btn.addEventListener('click', function () { unallowSite(host); });
+      row.appendChild(btn);
+      rows.appendChild(row);
+    });
+  }
+
+  // toggleAllowOnly turns the mode on or off. On costs the Windows prompt alone;
+  // off asks for the password first, because it hands back the entire web.
+  async function toggleAllowOnly() {
+    if (!bound() || !window.go.main.App.AllowOnly) { return; }
+    const on = !((current.allowlist || {}).on);
+    let pw = '';
+    if (!on) {
+      let needs = true;
+      try { needs = await window.go.main.App.AllowNeedsPassword('off'); } catch (e) { needs = true; }
+      if (needs) {
+        pw = await askPassword('Enter the password to unblock the whole web again');
+        if (pw === null) { return; }
+      }
+    }
+    setMsg('Approve the Windows permission prompt...');
+    let res;
+    try { res = await window.go.main.App.AllowOnly(on, pw); } catch (e) { res = { ok: false, message: String(e) }; }
+    setMsg(res.message, res.ok ? 'ok' : 'err');
+    await refresh();
+  }
+
+  // allowSite adds a site to the allowlist. This is the one "add" in the window that
+  // weakens protection, so it asks for the password whenever the mode is actually
+  // enforcing - and the guard asks again.
+  async function allowSite() {
+    if (!bound() || !window.go.main.App.Allow) { return; }
+    const input = document.getElementById('allow-input');
+    const value = input.value.trim();
+    if (!value) { setMsg('Type a site to allow.', 'err'); input.focus(); return; }
+    let pw = '';
+    let needs = false;
+    try { needs = await window.go.main.App.AllowNeedsPassword('allow'); } catch (e) { needs = false; }
+    if (needs) {
+      pw = await askPassword('Enter the password to let ' + value + ' through');
+      if (pw === null) { return; }
+    }
+    setMsg('Approve the Windows permission prompt...');
+    let res;
+    try { res = await window.go.main.App.Allow(value, pw); } catch (e) { res = { ok: false, message: String(e) }; }
+    setMsg(res.message, res.ok ? 'ok' : 'err');
+    if (res.ok) { input.value = ''; }
+    await refresh();
+  }
+
+  // unallowSite closes a site again. Free, like blocking one.
+  async function unallowSite(host) {
+    if (!bound() || !window.go.main.App.Unallow) { return; }
+    setMsg('Approve the Windows permission prompt...');
+    let res;
+    try { res = await window.go.main.App.Unallow(host); } catch (e) { res = { ok: false, message: String(e) }; }
+    setMsg(res.message, res.ok ? 'ok' : 'err');
+    await refresh();
+  }
+
+  // renderCategories offers each built-in set as one card. The button says what
+  // pressing it would actually do: a category already holding every one of its
+  // entries would change nothing, and a button that claims otherwise teaches the
+  // user their clicks are not connected to anything.
+  function renderCategories(s) {
+    const rows = document.getElementById('cat-rows');
+    const cats = s.categories || [];
+    rows.innerHTML = '';
+
+    cats.forEach(function (c) {
+      const row = document.createElement('div');
+      row.className = 'row catrow';
+      const info = document.createElement('div');
+      info.className = 'ainfo';
+      const name = document.createElement('div');
+      name.className = 'aname';
+      name.textContent = c.label;
+      const note = document.createElement('div');
+      note.className = 'anote';
+      note.textContent = c.apps + ' apps, ' + c.domains + ' sites';
+      info.appendChild(name);
+      info.appendChild(note);
+      row.appendChild(info);
+
+      if (c.blocked) {
+        const badge = document.createElement('span');
+        badge.className = 'badge locked';
+        badge.textContent = 'Blocked';
+        badge.style.marginLeft = '0';
+        row.appendChild(badge);
+      }
+
+      const btn = document.createElement('button');
+      if (c.missing === 0) {
+        // Nothing to add. Left visible but inert, so the card still says what
+        // state it is in rather than the button quietly disappearing.
+        btn.textContent = c.blocked ? 'All blocked' : 'Nothing to add';
+        btn.className = 'ghost';
+        btn.disabled = true;
+      } else if (c.blocked) {
+        btn.textContent = 'Top up (' + c.missing + ')';
+        btn.title = 'This category has gained ' + c.missing + ' entries since it was blocked';
+        btn.addEventListener('click', function () { blockCategory(c); });
+      } else {
+        btn.textContent = 'Block';
+        btn.addEventListener('click', function () { blockCategory(c); });
+      }
+      row.appendChild(btn);
+      rows.appendChild(row);
+
+      // The caveat belongs on the card, not in a release note. Most social media
+      // has no Windows application at all, and a user who blocks the category and
+      // then opens Instagram in a browser should already know why that is the
+      // domain half's job.
+      if (c.note) {
+        const hint = document.createElement('div');
+        hint.className = 'catnote';
+        hint.textContent = c.note;
+        info.appendChild(hint);
+      }
+
+      // The contents, one click away. Blocking a category means accepting every
+      // entry in it, and taking it off again needs the password - so the list has
+      // to be readable before the button is pressed, not after.
+      const items = c.items || [];
+      if (items.length) {
+        const list = document.createElement('div');
+        list.className = 'catlist';
+        list.style.display = 'none';
+        items.forEach(function (it) {
+          const el = document.createElement('div');
+          el.className = 'item' + (it.present ? ' have' : '');
+          if (it.present) {
+            const tick = document.createElement('span');
+            tick.className = 'tick';
+            tick.textContent = '✓';
+            tick.title = 'Already in the block list';
+            el.appendChild(tick);
+          }
+          const name = document.createElement('span');
+          name.textContent = it.label;
+          // What the entry actually covers, on hover. A folder rule and a single
+          // executable read the same in a list of friendly names, and they are
+          // very different things to agree to.
+          if (it.detail) { name.title = it.detail; }
+          el.appendChild(name);
+          const kind = document.createElement('span');
+          kind.className = 'kind';
+          kind.textContent = it.kind;
+          el.appendChild(kind);
+          list.appendChild(el);
+        });
+
+        const already = items.filter(function (it) { return it.present; }).length;
+        const more = document.createElement('button');
+        more.className = 'catmore';
+        const shut = 'Show what it blocks (' + items.length + ')';
+        more.textContent = shut;
+        more.addEventListener('click', function () {
+          const open = list.style.display === 'none';
+          list.style.display = open ? '' : 'none';
+          more.textContent = open ? 'Hide the list' : shut;
+        });
+        info.appendChild(more);
+
+        // Said above the list rather than only in the button, because "28 things"
+        // and "3 things you do not already block" are very different asks.
+        if (already) {
+          const head = document.createElement('div');
+          head.className = 'catlisthead';
+          head.style.gridColumn = '1 / -1';
+          head.textContent = already + ' of these are already blocked; ' + (items.length - already) + ' would be new.';
+          list.insertBefore(head, list.firstChild);
+        }
+        info.appendChild(list);
+      }
+    });
+  }
+
+  // blockCategory expands one category into the block list. Free of the password
+  // since it only strengthens protection; the UAC prompt is the confirmation.
+  async function blockCategory(c) {
+    if (!bound() || !window.go.main.App.BlockCategory) { return; }
+    setMsg('Approve the Windows permission prompt…');
+    let res;
+    try { res = await window.go.main.App.BlockCategory(c.id); }
+    catch (e) { res = { ok: false, message: String(e) }; }
+    setMsg(res.message, res.ok ? 'ok' : 'err');
+    await refresh();
+  }
+
   // renderApps lists the application block list. Each row says what the rule
   // actually covers underneath its name, because "Steam" alone does not
   // distinguish one executable from a whole folder or a window title - and the
   // difference is the whole reason there are four ways to add one.
+  //
+  // Rules a category added are grouped under it rather than mixed into the run
+  // of hand-added ones: nineteen ungrouped entries is a list nobody reads, and
+  // the point of a category is to be understood as one decision.
   function renderApps(s) {
     const rows = document.getElementById('app-rows');
     const empty = document.getElementById('app-empty');
@@ -928,38 +1596,61 @@
     rows.innerHTML = '';
     empty.style.display = apps.length ? 'none' : '';
 
+    // Loose rules first, then one run per category, in the order the category
+    // cards above are listed so the two halves of the section agree.
+    const loose = apps.filter(function (a) { return !a.category; });
+    loose.forEach(function (a) { rows.appendChild(appRow(a)); });
+
+    const order = (s.categories || []).map(function (c) { return c.id; });
     apps.forEach(function (a) {
-      const row = document.createElement('div');
-      row.className = 'row';
-      const info = document.createElement('div');
-      info.className = 'ainfo';
-      const name = document.createElement('div');
-      name.className = 'aname';
-      name.textContent = a.label || a.value;
-      const note = document.createElement('div');
-      note.className = 'anote';
-      note.textContent = a.note || '';
-      info.appendChild(name);
-      info.appendChild(note);
-      row.appendChild(info);
-
-      const waiting = a.enabled && a.scheduled && !a.blocked;
-      if (waiting) {
-        const badge = document.createElement('span');
-        badge.className = 'badge idlewin';
-        badge.textContent = 'Waiting';
-        badge.title = 'On, but outside its schedule window right now';
-        row.appendChild(badge);
-      }
-
-      const tog = document.createElement('button');
-      tog.className = 'toggle ' + (a.enabled ? 'on' : 'off');
-      tog.textContent = a.enabled ? 'On' : 'Off';
-      tog.style.marginLeft = waiting ? '8px' : 'auto';
-      tog.addEventListener('click', function () { toggleApp(a); });
-      row.appendChild(tog);
-      rows.appendChild(row);
+      if (a.category && order.indexOf(a.category) === -1) { order.push(a.category); }
     });
+    order.forEach(function (id) {
+      const mine = apps.filter(function (a) { return a.category === id; });
+      if (!mine.length) { return; }
+      const cat = (s.categories || []).filter(function (c) { return c.id === id; })[0];
+      const head = document.createElement('div');
+      head.className = 'grouphead';
+      head.textContent = (cat ? cat.label : id) + ' · ' + mine.length;
+      rows.appendChild(head);
+      mine.forEach(function (a) { rows.appendChild(appRow(a)); });
+    });
+  }
+
+  // appRow builds one rule's row. Shared by the loose run and every category
+  // group, so a category entry is toggled exactly like a hand-added one - it is
+  // an ordinary rule, and the grouping is only how it is displayed.
+  function appRow(a) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    const info = document.createElement('div');
+    info.className = 'ainfo';
+    const name = document.createElement('div');
+    name.className = 'aname';
+    name.textContent = a.label || a.value;
+    const note = document.createElement('div');
+    note.className = 'anote';
+    note.textContent = a.note || '';
+    info.appendChild(name);
+    info.appendChild(note);
+    row.appendChild(info);
+
+    const waiting = a.enabled && a.scheduled && !a.blocked;
+    if (waiting) {
+      const badge = document.createElement('span');
+      badge.className = 'badge idlewin';
+      badge.textContent = 'Waiting';
+      badge.title = 'On, but outside its schedule window right now';
+      row.appendChild(badge);
+    }
+
+    const tog = document.createElement('button');
+    tog.className = 'toggle ' + (a.enabled ? 'on' : 'off');
+    tog.textContent = a.enabled ? 'On' : 'Off';
+    tog.style.marginLeft = waiting ? '8px' : 'auto';
+    tog.addEventListener('click', function () { toggleApp(a); });
+    row.appendChild(tog);
+    return row;
   }
 
   // fileName is the last path component, used as the friendly label for a picked
@@ -1492,6 +2183,12 @@
   document.getElementById('domain-add').addEventListener('click', addDomain);
   document.getElementById('domain-input').addEventListener('keydown', function (e) {
     if (e.key === 'Enter') { e.preventDefault(); addDomain(); }
+  });
+
+  document.getElementById('allow-toggle').addEventListener('click', toggleAllowOnly);
+  document.getElementById('allow-add').addEventListener('click', allowSite);
+  document.getElementById('allow-input').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); allowSite(); }
   });
 
   document.getElementById('block-new').addEventListener('click', newBlock);

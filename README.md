@@ -37,6 +37,11 @@ not two — see the **Linux** section below.
 | 10 | **Activity log** (append-only local record + "Recent activity" in the window) | ✅ done |
 | 11 | **Held pause** (protection off as a state the service keeps, with a deadline it resumes at) | ✅ done |
 | 11 | **Time limits** (daily budget per block, counted by watching processes) | ✅ done |
+| 12 | **Unmanaged browsers** (find the browsers the guard cannot filter, and block them) | ✅ done |
+| 13 | **Rename-resistant rules** (match the name compiled into an executable, not just the file's) | ✅ done |
+| 14 | **Hardened browser settings** (no private/guest windows, forced SafeSearch) | ✅ done |
+| 15 | **Usage statistics** (per-application time, today and over 60 days) | ✅ done |
+| 16 | **Allowed sites only** (block every site except a list, on a timetable) | ✅ done |
 
 ## Prerequisites — Windows build (via winget)
 
@@ -147,6 +152,32 @@ rewrites the config; the service picks the change up on its next cycle. This is
 how you add a second extension (e.g. Sieve) to a guard you first installed for
 just one — no reinstall needed.
 
+The **Other browsers on this machine** section lists every browser the guard
+writes no policy for, badged **Reachable**, **Waiting**, **Blocked** or **File
+gone**, with the executable to block it by. A warning sits above it whenever
+anything is Reachable, because a window saying "protection active" over a browser
+that filters nothing is the one thing this app must not do. See
+[Browsers the guard cannot manage](#browsers-the-guard-cannot-manage).
+
+The **Time used** section shows how long each blocked application actually ran,
+today and over the last week, with a bar per day underneath. It is the one section
+that is a record rather than a control - there is nothing to click, and reading it
+needs neither admin nor the password. See [Time used](#time-used).
+
+The **Allowed sites only** section is the block list read the other way round -
+one box, one list, and a button that turns the mode on or off. Turning it on is
+free; turning it off, and letting a site through, need the password. A warning box
+appears when the mode is on with an empty list, because that blocks every page in
+every managed browser. See [Allowed sites only](#allowed-sites-only).
+
+The **Browser settings** section lists the settings the guard pins so the locks
+above hold, each saying which browsers it reaches and — where there is one — which
+it does not. A warning sits above it whenever private browsing is still available
+while an extension is being locked, because an extension does not run in a private
+or guest window. Pinning is free; handing one back needs the password, and so does
+lowering a SafeSearch level that is already stricter. See
+[Browser settings](#browser-settings).
+
 The **Blocked sites** section lists the domain block list with a box to add one.
 Adding is free; removing needs the password. A site that is on but currently
 outside its schedule window is badged **Waiting**, not shown as failing. See
@@ -170,28 +201,33 @@ creating an always-on one, and locking it, does not. See
 `apply`, `remove` write to `HKLM`, so run them from an **elevated** terminal.
 
 ```sh
+guard allowed      # allowed-sites-only: the mode, its timetable, what it lets through
+guard usage        # how long each blocked application actually ran
+guard hardening    # pinned browser settings, and whether private browsing is still open
 guard domains      # blocked sites: which are on the list, which are enforced now
 guard apps         # blocked applications: same, per rule
 guard blocks       # scheduled blocks: which are enforcing now, which are locked
-guard detect       # which browsers are installed
+guard detect       # which supported browsers are installed
+guard browsers     # every browser here, and which of them the guard cannot filter
 guard apply        # enforce everything the config asks for
 guard verify       # show what is enforced, per area and target
 guard remove       # lift it all (authorized uninstall)
 ```
 
 `verify` reports one row per target with the columns `area`, `target`,
-`present`, `enforced`, `detail`. The areas are `extensions`, `domains` and
-`apps`; a target is a browser for the first two and one block rule for the last,
-which is why the columns are worded generally rather than per browser.
+`present`, `enforced`, `detail`. The areas are `extensions`, `hardening`,
+`domains` and `apps`; a target is a browser for the first three and one block rule
+for the last, which is why the columns are worded generally rather than per
+browser.
 
 ### Enforcement backends
 
 `internal/enforce` is the seam between *what* the guard should enforce and *how*
 each kind of thing is enforced. An `Enforcer` applies, verifies, and removes one
 kind of rule; `enforce.Default()` is the set the service drives, and the service
-knows only that set - not what is in it. There are three members - `extensions`,
-`domains`, `apps` - each a thin adapter over `internal/policy`, which owns the
-registry and managed-policy-file work.
+knows only that set - not what is in it. There are four members - `extensions`,
+`hardening`, `domains`, `apps` - each a thin adapter over `internal/policy`, which
+owns the registry and managed-policy-file work.
 
 `Apply` and `Remove` fan out across the whole set and join errors rather than
 stopping at the first failure, so one backend failing cannot silently leave the
@@ -404,6 +440,105 @@ the freshly shipped `extension-ids.json`, so an upgrade that widens the catalog
 or corrects an extension ID takes effect instead of being reverted; `guard
 commit` is how *you* adopt an edit you made on purpose (see below).
 
+## Browser settings
+
+Locking an extension greys out its Remove button. What it does **not** do is put
+the extension in a window it cannot run in — and Chrome's own documentation is
+explicit about one: *extensions cannot be force-installed into Incognito, and the
+remedy is to turn Incognito off*. A guest profile is worse, because it carries no
+extensions at all.
+
+So `Ctrl+Shift+N` was a bypass of every locked filter that needed no download, no
+administrator and no rename, while the status window read *protection active* —
+the same failure [`guard browsers`](#browsers-the-guard-cannot-manage) exists to
+report one step further out.
+
+Two settings close it, and they are pinned the way everything else here is
+enforced: policy values in `HKLM\SOFTWARE\Policies`, which the tamper watcher
+already watches, so a deleted one is restored within milliseconds for free.
+
+```sh
+guard hardening                        # what is pinned, where it reaches, and what is still open
+guard harden private-browsing          # admin; no password - it only adds protection
+guard harden safe-search               # strict by default
+guard -level moderate harden safe-search
+guard unharden private-browsing        # password (unless protection is paused)
+```
+
+```json
+{
+  "hardening": { "privateBrowsing": true, "safeSearch": "strict" }
+}
+```
+
+| Setting | What it pins | Where |
+|---|---|---|
+| `private-browsing` | No Incognito or private windows, and no guest profiles. Brave's *private window with Tor* too, which the Chromium switch does not describe. | chrome, edge, brave, firefox |
+| `safe-search` | Google and Bing SafeSearch, and YouTube's restricted mode. `-level` takes `moderate` or `strict`. | chrome, edge, brave |
+
+**The hole is reported whether or not you close it.** `guard verify`, `guard
+hardening` and the status window all say so while any extension is being
+force-installed and private browsing is still available. It is deliberately not a
+row in `verify`'s table, for the reason an unmanaged browser is not one: those are
+enforcement facts, and a row that is present and can never be enforced would read
+as permanent tamper and log a correction every thirty seconds. The warning is also
+gated on an extension **actually** being locked — a config whose targets are still
+`REPLACE_*` placeholders locks nothing, and a warning that is always on teaches you
+to skip past it on the day it means something.
+
+**Nothing here is turned on for you.** It would be defensible to argue that closing
+the Incognito hole is part of what "lock this extension" already promised, and to
+enable it for everybody on upgrade. It is refused for the reason in
+`internal/policy/categories.go`: what is enforced has to keep living in the config,
+where the person bound by it can read it, and an update that silently widened
+enforcement would be this app's own premise pointed the wrong way.
+
+**Ordinary profiles are left alone**, and need no blocking: a machine-wide
+force-install reaches every named profile. It is only the two windows that carry no
+extensions that had to be closed.
+
+**Firefox has no SafeSearch policy** — not a preference to lock, not an
+`ExtensionSettings` entry, nothing. So that setting is not enforced there, and
+`guard hardening` and the window both say "not enforced in firefox" rather than
+showing a row that looks applied. `guard verify` reports `not available in firefox`
+for the same reason, which is a different fact from `not configured`.
+
+**These are not schedulable.** A block narrows what is enforced during declared
+windows; "Incognito is disabled on Tuesdays" is not worth the complexity, and a
+setting that is off half the time is a setting that does nothing — the same reason
+a limit that cannot be measured is refused outright.
+
+### The gate, and the one place it inverts
+
+Pinning a setting only strengthens protection, so it costs **admin** and no
+password, exactly like `block-domain`. Handing one back takes the **password**,
+like `unblock-domain`.
+
+The exception is a SafeSearch level going *down*: `harden safe-search -level
+moderate` on a machine already set to `strict` is a request to filter **less**, so
+it takes the password too. Without that it would be the only way to weaken
+protection without one. `policy.Config.HardenWeakens` is the single place that
+decides, and the elevated guard re-checks it, so it cannot be skipped from the
+status window.
+
+A pause lifts these along with everything else — protection being off has to mean
+private windows work again, or a pause would be leaving something enforced. An
+authorized uninstall clears them, which is why the guard only ever removes a value
+that still holds one it wrote: the machine has to come back the way it was.
+
+### What it does not cover
+
+- **A browser the guard writes no policy for.** Opera's private window was never
+  filtered in the first place — see
+  [Browsers the guard cannot manage](#browsers-the-guard-cannot-manage).
+- **The browser actually obeying.** The guard can verify that it wrote the policy,
+  never that Chrome honoured it. That is true of every policy in this project;
+  the defence is that only settings the browsers document are written, which is
+  why the per-browser support table is maintained by hand in
+  `internal/policy/hardening.go` rather than guessed at.
+- **SafeSearch as a substitute for the block list.** It filters search results and
+  YouTube. A site reached directly is unaffected.
+
 ## Blocked sites
 
 Add a domain and it is blocked in every supported browser, **including all its
@@ -465,6 +600,120 @@ Refused, with an explanation:
 | `old.reddit.com` when `reddit.com` is already blocked | Tightens nothing, and burns one of the 1000 entries browsers honour. |
 | `redditÉ.com` | Use the punycode form (`xn--…`). |
 
+## Allowed sites only
+
+The block list read the other way round: **block every site**, then name the
+exceptions. This is study mode, and it is the one thing Cold Turkey has that a
+list of blocked domains cannot express.
+
+```powershell
+guard allowed                       # the mode, its timetable, and what it lets through
+guard allow-only on                 # admin; no password - it blocks the whole web
+guard allow wikipedia.org           # password while the mode is on - it opens something
+guard unallow wikipedia.org         # admin; no password - it closes it again
+guard allow-only off                # password - it unblocks the whole web
+```
+
+```json
+{
+  "allowlist": {
+    "on": true,
+    "sites": ["wikipedia.org", "github.com"],
+    "windows": [{ "days": ["mon","tue","wed","thu","fri"], "start": "09:00", "end": "17:00" }]
+  }
+}
+```
+
+Same mechanism as [Blocked sites](#blocked-sites), pointed the other way:
+Chromium's `URLBlocklist` takes `*`, which blocks every URL, and `URLAllowlist`
+overrides it entry by entry; Firefox's `WebsiteFilter` takes `<all_urls>` in
+`Block` with the same exceptions in `Exceptions`. So it costs no new enforcement
+surface at all — two more values in the hive the tamper watcher already watches,
+and it ships without waiting on the certificate.
+
+An allowed site covers **every subdomain**, exactly as a blocked one does:
+`wikipedia.org` lets `en.wikipedia.org` through.
+
+### The gate inverts — twice
+
+Read this slowly, because it is the opposite of the block list in **both** halves:
+
+| Action | What it does | Costs |
+|---|---|---|
+| `allow-only on` | blocks the entire web | admin, no password |
+| `allow-only off` | unblocks the entire web | **password** |
+| `allow <site>` | opens something the mode had closed | **password** (while the mode is on) |
+| `unallow <site>` | closes it again | admin, no password |
+
+So on the block list *adding* is free and *removing* costs the password; here it is
+the other way round. `policy.AllowNarrows` is the single place that decides, and
+the elevated guard re-checks it, so the status window cannot skip it.
+
+Allowing a site while the mode is **off** is free, because the allowlist is
+enforcing nothing and adding to it opens nothing — the same reasoning that makes
+creating a windowless block free.
+
+### A timetable, for the study-mode shape
+
+`windows` are when the mode applies, and mean exactly what they mean on a
+[scheduled block](#scheduled-blocks) — including `end` before `start` running past
+midnight. Empty means around the clock.
+
+Outside its window the mode reads as **waiting**, not off. That distinction is the
+point: "off" would say somebody turned it off. Crossing the boundary is picked up by
+the same 5s schedule check a block's window is, because the mode is part of the
+resolved config and therefore part of the signature the service compares.
+
+Giving a mode that is currently on a timetable **narrows** enforcement — it takes
+something applied all day and applies it only sometimes — so it costs the password,
+the same inverted gate `add-block` with a window has. One window from the CLI; a
+second is a config-file job plus `guard commit`.
+
+### Guardrails
+
+**A site cannot be on both lists.** Chromium gives an allowlist entry precedence
+over a blocklist entry of the same specificity, so accepting both would make
+`guard domains` report a site as blocked while the browser let it through — a true
+statement doing the work of a false one. `guard allow` refuses it, naming the
+blocklist entry that covers it and what to do about it, and `Validate` refuses it
+again for a config edited by hand. It covers subdomains too: with `gambling.example`
+blocked, allowing `sports.gambling.example` is refused.
+
+**A bare `*` is still refused as a site.** `NormalizeDomain` has always turned it
+down, because reaching "block every URL" through the box you type `reddit.com` into
+would take the whole web out by typo. That refusal stays — this mode is the
+deliberate door, and it is deliberately somewhere else.
+
+**An empty allowlist with the mode on is allowed, and said out loud.** Every page in
+every managed browser is refused; that is what "block the entire internet" means and
+it is a legitimate thing to want. The CLI prints it in as many words and the status
+window shows a warning box, because it is also the state somebody reaches by
+accident.
+
+**Turning it off is reconciled, not forgotten.** The `*` entry and every exception
+are pruned when the mode goes off, and cleared outright on an authorized
+uninstall — a teardown that left the block-all entry behind would leave a machine
+with no web and no guard to lift it. `RemoveDomains` therefore checks the allowlist
+as well as the block list before deciding there is nothing to undo, since a config
+that only ever used this mode has no blocked domains at all.
+
+### What it does not cover
+
+- **A browser the guard writes no policy for.** This is the feature where that gap
+  goes from a leak to the whole roof: every site blocked in Chrome, Edge, Brave and
+  Firefox is every site reachable through Opera. `guard allow-only on` prints the
+  unmanaged-browser warning underneath for exactly that reason. See
+  [Browsers the guard cannot manage](#browsers-the-guard-cannot-manage).
+- **Anything that is not a browser.** The URL filter is a browser policy; an
+  application reaching the network on its own account is unaffected. Block the
+  *application* instead.
+- **Sign-in and captive-portal pages.** Blocking everything blocks those too. Allow
+  what you need, or turn the mode off for the minute it takes.
+- **Per-browser rows in `verify`.** The mode folds into each browser's existing
+  `domains` row rather than adding one of its own, tallied together so a partial
+  count stays meaningful — half of this mode applied is not the mode, and it must
+  not read as `ok`.
+
 ## Blocked apps
 
 Games and other distracting applications are blocked alongside sites. A blocked
@@ -474,7 +723,7 @@ There are four kinds of rule, because "the app I want gone" is not one thing:
 
 | `-kind` | What you give it | What it blocks |
 |---|---|---|
-| `exe` (default) | A full path (`C:\Games\Steam\steam.exe`) or a bare name (`steam.exe`) | That copy — or, for a bare name, that executable wherever it is installed |
+| `exe` (default) | A full path (`C:\Games\Steam\steam.exe`) or a bare name (`steam.exe`) | That copy — or, for a bare name, that executable wherever it is installed, **including after it is renamed** ([why](#renaming-the-one-bypass-nothing-corrected)) |
 | `folder` | A folder (`C:\Games\Steam`) | Every `.exe` under it, now and after an update renames one |
 | `store` | A Microsoft Store package family name | That Store app, across version updates |
 | `title` | Text (`Solitaire`) | Any window whose title contains it |
@@ -586,6 +835,175 @@ An **unsigned** service running as LocalSystem that terminates processes and
 writes launch-block registry keys is exactly the shape antivirus heuristics are
 built to quarantine — see [`docs/signing.md`](docs/signing.md). Blocking sites
 could ship before the certificate; shipping this to end users should wait for it.
+
+## Browsers the guard cannot manage
+
+Everything above works by writing policy that **Chrome, Edge, Brave and Firefox
+read**. A fifth browser reads none of it: no locked extension, no blocked site,
+no filtering at all. Install Opera and every entry on the block list is one click
+away, while the status window still says protection is active — a true statement
+doing the work of a false one.
+
+So the guard looks for them and says so:
+
+```sh
+guard browsers     # every browser here, and what the guard can do about each
+```
+
+```
+  browser                            state      executable
+  Internet Explorer                  reachable  C:\Program Files\Internet Explorer\iexplore.exe
+  Zen Browser                        reachable  C:\Program Files\Zen Browser\zen.exe
+  Google Chrome                      filtered   C:\Program Files\Google\Chrome\Application\chrome.exe
+  Microsoft Edge                     filtered   C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe
+  Mozilla Firefox                    filtered   C:\Program Files\Mozilla Firefox\firefox.exe
+```
+
+| state | meaning |
+|---|---|
+| `filtered` | the guard writes policy this browser reads, so the locked extensions and blocked sites apply inside it |
+| `blocked` | the guard cannot filter it, so it is on the block list and will not run |
+| `idle` | on the block list, but outside its block's window right now |
+| `reachable` | neither filtered nor blocked — every blocked site is reachable through it |
+| `gone` | registered as a browser, but the executable it names is not there — see [Renaming](#renaming-the-one-bypass-nothing-corrected) |
+
+`guard verify` prints a one-line warning when anything is `reachable`, and the
+status window grows an **Other browsers on this machine** section under the
+Browsers list, with the same four states as badges. Reading any of it needs
+neither admin nor the password, like `guard activity`: a gap only the parent can
+see is one the household argues about instead of closing.
+
+Blocking them is an ordinary category:
+
+```sh
+guard categories browsers          # see all 17 applications and 11 sites first
+guard block-category browsers      # admin; no password - it only adds protection
+```
+
+### Where the list comes from
+
+Windows already keeps one, because the Default Apps screen needs it:
+`SOFTWARE\Clients\StartMenuInternet`, a subkey per registered browser naming the
+executable to open a page with. The guard reads it from `HKLM`, from
+`WOW6432Node` (a 32-bit browser on 64-bit Windows), and from `HKCU` — that last
+one matters most, because a per-user install needs no administrator and is
+therefore exactly the install a standard account can perform for itself.
+
+This is a different question from `guard detect`, and both are worth having.
+`detect` asks *is Chrome here*, from a fixed list of four, to know whether a
+policy has anything to act on. `browsers` asks *what is here*, from no list at
+all, to find what no policy covers — which is why it finds browsers the built-in
+category has never heard of. Both of the `reachable` rows in the example above
+were found that way on a real machine before either was in the catalog.
+
+The finding is **reported, never auto-enforced**. What is blocked has to keep
+living in the config where the person bound by it can read it (see the top of
+`internal/policy/categories.go`); a guard that closed a browser because a list
+inside the binary named it would be enforcing a rule nobody agreed to, and that
+list would widen on every update. It is also deliberately not a row in `verify`'s
+table: those are enforcement facts, and the service counts the enforced ones to
+decide whether a re-apply corrected anything — a row that is present and can
+never be enforced would read as permanent tamper and log a correction every 30
+seconds for as long as Opera stayed installed.
+
+### What the category covers, and what it cannot
+
+It names browsers that install under **their own executable name** — Opera and
+Opera GX, Vivaldi, Zen, Floorp, LibreWolf, Waterfox, Pale Moon, Basilisk, the
+Avast/AVG/CCleaner browsers, Naver Whale, Maxthon, UC Browser, Slimjet, and
+Internet Explorer. Most entries also block the vendor's download page, since
+blocking the program alone leaves installing it again open.
+
+What it cannot name, plainly:
+
+| Not covered | Why |
+|---|---|
+| A raw Chromium build, ungoogled-chromium, Cent Browser | They ship as `chrome.exe`. Blocking that name takes the real Chrome — and its locked extensions — with it. |
+| **Tor Browser**'s own window | It ships as `firefox.exe`, same problem. Covered instead by `tor.exe`, the daemon: the window may open, but no page loads. |
+| **Yandex** | Ships `browser.exe`, too common a name to block by name alone. `guard browsers` still *finds* it, so block it by the path shown. |
+| A per-user install under **another** account | The `HKCU` half of the scan reads the calling user's hive. Run `guard browsers` from each account. |
+| A portable copy that registers nothing | Nothing registered it as a browser, so nothing lists it. It is still blocked if its executable — or the name compiled into it — is in the category. |
+| A **repacked** binary with its version resource stripped | Neither name matches any more. See [Renaming](#renaming-the-one-bypass-nothing-corrected) for where that leaves things. |
+
+### Renaming: the one bypass nothing corrected
+
+Every rule kind here is keyed on a name or a path, so renaming `opera.exe` to
+`chess.exe` used to walk out of all of them — the sweep compares image names, and
+the launch block is an IFEO key named after the file. It needs no privilege beyond
+writing to a directory you already own.
+
+That made it a different class of problem from everything else in this document.
+A deleted policy key is rewritten within milliseconds, an edited config loses to
+the trusted copy, a stopped service is restarted by the watchdog. **A rename is
+not tampering with the guard at all**, so nothing was correcting it: it is done
+once and it holds.
+
+Two things close most of it.
+
+**Rules match the name built into the program.** Every executable carries a
+version resource, and `OriginalFilename` in it is what the author called the
+file — compiled in, not on the filesystem, so renaming the file does not change
+it. A rule naming a bare executable now matches either name, so `opera.exe`
+still catches Opera after a rename. This applies to **every existing rule and
+every category** with no config change: it is the same rule, matched on one more
+name.
+
+It is only ever *consulted*. Software with no version resource, or a file that
+cannot be read, is matched on its file name exactly as before — a rule that
+stopped working because a resource was missing would be a worse bug than the one
+this closes. A **full-path** rule is deliberately not widened: renaming makes it
+a different path, and the bare-name form is how you say "wherever it is".
+
+Windows' own binaries are the awkward case, and the reason this is tested against
+real files: their strings live in a side-by-side MUI resource, so `notepad.exe`
+reports `NOTEPAD.EXE.MUI`. That suffix is stripped, without which the
+protected-image list would have recognised none of them.
+
+**The protected list checks all three names.** A rule that can now fire on a
+version resource has to be refusable on one, or a copy of `lsass.exe` renamed to
+`harmless.exe` would be a way to make the guard shoot the machine.
+
+**`guard browsers` flags the fingerprint.** Renaming a browser's executable does
+not touch the registration that pointed at it, so the machine is left claiming a
+browser at a path with no file. A browser **on the block list** whose executable
+has gone is reported as `gone`, and `guard verify` warns about it. It is gated on
+being blocked deliberately: a browser nobody blocked whose file went missing was
+almost certainly uninstalled, and warning about that would put a permanent
+warning on any machine that ever removed a browser — which teaches the reader to
+ignore this warning on the day it matters.
+
+**What this is worth, plainly.** It turns a right-click-rename into a job needing
+a resource editor. A repacked or resource-stripped binary still wins, as does a
+browser compiled from source. That is the same bar the watchdog sets — casual and
+impulsive, not determined — and the honest ceiling in
+[`docs/pc-version.md`](docs/pc-version.md) has not moved. The structural answer
+is to restrict *where* executables may run from rather than *what they are
+called*, which is a much larger feature and is not built.
+
+**What it costs.** Reading a version resource needs the image path, so a
+bare-name rule now asks the sweep for paths, which it did not before. Measured on
+a 325-process Windows 11 desktop, per sweep: **8.6ms** for names alone, **12ms**
+once paths are resolved, **19ms** with compiled-in names warm (31ms on the first
+pass, while the cache fills). So roughly 2% of one core, once a second, for the
+sweep as a whole.
+
+The resource read itself is cached per image and keyed on the file's size and
+modification time, which are **confirmed on every lookup**. That stat is the bulk
+of the 12ms→19ms step and it is paid deliberately: an earlier version of this
+trusted a cached entry for a minute before re-checking, and that was a repeatable
+bypass — put a harmless executable at a path, let it be cached, replace it with
+the blocked program renamed, and for the next minute the guard believed the
+harmless name. Only the resource read is ever cached, never the identity of the
+file at a path. A test writes two different programs to the same path in
+succession to hold that line.
+
+`ValidateCatalog` **refuses** any category naming a browser the guard manages, and
+a test holds it to that. This is the one guardrail here that is not advisory:
+"block Tor Browser" is a change somebody will one day try to make by adding
+`firefox.exe` to this category, and that would close the machine's real Firefox
+and take every locked extension with it. A user may still block `chrome.exe` by
+hand — that is a coherent thing to want — but nobody should be able to do it by
+accepting a category, least of all under a block they then lock.
 
 ## Scheduled blocks
 
@@ -817,6 +1235,113 @@ help: the ledger's day only ever advances, so the day you left is not the one yo
 return to.) The honest ceiling is the one in `docs/pc-version.md`, and it has not
 moved.
 
+## Time used
+
+A limit answers *how much is left*. This answers *where the time actually went* —
+per application, today and over the past weeks.
+
+```powershell
+guard usage         # the last 7 days
+guard usage 30      # reach further back (the record keeps 60 days)
+```
+
+```
+  application                  today      7 days
+  Steam                        1h30m      4h20m
+  Discord                      25m        40m
+  Solitaire                    4m         4m
+
+  time with any of them open   1h42m      4h40m
+
+  2026-08-26  1h42m      ##################
+  2026-08-25  2h33m      ############################
+  2026-08-24  5m         #
+  2026-08-23  0m
+```
+
+Needs **no admin and no password**, like `guard limits` and `guard activity`, and
+for the same reason: the record is about the person using the machine, and one
+they cannot read is one they can only argue with. The status window shows the same
+thing as a **Time used** section, capped at the busiest eight rules.
+
+**It cost almost nothing to add.** The sweep already walks the process list once a
+second and matches every rule against it, and the ledger has kept sixty days of
+counters since limits shipped — the comment on `keepDays` has said all along that
+*"how much did I actually use this week" is the obvious next question*. What was
+missing was only that the answer was filed per **limited block** and then never
+read. There is **no config change**: nothing new in `extension-ids.json`, nothing
+to turn on.
+
+### Two totals, because they answer different questions
+
+An hour with Steam and Discord both open is **two hours of rules** and **one hour
+of the afternoon**. Both are printed rather than choosing one: the per-rule rows
+answer *what cost me the most*, and `time with any of them open` answers *how much
+of the day went*. The second is counted once per second however many rules matched,
+so it never exceeds the day.
+
+### What is counted, and what is not
+
+- **Every enabled application rule**, not only the ones a limit covers. Otherwise
+  a machine that blocks Steam outright — the common case — would have no record at
+  all, which is exactly where "how much is this actually being used" is worth
+  knowing.
+- **Out-of-window time counts.** A limit refuses to charge time outside its window
+  because it is a budget for those hours; this is a record of use, and an hour
+  spent at an hour the block does not cover is still an hour spent. So the two
+  numbers legitimately differ, and `guard limits` remains the one that says what is
+  left.
+- **It keeps counting while protection is paused.** That is the same choice the
+  activity log makes — it records what happens *during* a pause — and it fails the
+  right way: a record that went quiet during exactly the window usage runs highest
+  would be worse than no record. The pause is in the log next to it, so an unusual
+  evening is explainable rather than mysterious. A **budget** is still never
+  charged during a pause.
+- **Running, not focused**, and per rule rather than per process — the same two
+  properties limits have, for the same reasons (see [Time limits](#time-limits)).
+  Two copies of the same game are not two hours of it.
+- **A rule you later unblock keeps its history**, marked `*` in the CLI and
+  `unblocked` in the window. Dropping those rows would make last week's total
+  change when a rule was deleted.
+- **Applications only.** A blocked *site* is enforced by handing the browser a
+  policy and trusting it; nothing comes back, so there is no browsing time to
+  report. That is the same wall that stops a limit covering a domain, and closing
+  it needs the browser to talk back — see the extension bridge in the roadmap.
+
+### What it deliberately does not do
+
+It does not watch the whole machine. Cold Turkey's statistics screen finds
+distractions you had not thought to name, because it records every process; this
+records the rules the config already names. That is a real capability difference
+and it is chosen rather than overlooked — a full history of every program somebody
+ran is a different product from a guard whose record is readable by the person it
+is about, and [PRIVACY.md](PRIVACY.md) is the promise being kept.
+
+### What it costs
+
+Measuring used to happen only when a limit was configured. It now happens whenever
+any application rule is, because the record comes from the same sample — so a
+machine with rules and no limits pays for a second walk of the process list per
+second, which it did not before. The sweep's own walk is the reference for what
+that is: **8.6ms** for names alone and **19ms** with compiled-in names warm, on a
+325-process desktop. A machine with **no** application rules — every install that
+only locks extensions and blocks sites — pays nothing at all, and a test holds
+that.
+
+### Where it lives
+
+The same ledger as the limits, `C:\ProgramData\ExtensionGuard\usage.json`
+(`/var/lib/extension-guard` on Linux), under a separate `apps` key so the counters
+a limit reads keep meaning exactly one thing. Retention went from 14 days to
+**60** now that something reads the older days.
+
+A damaged record here does **not** fail closed. A limit treats an unreadable
+ledger as every budget spent, because the alternative makes "corrupt the file" mean
+"reset my limits"; there is no budget in this half, so there is nothing to fail
+closed *to*, and refusing to show today because last Tuesday is corrupt would help
+nobody. Both the CLI and the window say the history is missing rather than showing
+zeroes as if they were measurements.
+
 ## Pausing protection
 
 Protection can be turned off without uninstalling — but a pause is a **state the
@@ -894,8 +1419,11 @@ would make that transparency theoretical.
 | `pause.refused` | somebody tried to pause protection while a block was locked |
 | `service.started` `.stopped` | the guard service came up or went down |
 | `domain.blocked` `.unblocked` | a site was added to, or lifted from, the block list |
+| `allowlist.on` `.off` | every site was blocked except the allowlist, or that was lifted |
+| `site.allowed` `.unallowed` | a site was let through the allowlist mode, or closed again |
 | `app.blocked` `.unblocked` | an application rule was added or lifted |
 | `extension.enabled` `.disabled` | an extension started or stopped being locked |
+| `hardening.enabled` `.disabled` | a browser setting started or stopped being pinned |
 | `block.created` `.removed` `.locked` | a scheduled block was created, deleted, or locked |
 | `limit.reached` | a block's daily time budget ran out, so what it covers is blocked until the reset |
 | `usage.reset` | the record of today's usage was unreadable, so the daily counts were started again |

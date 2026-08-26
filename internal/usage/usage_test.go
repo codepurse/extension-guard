@@ -47,7 +47,7 @@ func tick(tr *Tracker, start time.Time, d string, day string, ids ...string) tim
 	now := start
 	for elapsed := time.Duration(0); elapsed < span; elapsed += time.Second {
 		now = start.Add(elapsed + time.Second)
-		tr.Observe(now, day, ids)
+		tr.Observe(now, day, ids, nil)
 	}
 	return now
 }
@@ -66,11 +66,11 @@ func TestObserveChargesElapsedTime(t *testing.T) {
 
 	// The first observation establishes the baseline and charges nothing: there is
 	// no earlier moment to have been running since.
-	if got := tr.Observe(start, day1, []string{"games"}); got != 0 {
+	if got := tr.Observe(start, day1, []string{"games"}, nil); got != 0 {
 		t.Errorf("first observation charged %s, want 0", got)
 	}
 	for i := 1; i <= 60; i++ {
-		tr.Observe(start.Add(time.Duration(i)*time.Second), day1, []string{"games"})
+		tr.Observe(start.Add(time.Duration(i)*time.Second), day1, []string{"games"}, nil)
 	}
 	if got := tr.Spent(day1)["games"]; got != time.Minute {
 		t.Errorf("after 60 one-second ticks: %s, want 1m", got)
@@ -81,7 +81,7 @@ func TestObserveOnlyChargesBlocksGiven(t *testing.T) {
 	tempStore(t)
 	tr := NewTracker()
 	start := time.Date(2026, 8, 20, 19, 0, 0, 0, time.Local)
-	tr.Observe(start, day1, []string{"games", "chat"})
+	tr.Observe(start, day1, []string{"games", "chat"}, nil)
 	tick(tr, start, "30s", day1, "games")
 
 	spent := tr.Spent(day1)
@@ -106,10 +106,10 @@ func TestObserveCarriesSubSecondRemainders(t *testing.T) {
 	// Thirty observations 1.5s apart: forty-five seconds of use, however it is
 	// chopped up.
 	now := start
-	tr.Observe(now, day1, []string{"games"})
+	tr.Observe(now, day1, []string{"games"}, nil)
 	for i := 0; i < 30; i++ {
 		now = now.Add(1500 * time.Millisecond)
-		tr.Observe(now, day1, []string{"games"})
+		tr.Observe(now, day1, []string{"games"}, nil)
 	}
 	if got := tr.Spent(day1)["games"]; got != 45*time.Second {
 		t.Errorf("thirty 1.5s intervals charged %s, want 45s", got)
@@ -118,11 +118,11 @@ func TestObserveCarriesSubSecondRemainders(t *testing.T) {
 	// And the remainder is dropped when nothing is running, rather than being paid
 	// out to whatever runs next.
 	now = now.Add(500 * time.Millisecond)
-	tr.Observe(now, day1, []string{"games"})
+	tr.Observe(now, day1, []string{"games"}, nil)
 	now = now.Add(500 * time.Millisecond)
-	tr.Observe(now, day1, nil)
+	tr.Observe(now, day1, nil, nil)
 	now = now.Add(500 * time.Millisecond)
-	tr.Observe(now, day1, []string{"games"})
+	tr.Observe(now, day1, []string{"games"}, nil)
 	if got := tr.Spent(day1)["games"]; got != 45*time.Second {
 		t.Errorf("after an idle interval: %s, want the same 45s", got)
 	}
@@ -134,8 +134,8 @@ func TestObserveCapsALongGap(t *testing.T) {
 	tempStore(t)
 	tr := NewTracker()
 	start := time.Date(2026, 8, 20, 19, 0, 0, 0, time.Local)
-	tr.Observe(start, day1, []string{"games"})
-	tr.Observe(start.Add(8*time.Hour), day1, []string{"games"})
+	tr.Observe(start, day1, []string{"games"}, nil)
+	tr.Observe(start.Add(8*time.Hour), day1, []string{"games"}, nil)
 
 	if got := tr.Spent(day1)["games"]; got != maxCharge {
 		t.Errorf("an eight-hour gap charged %s, want the %s cap", got, maxCharge)
@@ -149,14 +149,14 @@ func TestObserveIgnoresTimeMovingBackwards(t *testing.T) {
 	tempStore(t)
 	tr := NewTracker()
 	start := time.Date(2026, 8, 20, 19, 0, 0, 0, time.Local)
-	tr.Observe(start, day1, []string{"games"})
-	tr.Observe(start.Add(10*time.Second), day1, []string{"games"})
-	tr.Observe(start.Add(-time.Hour), day1, []string{"games"}) // clock moved back
+	tr.Observe(start, day1, []string{"games"}, nil)
+	tr.Observe(start.Add(10*time.Second), day1, []string{"games"}, nil)
+	tr.Observe(start.Add(-time.Hour), day1, []string{"games"}, nil) // clock moved back
 
 	if got := tr.Spent(day1)["games"]; got != 10*time.Second {
 		t.Errorf("after a rollback: %s, want the 10s charged before it", got)
 	}
-	tr.Observe(start.Add(5*time.Second), day1, []string{"games"})
+	tr.Observe(start.Add(5*time.Second), day1, []string{"games"}, nil)
 	if got := tr.Spent(day1)["games"]; got < 10*time.Second {
 		t.Errorf("spent time went backwards: %s", got)
 	}
@@ -168,7 +168,7 @@ func TestCountersSurviveARestart(t *testing.T) {
 	tempStore(t)
 	tr := NewTracker()
 	start := time.Date(2026, 8, 20, 19, 0, 0, 0, time.Local)
-	tr.Observe(start, day1, []string{"games"})
+	tr.Observe(start, day1, []string{"games"}, nil)
 	tick(tr, start, "5m", day1, "games")
 	if err := tr.Flush(); err != nil {
 		t.Fatalf("Flush: %v", err)
@@ -190,7 +190,7 @@ func TestRolledBackDateStillReadsTodaysCounter(t *testing.T) {
 	tempStore(t)
 	tr := NewTracker()
 	start := time.Date(2026, 8, 21, 19, 0, 0, 0, time.Local)
-	tr.Observe(start, day2, []string{"games"})
+	tr.Observe(start, day2, []string{"games"}, nil)
 	now := tick(tr, start, "45m", day2, "games")
 
 	if got := tr.Spent(day1)["games"]; got != 45*time.Minute {
@@ -208,7 +208,7 @@ func TestNewDayStartsFresh(t *testing.T) {
 	tempStore(t)
 	tr := NewTracker()
 	start := time.Date(2026, 8, 20, 19, 0, 0, 0, time.Local)
-	tr.Observe(start, day1, []string{"games"})
+	tr.Observe(start, day1, []string{"games"}, nil)
 	tick(tr, start, "45m", day1, "games")
 
 	if got := tr.Spent(day2)["games"]; got != 0 {
@@ -295,7 +295,7 @@ func TestFlushClearsAnUnreadableState(t *testing.T) {
 		t.Fatalf("state: %s, want unreadable", tr.State())
 	}
 	start := time.Date(2026, 8, 20, 19, 0, 0, 0, time.Local)
-	tr.Observe(start, day1, []string{"games"})
+	tr.Observe(start, day1, []string{"games"}, nil)
 	tick(tr, start, "1m", day1, "games")
 	if err := tr.Flush(); err != nil {
 		t.Fatalf("Flush: %v", err)
@@ -314,7 +314,7 @@ func TestFlushLeavesNoTempFile(t *testing.T) {
 	d := tempStore(t)
 	tr := NewTracker()
 	start := time.Date(2026, 8, 20, 19, 0, 0, 0, time.Local)
-	tr.Observe(start, day1, []string{"games"})
+	tr.Observe(start, day1, []string{"games"}, nil)
 	tick(tr, start, "1m", day1, "games")
 	if err := tr.Flush(); err != nil {
 		t.Fatalf("Flush: %v", err)
@@ -334,7 +334,7 @@ func TestFlushOverwritesAStaleTempFile(t *testing.T) {
 	}
 	tr := NewTracker()
 	start := time.Date(2026, 8, 20, 19, 0, 0, 0, time.Local)
-	tr.Observe(start, day1, []string{"games"})
+	tr.Observe(start, day1, []string{"games"}, nil)
 	tick(tr, start, "1m", day1, "games")
 	if err := tr.Flush(); err != nil {
 		t.Fatalf("Flush: %v", err)
@@ -374,7 +374,7 @@ func TestLedgerIsPlainReadableJSON(t *testing.T) {
 	tempStore(t)
 	tr := NewTracker()
 	start := time.Date(2026, 8, 20, 19, 0, 0, 0, time.Local)
-	tr.Observe(start, day1, []string{"games"})
+	tr.Observe(start, day1, []string{"games"}, nil)
 	tick(tr, start, "90s", day1, "games")
 	if err := tr.Flush(); err != nil {
 		t.Fatalf("Flush: %v", err)
@@ -402,7 +402,7 @@ func TestKeyNormalizesBlockIDs(t *testing.T) {
 	tempStore(t)
 	tr := NewTracker()
 	start := time.Date(2026, 8, 20, 19, 0, 0, 0, time.Local)
-	tr.Observe(start, day1, []string{" Games "})
+	tr.Observe(start, day1, []string{" Games "}, nil)
 	tick(tr, start, "1m", day1, "GAMES")
 
 	// One block, however it was spelled. A counter filed under a spelling nothing
@@ -420,7 +420,7 @@ func TestProvisionIsIdempotentAndDoesNotTruncate(t *testing.T) {
 	tempStore(t)
 	tr := NewTracker()
 	start := time.Date(2026, 8, 20, 19, 0, 0, 0, time.Local)
-	tr.Observe(start, day1, []string{"games"})
+	tr.Observe(start, day1, []string{"games"}, nil)
 	tick(tr, start, "1m", day1, "games")
 	if err := tr.Flush(); err != nil {
 		t.Fatalf("Flush: %v", err)
@@ -442,4 +442,65 @@ func mustLoad(t *testing.T) Ledger {
 		t.Fatalf("Load: state %s, want ok", state)
 	}
 	return led
+}
+
+// TestObserveChargesBothRecords holds the split between the two halves of the
+// ledger: blocks decide enforcement, app rules are the record, and the span is
+// charged once per interval however many rules matched.
+func TestObserveChargesBothRecords(t *testing.T) {
+	tempStore(t)
+	tr := NewTracker()
+	base := time.Date(2026, 8, 26, 10, 0, 0, 0, time.UTC)
+
+	tr.Observe(base, "2026-08-26", nil, nil) // baseline
+	tr.Observe(base.Add(10*time.Second), "2026-08-26",
+		[]string{"games"}, []string{"exe:steam.exe", "exe:discord.exe"})
+
+	if got := tr.Spent("2026-08-26")["games"]; got != 10*time.Second {
+		t.Errorf("block charged %v, want 10s", got)
+	}
+	apps := tr.AppSpent("2026-08-26")
+	if apps["exe:steam.exe"] != 10*time.Second || apps["exe:discord.exe"] != 10*time.Second {
+		t.Errorf("apps charged %v, want 10s each", apps)
+	}
+	if err := tr.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	led, state := Load()
+	if state != StateOK {
+		t.Fatalf("state = %v", state)
+	}
+	// Two rules for ten seconds is twenty seconds of rules and ten of the clock.
+	if got := led.AppDayTotal("2026-08-26"); got != 20*time.Second {
+		t.Errorf("sum of rules = %v, want 20s", got)
+	}
+	if got := led.SpanOn("2026-08-26"); got != 10*time.Second {
+		t.Errorf("span = %v, want 10s", got)
+	}
+}
+
+// A machine with app rules and no limits still gets a record, which is the case
+// `guard usage` exists for.
+func TestObserveRecordsAppsWithoutBlocks(t *testing.T) {
+	tempStore(t)
+	tr := NewTracker()
+	base := time.Date(2026, 8, 26, 10, 0, 0, 0, time.UTC)
+	tr.Observe(base, "2026-08-26", nil, nil)
+	tr.Observe(base.Add(5*time.Second), "2026-08-26", nil, []string{"exe:steam.exe"})
+
+	if got := tr.AppSpent("2026-08-26")["exe:steam.exe"]; got != 5*time.Second {
+		t.Errorf("charged %v, want 5s", got)
+	}
+	if len(tr.Spent("2026-08-26")) != 0 {
+		t.Error("a block counter was written with no block running")
+	}
+}
+
+// A ledger that has never recorded an app rule must not grow the key at all, so a
+// file written before this existed keeps encoding the same way.
+func TestCloneKeepsAppsAbsent(t *testing.T) {
+	led := Ledger{Days: map[string]map[string]int{"2026-08-26": {"games": 60}}}
+	if got := led.clone(); got.Apps != nil || got.Span != nil {
+		t.Errorf("clone invented apps=%v span=%v", got.Apps, got.Span)
+	}
 }

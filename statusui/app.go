@@ -45,6 +45,43 @@ type Status struct {
 	Blocks      []BlockRow     `json:"blocks"`
 	Domains     []DomainRow    `json:"domains"`
 	Apps        []AppRow       `json:"apps"`
+	// Categories are the built-in curated sets, with enough state on each row for
+	// the window to say whether blocking it would do anything. They come down with
+	// the rest of the status rather than through their own call, because every
+	// other list here arrives in one round trip and a second one would let the
+	// category cards disagree with the app rows they sit above.
+	Categories []CategoryRow `json:"categories"`
+	// Hardening is the pinned browser settings - the ones that decide whether
+	// locking an extension means anything inside the browsers the guard *does*
+	// manage.
+	Hardening []HardeningRow `json:"hardening"`
+	// Allowlist is the "only these sites" mode: the other way round from Domains,
+	// and the one place in this window where adding to a list weakens protection
+	// rather than strengthening it.
+	Allowlist AllowlistPanel `json:"allowlist"`
+	// Usage is how long each blocked application actually ran. It comes down with
+	// the rest of the status for the reason the category rows do: everything here
+	// arrives in one round trip, and a second call would let this disagree with the
+	// app rows it sits beside.
+	Usage UsagePanel `json:"usage"`
+	// PrivateBrowsingOpen is the hole those settings close, reported whether or not
+	// anything is hardened: an extension cannot be force-installed into a private
+	// or guest window, so while this is true every filter the guard installs is one
+	// keystroke from being off. It is the in-window twin of the Unmanaged list
+	// below - a window reading "protection active" over an available Ctrl+Shift+N
+	// is the same true statement doing the same false work.
+	PrivateBrowsingOpen bool `json:"privateBrowsingOpen"`
+	// Unmanaged are the browsers installed here that the guard writes no policy
+	// for - the ones through which every blocked site is reachable and none of the
+	// locked extensions are loaded. It is the one list in this struct that is not
+	// about something the guard is doing; it is about what it cannot do, which is
+	// why the window shows it whether or not anything else needs attention.
+	Unmanaged []UnmanagedRow `json:"unmanaged"`
+	// UnmanagedScanned reports whether the machine could be scanned at all. An
+	// empty Unmanaged list means "nothing found" when this is true and nothing
+	// whatsoever when it is false, and the window must not print a clean bill of
+	// health for a scan that never ran. See policy.BrowserScanSupported.
+	UnmanagedScanned bool `json:"unmanagedScanned"`
 	// UsageError is set when the daily-limit counters could not be read. Every
 	// limit then counts as used up (policy.Spent fails closed), which looks like a
 	// fault from the outside unless the window says what happened.
@@ -54,6 +91,94 @@ type Status struct {
 	// (policy.EnforcedAt fails closed), so the window must say so rather than
 	// show windows that are not actually running.
 	ScheduleError string `json:"scheduleError"`
+}
+
+// AllowlistPanel is the allowed-sites-only mode as the window offers it.
+//
+// On is what the config says and Enforcing is whether it applies at this moment -
+// the two differ while the mode has a timetable whose window is shut, and the window
+// says "waiting" for that rather than "off", because "off" would read as somebody
+// having turned it off.
+type AllowlistPanel struct {
+	On        bool     `json:"on"`
+	Enforcing bool     `json:"enforcing"`
+	Schedule  string   `json:"schedule"`
+	Sites     []string `json:"sites"`
+	// Shut is the state worth its own flag: the mode is on and the allowlist is
+	// empty, so every page in every managed browser is refused. It is a legitimate
+	// thing to want - it is what "block the entire internet" means - and it is also
+	// the state somebody reaches by accident, so the window says which it is looking
+	// at rather than showing an empty list.
+	Shut bool `json:"shut"`
+}
+
+// UsagePanel is the record of how long each blocked application actually ran.
+//
+// Durations arrive pre-formatted rather than as numbers, for the reason the block
+// rows do: policy.HumanDuration is what the CLI prints, and two renderers of the
+// same duration eventually disagree about what "1h30m" looks like.
+//
+// Span and the sum of the rows are both reported because they answer different
+// questions - an hour with two applications open is two hours of rules and one hour
+// of the afternoon. See policy.UsageReport.
+type UsagePanel struct {
+	Rows  []UsageRow `json:"rows"`
+	Days  []UsageDay `json:"days"`
+	Today string     `json:"today"`
+	Total string     `json:"total"`
+	// Span is how many days Total covers, so the column can be labelled without the
+	// frontend hard-coding a number the backend chose.
+	Span int `json:"span"`
+	// Measured is false when no application rule is configured, so the window says
+	// there is nothing to measure rather than showing an empty list that reads as a
+	// broken feature.
+	Measured bool `json:"measured"`
+	// Unreadable means the record could not be parsed. Unlike a limit it does not
+	// fail closed - there is no budget here to protect - so the window says the
+	// history is missing and shows nothing rather than showing zeroes as if they
+	// were measurements.
+	Unreadable bool `json:"unreadable"`
+}
+
+// UsageRow is one application's share of the record. Gone marks one the block list
+// no longer holds; those rows stay, because time spent on something later unblocked
+// is still time spent.
+type UsageRow struct {
+	Label  string `json:"label"`
+	Detail string `json:"detail"`
+	Today  string `json:"today"`
+	Total  string `json:"total"`
+	Gone   bool   `json:"gone"`
+	// Percent is this row's share of the busiest row, for the bar width. Computed
+	// here so the bar cannot disagree with the number printed next to it.
+	Percent int `json:"percent"`
+}
+
+// UsageDay is one day of the span. Label is the weekday and date as a person reads
+// it; Percent is scaled to the busiest day rather than to a fixed number of hours,
+// because a fixed scale makes a quiet week look like a broken feature.
+type UsageDay struct {
+	Day     string `json:"day"`
+	Label   string `json:"label"`
+	Spent   string `json:"spent"`
+	Percent int    `json:"percent"`
+}
+
+// HardeningRow is one pinned browser setting as the window offers it. State is
+// the word the row reads ("blocked", "strict", "off") rather than a bool, because
+// SafeSearch has two on-states and which one is in force is the part a reader
+// cannot guess. Browsers names where the setting reaches, and Gap says where it
+// does not - a setting shown as on while it is silently absent from Firefox is
+// exactly the kind of half-truth this window exists to avoid.
+type HardeningRow struct {
+	ID       string `json:"id"`
+	Label    string `json:"label"`
+	Note     string `json:"note"`
+	State    string `json:"state"`
+	On       bool   `json:"on"`
+	Level    string `json:"level"`
+	Browsers string `json:"browsers"`
+	Gap      string `json:"gap"`
 }
 
 // DomainRow is one entry in the site block list. Enabled is the user's own on/off
@@ -81,6 +206,47 @@ type AppRow struct {
 	Enabled   bool   `json:"enabled"`
 	Blocked   bool   `json:"blocked"`
 	Scheduled bool   `json:"scheduled"`
+	// Category is the id of the built-in set that added this rule, empty for one
+	// the user added themselves. It only groups the list; nothing about how the
+	// rule is enforced depends on it. See policy.App.Source.
+	Category string `json:"category"`
+}
+
+// CategoryRow is one built-in category as the window offers it. Apps and Domains
+// are what the category covers in total; Missing is how much of that the config
+// does not hold yet, which is the difference between a button that would block
+// nineteen new sites and one that would do nothing at all.
+//
+// Blocked means the category's own block exists. The two are independent: a
+// category can be blocked and still have entries missing, which is exactly the
+// state a user is in after the catalog gains an app in an update.
+type CategoryRow struct {
+	ID      string `json:"id"`
+	Label   string `json:"label"`
+	Note    string `json:"note"`
+	Apps    int    `json:"apps"`
+	Domains int    `json:"domains"`
+	Blocked bool   `json:"blocked"`
+	Missing int    `json:"missing"`
+	// Items is everything the category covers, so the window can show the list
+	// before the user agrees to it. A category is accepted all at once and comes
+	// off again only with the password, so a count is not something a person can
+	// meaningfully consent to - they have to be able to read what is in it.
+	Items []CategoryItem `json:"items"`
+}
+
+// CategoryItem is one entry of a category as the window lists it. Present marks
+// what the config already holds, which is what stops a top-up of three entries
+// reading as twenty-eight new restrictions.
+type CategoryItem struct {
+	Kind  string `json:"kind"` // "app" or "site"
+	Label string `json:"label"`
+	// Detail is what the entry covers, in policy's own words. It carries the one
+	// distinction a list of friendly names loses: "Google Play Games" blocks a
+	// whole directory and "Steam" blocks one executable, and somebody deciding
+	// whether to accept the category needs to see which is which.
+	Detail  string `json:"detail"`
+	Present bool   `json:"present"`
 }
 
 // BlockRow is one scheduled block as the status window shows it. Schedule and
@@ -132,6 +298,27 @@ type BrowserRow struct {
 	Installed bool   `json:"installed"`
 	Locked    bool   `json:"locked"`
 	Detail    string `json:"detail"`
+}
+
+// UnmanagedRow is one browser the guard cannot filter, and what is being done
+// about it.
+//
+// Listed and Blocked are the same pair the domain and app rows carry, and for the
+// same reason: a browser on the block list under a weekday-afternoon window is
+// genuinely blocked and genuinely reachable at eight in the evening, and one badge
+// cannot say both. Exe is shown because it is what the user needs in order to
+// block a browser the built-in category does not name.
+type UnmanagedRow struct {
+	Label   string `json:"label"`
+	Exe     string `json:"exe"`
+	Listed  bool   `json:"listed"`
+	Blocked bool   `json:"blocked"`
+	// Missing means the executable this registration names is not there, which is
+	// what a rename leaves behind: renaming a file walks out of every name-keyed
+	// rule but does not touch the registration that pointed at it. It outranks the
+	// other two in the window, because "blocked" and "reachable" are both claims
+	// about a file, and this one says the file is absent.
+	Missing bool `json:"missing"`
 }
 
 // NewApp loads the shared config so status reflects the configured extension.
@@ -282,8 +469,84 @@ func (a *App) GetStatus() Status {
 			Enabled:   !raw.Disabled,
 			Blocked:   blockedApps[appKey(app)],
 			Scheduled: a.cfg.GovernedApp(app),
+			Category:  categoryOf(raw),
 		})
 	}
+
+	cats := make([]CategoryRow, 0, len(policy.CategoryIDs()))
+	for _, id := range policy.CategoryIDs() {
+		cat, ok := policy.LookupCategory(id)
+		if !ok {
+			continue
+		}
+		_, blocked := a.cfg.Block(cat.ID)
+		entries := a.cfg.CategoryEntries(cat)
+		items := make([]CategoryItem, 0, len(entries))
+		for _, e := range entries {
+			items = append(items, CategoryItem{Kind: e.Kind, Label: e.Label, Detail: e.Detail, Present: e.Present})
+		}
+		cats = append(cats, CategoryRow{
+			ID:      cat.ID,
+			Label:   cat.Label,
+			Note:    cat.Note,
+			Apps:    len(cat.Apps),
+			Domains: len(cat.Domains),
+			Blocked: blocked,
+			Missing: a.cfg.CategoryMissing(cat),
+			Items:   items,
+		})
+	}
+
+	// Every browser the guard has no policy for, whether or not a rule covers it.
+	// The blocked ones stay in the list on purpose: a section that emptied itself
+	// once the category was applied would leave the user with no way to see that
+	// Opera is still installed and still handled, and no place to notice the day a
+	// new browser appears next to it.
+	unmanaged := make([]UnmanagedRow, 0)
+	for _, b := range policy.UnmanagedBrowsers() {
+		unmanaged = append(unmanaged, UnmanagedRow{
+			Label:   b.Label(),
+			Exe:     b.Exe,
+			Listed:  a.cfg.BlocksBrowser(b),
+			Blocked: active.BlocksBrowser(b),
+			Missing: b.Missing,
+		})
+	}
+
+	// The pinned browser settings, read from the whole config rather than the
+	// resolved one: these are not schedulable, so there is no window for them to be
+	// outside of, and reading them from `active` would only invite a future reader
+	// to assume there is.
+	hardened := a.cfg.Hardened()
+	hardening := make([]HardeningRow, 0, len(policy.Knobs))
+	for _, knob := range policy.Knobs {
+		row := HardeningRow{
+			ID:       knob.ID,
+			Label:    knob.Label,
+			Note:     knob.Note,
+			State:    hardened.Describe(knob.ID),
+			On:       hardened.On(knob.ID),
+			Browsers: hardeningBrowsers(knob.ID),
+		}
+		if knob.ID == policy.KnobSafeSearch {
+			row.Level, _ = hardened.SafeSearchOn()
+		}
+		if missing := hardeningMissing(knob.ID); missing != "" {
+			row.Gap = "Not enforced in " + missing + " - there is no policy for it."
+		}
+		hardening = append(hardening, row)
+	}
+
+	allow := a.cfg.Allowing()
+	allowPanel := AllowlistPanel{
+		On:        allow.On,
+		Enforcing: a.cfg.AllowlistOn(now),
+		Schedule:  allow.ScheduleSummary(),
+		Sites:     allow.AllowedSites(),
+	}
+	allowPanel.Shut = allow.On && len(allowPanel.Sites) == 0
+
+	usagePanel := buildUsagePanel(a.cfg.UsageStats(now, usageWindowDays))
 
 	scheduleErr := ""
 	if err := a.cfg.Validate(); err != nil {
@@ -298,19 +561,38 @@ func (a *App) GetStatus() Status {
 	_, hasPw := scm.GetPasswordHash()
 	pause := scm.Paused()
 	return Status{
-		ServiceRunning: scm.IsRunning(guardsvc.ServiceName),
-		Disabled:       pause.Paused,
-		PausedUntil:    pausedUntilLabel(pause),
-		LockedCount:    locked,
-		HasPassword:    hasPw,
-		Browsers:       rows,
-		Extensions:     exts,
-		Blocks:         blocks,
-		Domains:        domains,
-		Apps:           apps,
-		UsageError:     usageErr,
-		ScheduleError:  scheduleErr,
+		ServiceRunning:      scm.IsRunning(guardsvc.ServiceName),
+		Disabled:            pause.Paused,
+		PausedUntil:         pausedUntilLabel(pause),
+		LockedCount:         locked,
+		HasPassword:         hasPw,
+		Browsers:            rows,
+		Extensions:          exts,
+		Blocks:              blocks,
+		Domains:             domains,
+		Apps:                apps,
+		Categories:          cats,
+		Hardening:           hardening,
+		Usage:               usagePanel,
+		Allowlist:           allowPanel,
+		PrivateBrowsingOpen: a.cfg.PrivateBrowsingOpen(),
+		Unmanaged:           unmanaged,
+		UnmanagedScanned:    policy.BrowserScanSupported(),
+		UsageError:          usageErr,
+		ScheduleError:       scheduleErr,
 	}
+}
+
+// categoryOf reads the category a rule came from off its source stamp. A source
+// naming a category this build no longer ships is still returned, so the rule
+// stays grouped where the config says it belongs rather than appearing to have
+// been added by hand.
+func categoryOf(a policy.App) string {
+	src := strings.TrimSpace(a.Source)
+	if !strings.HasPrefix(src, policy.SourcePrefix) {
+		return ""
+	}
+	return strings.TrimPrefix(src, policy.SourcePrefix)
 }
 
 // appKey matches a configured rule to the resolved set. Kind is part of it
@@ -423,6 +705,312 @@ func (a *App) UnblockApp(kind, value, password string) ActionResult {
 	}
 	args = append(args, "unblock-app", value)
 	return a.execGuard(args, "It can run again.")
+}
+
+// BlockCategory expands a built-in category into the block list: every
+// application and site it names, governed by one always-on block under the
+// category's id. Free of the password for the same reason BlockApp is - it only
+// adds protection - but elevated, because it writes browser policy and the
+// launch blocks.
+//
+// Running it on a category that is already blocked tops it up rather than
+// failing, so the same button carries a user through a catalog that gained
+// entries in an update. The frontend labels it from CategoryRow.Missing.
+//
+// Lifting one is deliberately not here. A category expands into ordinary rules
+// and an ordinary block, so it comes off through RemoveBlock and UnblockApp -
+// which take the password, because those are the steps that weaken.
+func (a *App) BlockCategory(id string) ActionResult {
+	cat, ok := policy.LookupCategory(id)
+	if !ok {
+		return ActionResult{Message: "No such category."}
+	}
+	// Answered here rather than by spending a UAC prompt to be told nothing
+	// changed. This is the state a user lands in by pressing the button twice.
+	if a.cfg.CategoryMissing(cat) == 0 {
+		if _, blocked := a.cfg.Block(cat.ID); blocked {
+			return ActionResult{OK: true, Message: cat.Label + " is already blocked in full."}
+		}
+	}
+	args := []string{"-config", a.cfgPath, "block-category", cat.ID}
+	return a.execGuard(args, cat.Label+" is blocked, around the clock.")
+}
+
+// usageWindowDays is the span the window shows. A week is the unit people think
+// in, and seven bars fit a narrow panel; `guard usage <days>` reaches further back
+// into the same record.
+const usageWindowDays = 7
+
+// usageTopRows caps how many applications the window lists. The point of the panel
+// is "what is taking the time", which the top few answer; a machine with a blocked
+// category has forty rules and a list of forty rows nobody reads is not a better
+// answer. The CLI prints them all.
+const usageTopRows = 8
+
+// buildUsagePanel turns the report into rows the window can render, scaling each
+// bar to the busiest entry in its own list.
+func buildUsagePanel(rep policy.UsageReport) UsagePanel {
+	panel := UsagePanel{
+		Span:       len(rep.Days),
+		Measured:   rep.Measured,
+		Unreadable: rep.Unreadable,
+		Today:      policy.HumanDuration(rep.TodaySpan),
+		Total:      policy.HumanDuration(rep.TotalSpan),
+	}
+	if rep.Unreadable {
+		return panel
+	}
+
+	rows := rep.Rows
+	if len(rows) > usageTopRows {
+		rows = rows[:usageTopRows]
+	}
+	var peakRow time.Duration
+	for _, r := range rows {
+		if r.Total > peakRow {
+			peakRow = r.Total
+		}
+	}
+	for _, r := range rows {
+		panel.Rows = append(panel.Rows, UsageRow{
+			Label:   r.Label,
+			Detail:  r.Detail,
+			Today:   policy.HumanDuration(r.Today),
+			Total:   policy.HumanDuration(r.Total),
+			Gone:    r.Gone,
+			Percent: sharePercent(r.Total, peakRow),
+		})
+	}
+
+	var peakDay time.Duration
+	for _, d := range rep.ByDay {
+		if d > peakDay {
+			peakDay = d
+		}
+	}
+	for i, day := range rep.Days {
+		spent := rep.ByDay[i]
+		panel.Days = append(panel.Days, UsageDay{
+			Day:     day,
+			Label:   dayLabel(day),
+			Spent:   policy.HumanDuration(spent),
+			Percent: sharePercent(spent, peakDay),
+		})
+	}
+	return panel
+}
+
+// sharePercent is one value's share of the largest, floored at 1% for anything
+// non-zero: a day with four minutes on it must not draw as an empty one, because an
+// empty bar reads as "nothing happened" rather than "a little happened".
+func sharePercent(v, peak time.Duration) int {
+	if peak <= 0 || v <= 0 {
+		return 0
+	}
+	pct := int(int64(v) * 100 / int64(peak))
+	if pct == 0 {
+		pct = 1
+	}
+	return pct
+}
+
+// dayLabel renders a ledger day key as a person reads it. An unparseable key is
+// returned as it stands rather than replaced with a guess - it came from a file, and
+// showing what is actually in there is more use than hiding it.
+func dayLabel(day string) string {
+	t, err := time.Parse("2006-01-02", day)
+	if err != nil {
+		return day
+	}
+	return t.Format("Mon 2 Jan")
+}
+
+// hardeningBrowsers names the browsers a setting can be enforced in, and
+// hardeningMissing the ones it cannot. Both read policy.KnobSupported rather than
+// a list of their own, so the window cannot claim coverage the writers do not
+// have.
+func hardeningBrowsers(knobID string) string {
+	return strings.Join(hardeningKinds(knobID, true), ", ")
+}
+
+func hardeningMissing(knobID string) string {
+	return strings.Join(hardeningKinds(knobID, false), ", ")
+}
+
+func hardeningKinds(knobID string, supported bool) []string {
+	var out []string
+	for _, k := range append(append([]policy.Kind{}, policy.ChromiumKinds...), policy.Firefox) {
+		if policy.KnobSupported(knobID, k) == supported {
+			out = append(out, string(k))
+		}
+	}
+	return out
+}
+
+// Harden pins a browser setting. Free of the password - it only adds protection,
+// the same gate as blocking a site - but elevated (UAC), because it writes browser
+// policy and the trusted config.
+//
+// level is used only by safe-search, where it selects moderate or strict; the
+// guard treats an empty level as strict, and the decision lives there rather than
+// here so the window and the CLI agree.
+//
+// password is needed for the one change here that weakens protection: lowering a
+// SafeSearch level that is already stricter. policy.Config.HardenWeakens decides,
+// and the elevated guard re-checks it, so this cannot be skipped from the
+// renderer - the same arrangement the New block form uses for a window.
+func (a *App) Harden(id, level, password string) ActionResult {
+	knob, ok := policy.LookupKnob(id)
+	if !ok {
+		return ActionResult{Message: "No such setting."}
+	}
+	// Answered here rather than by spending a UAC prompt to be told nothing
+	// changed. Turning it on twice is the state a user lands in by double-clicking.
+	if a.cfg.Hardened().On(knob.ID) && (level == "" || level == a.cfg.Hardened().Describe(knob.ID)) {
+		return ActionResult{OK: true, Message: knob.Label + " is already pinned."}
+	}
+	args := []string{"-config", a.cfgPath}
+	if a.cfg.HardenWeakens(knob.ID, level) && !scm.IsPaused() {
+		pw, bad := passwordArgs(password, "filtering less than "+knob.ID+" currently does")
+		if bad != nil {
+			return *bad
+		}
+		args = append(args, pw...)
+	}
+	if strings.TrimSpace(level) != "" {
+		args = append(args, "-level", level)
+	}
+	args = append(args, "harden", knob.ID)
+	return a.execGuard(args, withFirefoxNote(knob.Label+" is pinned."))
+}
+
+// HardenNeedsPassword lets the window ask for the password only when the change
+// actually calls for one, instead of prompting on every level change or - worse -
+// discovering the requirement after the UAC prompt has already been spent. The
+// answer is not trusted: Harden and the elevated guard both re-check it.
+func (a *App) HardenNeedsPassword(id, level string) bool {
+	return a.cfg.HardenWeakens(id, level) && !scm.IsPaused()
+}
+
+// Unharden hands a setting back. That weakens protection, so it requires the
+// password - except while protection is in the authorized paused state, exactly as
+// for a site or an extension.
+func (a *App) Unharden(id, password string) ActionResult {
+	knob, ok := policy.LookupKnob(id)
+	if !ok {
+		return ActionResult{Message: "No such setting."}
+	}
+	if !a.cfg.Hardened().On(knob.ID) {
+		return ActionResult{OK: true, Message: knob.Label + " is already off."}
+	}
+	args := []string{"-config", a.cfgPath}
+	if !scm.IsPaused() {
+		pw, bad := passwordArgs(password, "turning off "+knob.ID)
+		if bad != nil {
+			return *bad
+		}
+		args = append(args, pw...)
+	}
+	args = append(args, "unharden", knob.ID)
+	msg := knob.Label + " is no longer pinned."
+	if knob.ID == policy.KnobPrivateBrowsing {
+		msg += " Private windows work again, and a locked extension does not run in one."
+	}
+	return a.execGuard(args, withFirefoxNote(msg))
+}
+
+// AllowOnly turns the allowed-sites-only mode on or off.
+//
+// On only strengthens - it blocks the entire web - so it costs the Windows prompt
+// alone. Off unblocks the entire web, which is the largest single weakening in this
+// program, so it takes the password. policy.AllowNarrows decides and the elevated
+// guard re-checks it.
+func (a *App) AllowOnly(on bool, password string) ActionResult {
+	if a.cfg.Allowing().On == on {
+		state := "off"
+		if on {
+			state = "on"
+		}
+		return ActionResult{OK: true, Message: "Allowed sites only is already " + state + "."}
+	}
+	action := policy.AllowActionOn
+	arg := "on"
+	if !on {
+		action, arg = policy.AllowActionOff, "off"
+	}
+	args := []string{"-config", a.cfgPath}
+	if policy.AllowNarrows(action) && !scm.IsPaused() {
+		pw, bad := passwordArgs(password, "turning off allowed-sites-only")
+		if bad != nil {
+			return *bad
+		}
+		args = append(args, pw...)
+	}
+	args = append(args, "allow-only", arg)
+
+	msg := "Every site is blocked now except the allowlist."
+	if !on {
+		msg = "The web is reachable again, except what is on the block list."
+	} else if len(a.cfg.Allowing().AllowedSites()) == 0 {
+		msg = "Every site is blocked now - the allowlist is empty. Add the ones you need below."
+	}
+	return a.execGuard(args, withFirefoxNote(msg))
+}
+
+// Allow lets a site through the mode. This is the one "add" in the window that
+// weakens protection, so while the mode is on it takes the password - the mirror of
+// UnblockDomain, and the opposite of BlockDomain.
+func (a *App) Allow(name, password string) ActionResult {
+	if strings.TrimSpace(name) == "" {
+		return ActionResult{Message: "Type a site to allow."}
+	}
+	if _, err := policy.NormalizeDomain(name); err != nil {
+		// Answer an obviously bad entry immediately rather than spending a UAC prompt
+		// to be told the same thing.
+		return ActionResult{Message: capitalize(err.Error())}
+	}
+	// The contradiction guardrail, answered here as well as in the guard: a site the
+	// block list covers would be let through by the browser anyway, and finding that
+	// out after the prompt would be worse.
+	if covered, ok := a.cfg.CoveredBy(name); ok {
+		return ActionResult{Message: "That site is on the block list (as " + covered +
+			"), so allowing it would contradict it. Stop blocking " + covered + " first."}
+	}
+	args := []string{"-config", a.cfgPath}
+	if a.cfg.Allowing().On && !scm.IsPaused() {
+		pw, bad := passwordArgs(password, "allowing a site through")
+		if bad != nil {
+			return *bad
+		}
+		args = append(args, pw...)
+	}
+	args = append(args, "allow", name)
+	return a.execGuard(args, withFirefoxNote("Allowed, including every subdomain."))
+}
+
+// Unallow closes a site again. Free of the password - it only strengthens, the
+// mirror of BlockDomain.
+func (a *App) Unallow(name string) ActionResult {
+	if strings.TrimSpace(name) == "" {
+		return ActionResult{Message: "No site selected."}
+	}
+	return a.execGuard(
+		[]string{"-config", a.cfgPath, "unallow", name},
+		withFirefoxNote(name+" is no longer allowed through."))
+}
+
+// AllowNeedsPassword lets the window prompt only when the change actually calls for
+// one, instead of asking on every click or discovering the requirement after the UAC
+// prompt has been spent. The answer is not trusted: the guard re-checks it.
+func (a *App) AllowNeedsPassword(action string) bool {
+	if scm.IsPaused() {
+		return false
+	}
+	if action == policy.AllowActionAllow && !a.cfg.Allowing().On {
+		// Nothing is being enforced, so adding to the list opens nothing.
+		return false
+	}
+	return policy.AllowNarrows(action)
 }
 
 // BrowseForExe opens the Windows file picker and returns the chosen executable's

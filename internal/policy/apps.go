@@ -61,6 +61,17 @@ type App struct {
 	Value    string `json:"value"`
 	Label    string `json:"label,omitempty"`
 	Disabled bool   `json:"disabled,omitempty"`
+	// Source records where the rule came from - "category:social" for one a
+	// category added, empty for one a person added by hand. It is provenance and
+	// nothing else: the sweep never reads it, so a wrong value cannot change what
+	// is enforced. It exists so the status window can group a list of forty rules
+	// into the four categories that produced them, and so a future
+	// refresh-category knows which entries it owns and may top up.
+	//
+	// omitempty for the reason every field added since v1 carries it: a config
+	// written before categories existed must still encode byte-identically, or
+	// every trusted copy on disk fails its integrity check on upgrade.
+	Source string `json:"source,omitempty"`
 }
 
 // maxAppEntries caps the list. Unlike the browser policies there is no external
@@ -93,6 +104,56 @@ var protectedImages = map[string]bool{
 	"wmiprvse.exe": true, "msmpeng.exe": true, "nissrv.exe": true,
 	"securityhealthservice.exe": true, "securityhealthsystray.exe": true,
 	"guard.exe": true, "extension-guard-status.exe": true,
+}
+
+// genericImages are file names too common to stand for one application. A bare
+// name rule matches that name wherever it lives and, for "exe" rules, also
+// becomes an Image File Execution Options entry keyed on the name alone - so
+// blocking "client.exe" registers the guard as the debugger for every program
+// that ships a client.exe, and blocking "launcher.exe" does the same. The user
+// wanted one app gone and took out an unrelated set of them.
+//
+// This is not protectedImages, and it is deliberately enforced in a weaker place.
+// protectedImages is checked again in the sweep, because a rule that would
+// terminate lsass.exe must never fire however it reached the config. This one is
+// checked only where a rule is *added*, and Validate accepts a config that
+// already holds one.
+//
+// The difference is what a late check would cost. Validate runs on every
+// enforcement pass, so refusing a generic name there would make an existing
+// config with "launcher.exe" in it stop validating on upgrade - and a config
+// that fails to validate has its whole schedule ignored. Somebody who wrote one
+// broad rule a year ago would find every block they had scheduled quietly
+// enforcing around the clock. A rule already in the config was put there on
+// purpose and can be edited out; refusing to load it helps nobody.
+//
+// Nothing here is refused outright, either. The full path is still accepted, and
+// so is a folder rule, because both name one program unambiguously. Only the
+// bare name is refused.
+//
+// Real examples of each: Google Play Games launches client.exe, the Rockstar
+// Games Launcher launches Launcher.exe, and Minecraft Java runs as javaw.exe.
+// The scripting hosts at the end are here for a different reason - they are how
+// a great deal of ordinary software starts, so a bare-name rule on one of them
+// breaks the machine in ways that look like a hardware fault. cmd.exe,
+// powershell.exe and pwsh.exe are deliberately absent: someone blocking the
+// terminal by name means the terminal, and that is a rule worth allowing.
+var genericImages = map[string]bool{
+	"launcher.exe": true, "client.exe": true, "game.exe": true, "app.exe": true,
+	"main.exe": true, "run.exe": true, "start.exe": true, "bin.exe": true,
+	"setup.exe": true, "install.exe": true, "installer.exe": true,
+	"update.exe": true, "updater.exe": true, "helper.exe": true,
+	"service.exe": true, "server.exe": true, "bootstrapper.exe": true,
+	"java.exe": true, "javaw.exe": true, "python.exe": true, "pythonw.exe": true,
+	"node.exe": true, "electron.exe": true, "mono.exe": true,
+	"wscript.exe": true, "cscript.exe": true,
+	"rundll32.exe": true, "regsvr32.exe": true, "mshta.exe": true,
+}
+
+// GenericImage reports whether an image name is too common to be blocked by name
+// alone. The name is compared case-insensitively.
+func GenericImage(name string) bool {
+	return genericImages[strings.ToLower(strings.TrimSpace(baseName(name)))]
 }
 
 // ProtectedImage reports whether an image name is one the guard will never block
@@ -261,6 +322,18 @@ type Process struct {
 	Name   string
 	Path   string
 	Titles []string
+	// OriginalName is the file name compiled into the executable's version
+	// resource - what its author called it - which is not changed by renaming the
+	// file on disk. It is gathered only when a bare-name rule exists to need it,
+	// for the same reason Titles is: it costs a read of every running image.
+	//
+	// This is the answer to the cheapest bypass there is. A bare-name rule and the
+	// launch block behind it are both keyed on the file's name, so renaming
+	// opera.exe to chess.exe walks out of both, needs no privilege, and - unlike
+	// every other way around the guard - is not corrected by anything, because
+	// there is no policy key to put back. Matching the name its author gave it
+	// means the rename has to go deeper than the file system to work.
+	OriginalName string
 }
 
 // Matches reports whether a process is what this rule blocks.
@@ -268,9 +341,13 @@ func (a App) Matches(p Process) bool {
 	switch a.Kind {
 	case "", AppExe:
 		if hasPathSep(a.Value) {
+			// A rule naming a full path means that copy. Renaming the file makes it
+			// a different path, and treating it as the same one would quietly widen
+			// a rule the user deliberately narrowed - the bare-name form is how you
+			// say "this program, wherever it is".
 			return samePath(a.Value, p.Path)
 		}
-		return strings.EqualFold(a.Value, baseName(normalizeWinPath(p.Name)))
+		return a.matchesImageName(p)
 	case AppFolder:
 		return underFolder(a.Value, p.Path)
 	case AppStore:
@@ -280,6 +357,114 @@ func (a App) Matches(p Process) bool {
 		needle := strings.ToLower(a.Value)
 		for _, t := range p.Titles {
 			if strings.Contains(strings.ToLower(t), needle) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// matchesImageName answers a bare-name exe rule against a process, by the name on
+// disk and by the name compiled into the executable. See Process.OriginalName for
+// why the second one is here.
+//
+// The compiled-in name is only ever consulted, never required: a process whose
+// version resource could not be read - or which never had one, as plenty of
+// legitimate software does not - is matched on its file name exactly as before. A
+// rule that stopped working because a resource was missing would be a worse bug
+// than the one this closes.
+func (a App) matchesImageName(p Process) bool {
+	if strings.EqualFold(a.Value, baseName(normalizeWinPath(p.Name))) {
+		return true
+	}
+	orig := p.OriginalImage()
+	return orig != "" && strings.EqualFold(a.Value, orig)
+}
+
+// OriginalImage is OriginalName reduced to the executable it actually names.
+//
+// The reduction that matters is the ".mui" suffix. Windows' own binaries keep
+// their localized strings in a side-by-side resource file - notepad.exe's live in
+// en-US\notepad.exe.mui - and the version reader follows that transparently, so
+// asking notepad.exe for its compiled-in name answers "NOTEPAD.EXE.MUI". Left
+// alone that would mean the protected-image list never recognized a single Windows
+// binary by its compiled-in name, which is the one class of process the list
+// exists for. Third-party software embeds its resource directly and is unaffected.
+//
+// The suffix is only dropped when what is left is still an executable, so this
+// cannot quietly rewrite a name that genuinely ends that way.
+func (p Process) OriginalImage() string {
+	n := baseName(normalizeWinPath(strings.TrimSpace(p.OriginalName)))
+	if trimmed, ok := trimSuffixFold(n, ".mui"); ok && hasSuffixFold(trimmed, ".exe") {
+		return trimmed
+	}
+	return n
+}
+
+func trimSuffixFold(s, suffix string) (string, bool) {
+	if hasSuffixFold(s, suffix) {
+		return s[:len(s)-len(suffix)], true
+	}
+	return s, false
+}
+
+func hasSuffixFold(s, suffix string) bool {
+	return len(s) >= len(suffix) && strings.EqualFold(s[len(s)-len(suffix):], suffix)
+}
+
+// SnapshotNeeds says what a process snapshot has to gather. Each field costs
+// something per process per sweep, and the sweep runs about once a second, so
+// nothing is collected because it might be useful.
+//
+// It is a struct rather than a run of bools because there are three of them now
+// and they are passed together through two layers; four positional booleans is how
+// a caller ends up silently asking for titles when it meant paths.
+type SnapshotNeeds struct {
+	// Paths requires opening every process to read its image path.
+	Paths bool
+	// Titles requires a pass over every top-level window in the session, and only
+	// works from a process that has a desktop - see the session agent.
+	Titles bool
+	// Originals requires reading the version resource of every running image.
+	// Implies Paths, since a resource is read from the file the path names.
+	Originals bool
+}
+
+// SnapshotNeedsFor works out what a set of rules actually has to be matched on.
+func SnapshotNeedsFor(apps []App) SnapshotNeeds {
+	return SnapshotNeeds{
+		Paths:     NeedsPaths(apps),
+		Titles:    NeedsTitles(apps),
+		Originals: NeedsOriginalNames(apps),
+	}
+}
+
+// Or combines two sets of needs, for a caller collecting them across several
+// groups of rules.
+func (n SnapshotNeeds) Or(o SnapshotNeeds) SnapshotNeeds {
+	return SnapshotNeeds{
+		Paths:     n.Paths || o.Paths,
+		Titles:    n.Titles || o.Titles,
+		Originals: n.Originals || o.Originals,
+	}
+}
+
+// WantPaths reports whether the snapshot has to read image paths, which reading
+// version resources also requires.
+func (n SnapshotNeeds) WantPaths() bool { return n.Paths || n.Originals }
+
+// NeedsOriginalNames reports whether any rule is matched on a bare executable
+// name - the one kind of rule a rename defeats, and so the only kind that needs
+// the name compiled into the executable.
+//
+// A full-path rule does not need it (renaming makes it a different path, which is
+// a different rule), and neither do folder, Store or title rules, which are not
+// keyed on the file's name at all.
+func NeedsOriginalNames(apps []App) bool {
+	for _, a := range apps {
+		switch a.Kind {
+		case "", AppExe:
+			if !hasPathSep(a.Value) {
 				return true
 			}
 		}
@@ -324,7 +509,15 @@ func BlockedProcesses(apps []App, procs []Process) []Process {
 	for _, p := range procs {
 		// PIDs 0 and 4 are the idle process and the kernel; there is nothing there
 		// to terminate and asking is meaningless.
-		if p.PID <= 4 || ProtectedImage(p.Name) || (p.Path != "" && ProtectedImage(p.Path)) {
+		//
+		// The protected list is checked against all three names a process has. The
+		// compiled-in one is in here because matching gained it: a rule that can
+		// now fire on a version resource must be refusable on one too, or the
+		// guardrail would cover one of the two ways to reach lsass.exe. A rule
+		// naming a system image is refused when it is added, so this is the second
+		// of the two checks the protected list has always had - it just has one
+		// more name to check now.
+		if p.PID <= 4 || anyProtected(p) {
 			continue
 		}
 		for _, a := range apps {
@@ -335,6 +528,20 @@ func BlockedProcesses(apps []App, procs []Process) []Process {
 		}
 	}
 	return out
+}
+
+// anyProtected reports whether a process is one the guard must never terminate,
+// under any of the names it goes by: the name on disk, its full path, and the name
+// its author compiled into it.
+func anyProtected(p Process) bool {
+	if ProtectedImage(p.Name) {
+		return true
+	}
+	if p.Path != "" && ProtectedImage(p.Path) {
+		return true
+	}
+	orig := p.OriginalImage()
+	return orig != "" && ProtectedImage(orig)
 }
 
 // AppStatus is one rule's enforcement state, as `guard verify` and the status
@@ -524,6 +731,11 @@ func (c *Config) AddApp(kind, value, label string) (App, bool, error) {
 	if err != nil {
 		return App{}, false, err
 	}
+	// Refused here rather than in NormalizeApp, so that a config already holding
+	// a generic rule keeps loading and keeps its schedule. See genericImages.
+	if app.Kind == AppExe && !hasPathSep(app.Value) && GenericImage(app.Value) {
+		return App{}, false, fmt.Errorf("%s is a name many programs use, so blocking it by name alone would block them too - give the full path to the one you mean, or block its folder with -kind folder", app.Value)
+	}
 	if parent, ok := c.AppCoveredBy(app.Kind, app.Value); ok {
 		return app, false, fmt.Errorf("%s is already covered by %s, which blocks everything in it",
 			baseName(app.Value), parent.Value)
@@ -554,6 +766,22 @@ func (c *Config) SetAppEnabled(kind, value string, enabled bool) (App, bool) {
 	}
 	c.Apps[i].Disabled = !enabled
 	return c.Apps[i], true
+}
+
+// SetAppSource stamps provenance on one listed rule, leaving everything about
+// what it enforces alone. It reports false if no such rule is configured.
+//
+// Whether a rule *should* be stamped is the caller's decision, not this one -
+// see ApplyCategory, which stamps only what it added itself, so that a rule
+// somebody blocked by hand is never claimed by a category that happens to name
+// it too.
+func (c *Config) SetAppSource(kind, value, source string) bool {
+	i, ok := c.findApp(kind, value)
+	if !ok {
+		return false
+	}
+	c.Apps[i].Source = strings.TrimSpace(source)
+	return true
 }
 
 // validateApps checks the configured list, and is called by Validate.
