@@ -1,5 +1,10 @@
-// Package updater checks GitHub Releases for a newer Extension Guard build,
-// downloads and integrity-checks the binaries, and swaps them into place.
+// Package updater checks for a newer Extension Guard build, downloads and
+// integrity-checks the binaries, and swaps them into place.
+//
+// It resolves releases from the endpoint configured in internal/endpoint when
+// one is set, and from the GitHub release API otherwise. Preferring a host we
+// own is what keeps the repository's name from being permanently load-bearing
+// for installs already in the field.
 //
 // The swap is deliberately cooperative. Because the guard runs as a self-healing
 // service (watchdog + SCM recovery), the live binaries cannot simply be
@@ -28,14 +33,20 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/codepurse/extension-guard/internal/endpoint"
 )
 
-// Repo is the GitHub "owner/name" the updater queries; apiBase is the API root.
+// Repo is the GitHub "owner/name" the updater queries as a fallback when no
+// endpoint is configured, and apiBase is the API root. Every build shipped
+// before internal/endpoint existed knows only this path, which is why the
+// repository must keep its current name until those builds have aged out.
 // Both are vars so tests can point them at a local server.
 var (
 	Repo    = "codepurse/extension-guard"
@@ -49,9 +60,13 @@ const (
 )
 
 // FileHash pins one release binary to its expected SHA-256 (lower-case hex).
+// URL is optional: endpoint-hosted manifests use it to say where the file lives
+// (absolute, or relative to the manifest); GitHub-hosted manifests omit it and
+// the asset URLs come from the release instead.
 type FileHash struct {
 	Name   string `json:"name"`
 	SHA256 string `json:"sha256"`
+	URL    string `json:"url,omitempty"`
 }
 
 // Manifest is the manifest.json asset attached to each release. Version mirrors
@@ -100,10 +115,71 @@ type ghRelease struct {
 	} `json:"assets"`
 }
 
-// CheckLatest fetches the latest published release and resolves its binaries and
-// expected hashes from the attached manifest.json. It does NOT download the
-// binaries - callers decide whether the version warrants that.
+// CheckLatest resolves the newest available release - its version, notes, and
+// the binaries with their expected hashes. It does NOT download the binaries;
+// callers decide whether the version warrants that.
+//
+// It prefers the configured endpoint (a manifest served from a host we own,
+// independent of any repository name) and falls back to the GitHub release API
+// when that endpoint is unset or unreachable. The fallback is what lets this
+// build ship and start propagating before the endpoint host exists; see
+// internal/endpoint for why the indirection matters.
 func CheckLatest(ctx context.Context) (Release, error) {
+	if u := endpoint.Latest(); u != "" {
+		rel, err := checkDirect(ctx, u)
+		if err == nil {
+			return rel, nil
+		}
+		// The endpoint is unreachable or not serving a manifest yet. Fall through
+		// to GitHub rather than leave the install with no update path at all.
+	}
+	return checkGitHub(ctx)
+}
+
+// checkDirect reads a self-contained manifest from manifestURL. Each file's URL
+// may be absolute or relative to the manifest itself (a bare name resolves to a
+// sibling), so a release can be served from one directory without the manifest
+// hard-coding a host - which keeps it copyable between hosts verbatim.
+func checkDirect(ctx context.Context, manifestURL string) (Release, error) {
+	var rel Release
+	var m Manifest
+	if err := getJSON(ctx, manifestURL, &m); err != nil {
+		return rel, err
+	}
+	base, err := url.Parse(manifestURL)
+	if err != nil {
+		return rel, fmt.Errorf("parse manifest url: %w", err)
+	}
+	rel.Version = normalizeVersion(m.Version)
+	rel.Notes = m.Notes
+	if rel.Version == "" {
+		return rel, fmt.Errorf("manifest at %s has no version", manifestURL)
+	}
+	for _, f := range m.Files {
+		href := strings.TrimSpace(f.URL)
+		if href == "" {
+			href = f.Name
+		}
+		ref, err := url.Parse(href)
+		if err != nil {
+			return rel, fmt.Errorf("manifest lists %q with an unparseable url: %w", f.Name, err)
+		}
+		rel.Assets = append(rel.Assets, Asset{
+			Name:   f.Name,
+			URL:    base.ResolveReference(ref).String(),
+			SHA256: strings.ToLower(strings.TrimSpace(f.SHA256)),
+		})
+	}
+	if len(rel.Assets) == 0 {
+		return rel, fmt.Errorf("manifest at %s lists no files", manifestURL)
+	}
+	return rel, nil
+}
+
+// checkGitHub is the legacy path: read the latest release from the GitHub API
+// and resolve the binaries and their expected hashes from the manifest.json
+// asset attached to it.
+func checkGitHub(ctx context.Context) (Release, error) {
 	var rel Release
 	var gh ghRelease
 	if err := getJSON(ctx, apiBase+"/repos/"+Repo+"/releases/latest", &gh); err != nil {
@@ -133,11 +209,11 @@ func CheckLatest(ctx context.Context) (Release, error) {
 		return rel, fmt.Errorf("release %s has no usable version", gh.TagName)
 	}
 	for _, f := range m.Files {
-		url, ok := urls[f.Name]
+		href, ok := urls[f.Name]
 		if !ok {
 			return rel, fmt.Errorf("manifest lists %q but the release has no such asset", f.Name)
 		}
-		rel.Assets = append(rel.Assets, Asset{Name: f.Name, URL: url, SHA256: strings.ToLower(strings.TrimSpace(f.SHA256))})
+		rel.Assets = append(rel.Assets, Asset{Name: f.Name, URL: href, SHA256: strings.ToLower(strings.TrimSpace(f.SHA256))})
 	}
 	return rel, nil
 }

@@ -11,7 +11,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -23,32 +22,61 @@ import (
 	"github.com/kardianos/service"
 	"golang.org/x/term"
 
+	"github.com/codepurse/extension-guard/internal/activity"
 	"github.com/codepurse/extension-guard/internal/auth"
 	"github.com/codepurse/extension-guard/internal/buildinfo"
+	"github.com/codepurse/extension-guard/internal/enforce"
 	"github.com/codepurse/extension-guard/internal/guardsvc"
 	"github.com/codepurse/extension-guard/internal/policy"
 	"github.com/codepurse/extension-guard/internal/scm"
 	"github.com/codepurse/extension-guard/internal/updater"
+	"github.com/codepurse/extension-guard/internal/usage"
 )
 
 func main() {
 	cfgPath := flag.String("config", defaultConfigPath(), "path to extension-ids.json")
 	password := flag.String("password", "", "uninstall password (install-service / uninstall-service / set-password)")
-	extensions := flag.String("extensions", "", "comma-separated extension names to keep (used by 'select'); default keeps all")
-	flag.Usage = usage
+	extensions := flag.String("extensions", "", "comma-separated extension names: the ones to keep ('select'), or the ones a block governs ('add-block')")
+	domains := flag.String("domains", "", "comma-separated domains a block governs (used by 'add-block')")
+	apps := flag.String("apps", "", "comma-separated blocked apps a block governs, by value (used by 'add-block')")
+	days := flag.String("days", "", "days a block's window falls on: mon,wed,fri or weekdays/weekends/daily (default every day)")
+	from := flag.String("from", "", "start of a block's window, HH:MM (used by 'add-block')")
+	to := flag.String("to", "", "end of a block's window, HH:MM; before the start means it runs past midnight")
+	limit := flag.String("limit", "", "daily time limit for a block's apps: 45m, 1h30m, or a number of minutes (used by 'add-block')")
+	until := flag.String("until", "", "deadline for 'lock': a duration (72h, 7d) or a time (2026-09-01, 2026-09-01T17:00)")
+	pauseFor := flag.String("for", "", "how long 'disable' pauses protection: 30m, 2h, 1d, or a time. Omit to pause until you turn it back on")
+	kind := flag.String("kind", "", "what a block-app/unblock-app argument is: exe (default), folder, store, or title")
+	label := flag.String("label", "", "friendly name shown in the status window (used by 'block-app' and 'add-block')")
+	count := flag.Int("n", defaultActivityCount, "how many entries 'activity' shows")
+	flag.Usage = printUsage
 	flag.Parse()
+
+	// Attribute whatever this process records to whoever is running it. The
+	// service and the session agent are not people, so they are named as
+	// themselves; every other command is somebody at a keyboard, and for an action
+	// that weakens protection *who* did it is most of the point of writing it down.
+	switch flag.Arg(0) {
+	case "run", "watchdog":
+		activity.Enable(activity.ActorService)
+	case "agent":
+		activity.Enable(activity.ActorAgent)
+	default:
+		activity.Enable(activity.LocalUser())
+	}
 
 	cmd := flag.Arg(0)
 	if cmd == "" || cmd == "help" {
-		usage()
+		printUsage()
 		if cmd == "" {
 			os.Exit(2)
 		}
 		return
 	}
 
-	// version / check-update don't need the config (and version must work even
-	// when the config is missing), so handle them before LoadConfig.
+	// Handled before the config is reconciled below. version / check-update don't
+	// need a config at all (and version must work even when it is missing), while
+	// select and commit must see the file as written - reconciling first would
+	// revert the very edit they exist to adopt.
 	switch cmd {
 	case "version":
 		fmt.Println(buildinfo.Version)
@@ -56,9 +84,30 @@ func main() {
 	case "check-update":
 		checkUpdateCmd()
 		return
+	case "activity":
+		// Reading the record needs neither the config nor admin, so it is handled
+		// here with version and check-update rather than below.
+		activityCmd(*count)
+		return
+	case "select":
+		selectConfig(*cfgPath, *extensions)
+		return
+	case "commit":
+		commitCmd(*cfgPath, *password)
+		return
+	case "blocked":
+		// Windows starts this in place of a blocked application, in the blocked
+		// user's session, with the application's own command line appended. It must
+		// not need the config, the registry, or admin - see blockedCmd.
+		blockedCmd(flag.Args()[1:])
+		return
 	}
 
-	cfg, err := policy.LoadConfig(*cfgPath)
+	// LoadTrusted, not LoadConfig: an edited extension-ids.json loses to the
+	// trusted copy here exactly as it does in the service, so status tells the
+	// truth and a toggle applies on top of the enforced set rather than on top of
+	// whatever someone typed into the file.
+	cfg, _, err := policy.LoadTrusted(*cfgPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		fmt.Fprintf(os.Stderr, "(looked for config at %s - pass -config to override)\n", *cfgPath)
@@ -67,29 +116,62 @@ func main() {
 
 	switch cmd {
 	case "apply":
-		must(policy.Apply(cfg))
-		fmt.Println("force-install policy applied")
+		must(enforce.Default().Apply(activeNow(cfg)))
+		fmt.Println("policy applied")
 		printStatus(cfg)
 	case "verify", "status":
 		printStatus(cfg)
 	case "remove":
-		must(policy.Remove(cfg))
-		fmt.Println("force-install policy removed")
+		must(enforce.Default().Remove(cfg))
+		fmt.Println("policy removed")
 	case "detect":
 		detected := policy.DetectBrowsers()
 		for _, k := range []policy.Kind{policy.Chrome, policy.Edge, policy.Brave, policy.Firefox} {
 			fmt.Printf("  %-8s %v\n", k, detected[k])
 		}
-	case "select":
-		selectConfig(cfg, *extensions, *cfgPath)
+	case "blocks":
+		blocksCmd(cfg)
+	case "limits":
+		limitsCmd(cfg)
+	case "domains":
+		domainsCmd(cfg)
+	case "block-domain":
+		blockDomainCmd(cfg, *cfgPath, flag.Arg(1))
+	case "unblock-domain":
+		unblockDomainCmd(cfg, *cfgPath, flag.Arg(1), *password)
+	case "apps":
+		appsCmd(cfg)
+	case "agent":
+		// Internal: the service starts this in the signed-in user's session, because
+		// a service cannot see that session's windows. See runAgent.
+		runAgent(cfg, *cfgPath)
+	case "block-app":
+		blockAppCmd(cfg, *cfgPath, *kind, flag.Arg(1), *label)
+	case "unblock-app":
+		unblockAppCmd(cfg, *cfgPath, *kind, flag.Arg(1), *password)
+	case "add-block":
+		addBlockCmd(cfg, *cfgPath, flag.Arg(1), blockSpec{
+			label:      *label,
+			days:       *days,
+			from:       *from,
+			to:         *to,
+			limit:      *limit,
+			extensions: *extensions,
+			domains:    *domains,
+			apps:       *apps,
+		}, *password)
+	case "remove-block":
+		removeBlockCmd(cfg, *cfgPath, flag.Arg(1), *password)
+	case "lock":
+		lockCmd(cfg, *cfgPath, flag.Arg(1), *until)
 	case "enable-extension":
 		toggleExtension(cfg, *cfgPath, flag.Arg(1), true)
 	case "disable-extension":
 		// Disabling an extension weakens protection, so it needs the password -
 		// unless protection is already in the authorized paused state, where there
 		// is no active lock to bypass.
-		if !scm.IsDisabled() {
-			requirePassword(*password)
+		if !scm.IsPaused() {
+			requirePassword(*password, "turning an extension off")
 		}
 		toggleExtension(cfg, *cfgPath, flag.Arg(1), false)
 	case "set-password":
@@ -97,15 +179,15 @@ func main() {
 	case "update":
 		updateCmd(cfg, *cfgPath)
 	case "run", "watchdog", "install-service", "uninstall-service", "start", "stop", "disable", "enable":
-		runService(cmd, cfg, *cfgPath, *password)
+		runService(cmd, cfg, *cfgPath, *password, *pauseFor)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command %q\n\n", cmd)
-		usage()
+		printUsage()
 		os.Exit(2)
 	}
 }
 
-func runService(cmd string, cfg policy.Config, cfgPath, password string) {
+func runService(cmd string, cfg policy.Config, cfgPath, password, pauseFor string) {
 	absCfg, err := filepath.Abs(cfgPath)
 	if err != nil {
 		absCfg = cfgPath
@@ -129,20 +211,66 @@ func runService(cmd string, cfg policy.Config, cfgPath, password string) {
 		}
 	case "install-service":
 		ensurePasswordSet(password)
+		// Elevated, so this may create the activity log; the service would do it
+		// moments later anyway, but doing it here means the install's own entry
+		// lands in the record rather than being dropped in the gap. Only privileged
+		// code may create it - see internal/activity.
+		_ = activity.Provision()
+		// The ledger is created here for the same reason: it must be owned by
+		// something privileged, and the service would do it moments later anyway.
+		// See internal/usage.
+		_ = usage.Provision()
 		mustService(guardsvc.Install(cfg, absCfg), "install")
+		activity.Record(activity.Event{Kind: activity.ProtectionInstalled, Target: buildinfo.Version})
 		fmt.Println("service installed, hardened, and started")
 	case "uninstall-service":
-		requirePassword(password)
+		requirePassword(password, "uninstalling protection")
 		mustService(guardsvc.Uninstall(cfg, absCfg), "uninstall")
 		_ = scm.ClearPasswordHash()
+		_ = scm.ClearTrustedConfig()
+		// The log itself is deliberately left where it is. It records that
+		// protection was removed, and an accountability record an uninstall erases
+		// is not one.
+		activity.Record(activity.Event{Kind: activity.ProtectionRemoved})
 		fmt.Println("service uninstalled")
 	case "disable":
-		requirePassword(password)
-		mustService(guardsvc.Disable(cfg, absCfg), "disable")
-		fmt.Println("protection disabled")
+		// A live lock refuses a pause, because a pause lifts everything the lock was
+		// holding - see policy.CheckPausable for why this is not the same question
+		// CheckLockedBlocks answers, and why uninstalling stays allowed.
+		//
+		// Checked before the password is asked for, the way add-block and commit do
+		// it: being prompted for a password and *then* told no wastes the one step
+		// that costs the user something.
+		if err := policy.CheckPausable(cfg, time.Now()); err != nil {
+			activity.Record(activity.Event{Kind: activity.PauseRefused, Detail: err.Error()})
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			fmt.Fprintln(os.Stderr, "(nothing was changed; uninstalling still works, and takes the blocks with it)")
+			os.Exit(1)
+		}
+		// Parsed before the password too, so a mistyped duration is not something
+		// you find out about after authenticating.
+		deadline, err := pauseDeadline(pauseFor, time.Now())
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		requirePassword(password, "pausing protection")
+		mustService(guardsvc.Pause(cfg, absCfg, deadline), "pause")
+		// Lift here rather than waiting for the service to come round to it. The
+		// service would do it within thirty seconds, but the user has just been told
+		// protection is off, and half a minute of it still being on reads as the
+		// command not having worked.
+		must(enforce.Default().Remove(cfg))
+		activity.Record(activity.Event{Kind: activity.ProtectionPaused, Detail: pauseDetail(deadline)})
+		fmt.Printf("protection paused %s\n", pauseDetail(deadline))
+		fmt.Println("(the guard stays installed and running, so it can turn itself back on)")
 	case "enable":
 		// Enabling only strengthens protection, so it needs admin but no password.
-		mustService(guardsvc.Enable(cfg, absCfg), "enable")
+		_ = activity.Provision()
+		_ = usage.Provision()
+		mustService(guardsvc.Resume(cfg, absCfg), "resume")
+		must(enforce.Default().Apply(activeNow(cfg)))
+		activity.Record(activity.Event{Kind: activity.ProtectionResumed})
 		fmt.Println("protection enabled")
 	case "start":
 		mustService(service.Control(svc, "start"), "start")
@@ -175,7 +303,12 @@ func ensurePasswordSet(flagPW string) {
 
 // requirePassword aborts unless the supplied password matches the stored hash.
 // If no password is set, the action is allowed.
-func requirePassword(flagPW string) {
+//
+// what names the action being attempted, for the activity log. A wrong password
+// is recorded because it is the clearest signal there is that somebody tried to
+// get around the gate - and unlike the action itself, an attempt that fails
+// leaves no other trace at all.
+func requirePassword(flagPW, what string) {
 	hash, ok := scm.GetPasswordHash()
 	if !ok {
 		return
@@ -185,6 +318,7 @@ func requirePassword(flagPW string) {
 		pw = prompt("Enter uninstall password: ")
 	}
 	if !auth.Verify(hash, pw) {
+		activity.Record(activity.Event{Kind: activity.PasswordFailed, Target: what})
 		fmt.Fprintln(os.Stderr, "error: incorrect password")
 		os.Exit(1)
 	}
@@ -195,6 +329,7 @@ func requirePassword(flagPW string) {
 func setPassword(flagPW string) {
 	if hash, ok := scm.GetPasswordHash(); ok {
 		if !auth.Verify(hash, prompt("Current password: ")) {
+			activity.Record(activity.Event{Kind: activity.PasswordFailed, Target: "changing the password"})
 			fmt.Fprintln(os.Stderr, "error: incorrect current password")
 			os.Exit(1)
 		}
@@ -210,6 +345,7 @@ func setPassword(flagPW string) {
 	hash, err := auth.Hash(pw)
 	must(err)
 	mustService(scm.SetPasswordHash(hash), "store password")
+	activity.Record(activity.Event{Kind: activity.PasswordChanged})
 	fmt.Println("password updated")
 }
 
@@ -225,10 +361,31 @@ func prompt(label string) string {
 	return strings.TrimSpace(string(b))
 }
 
+// activeNow resolves the schedule the same way the service does, printing any
+// problem that forced the fail-closed fallback so the operator sees it.
+func activeNow(cfg policy.Config) policy.Config {
+	active, err := cfg.EnforcedAt(time.Now())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: %v\n", err)
+		fmt.Fprintln(os.Stderr, "(the schedule is being ignored; every enabled extension stays enforced)")
+	}
+	return active
+}
+
+// printStatus lists what every enforcer reports. The columns are the general
+// ones rather than browser-specific: "target" is a browser today and an
+// executable once app blocking lands, and "present" means the target exists on
+// this machine.
+//
+// It reports against the schedule-resolved config, so "enforced" means "matches
+// what should be locked at this moment" - outside a block's window its
+// extensions are supposed to be absent, and showing that as a failure would be
+// wrong.
 func printStatus(cfg policy.Config) {
-	fmt.Printf("  %-8s %-10s %-7s %s\n", "browser", "installed", "locked", "detail")
-	for _, s := range policy.Verify(cfg) {
-		fmt.Printf("  %-8s %-10v %-7v %s\n", s.Kind, s.Installed, s.Locked, s.Detail)
+	cfg = activeNow(cfg)
+	fmt.Printf("  %-11s %-8s %-8s %-9s %s\n", "area", "target", "present", "enforced", "detail")
+	for _, s := range enforce.Default().Verify(cfg) {
+		fmt.Printf("  %-11s %-8s %-8v %-9v %s\n", s.Enforcer, s.Target, s.Present, s.Enforced, s.Detail)
 	}
 }
 
@@ -237,7 +394,20 @@ func printStatus(cfg policy.Config) {
 // after the user picks components; the service, watchdog, and status window all
 // read this file, and disabled entries stay listed so they can be turned on
 // later from the status window.
-func selectConfig(cfg policy.Config, extensions, outPath string) {
+//
+// It reads the file directly rather than going through the trusted copy the rest
+// of main.go works from, and runs before main reconciles the two. This is the one
+// path where the file legitimately wins: the installer has just laid down a
+// freshly shipped extension-ids.json, and an upgrade that widens the catalog or
+// corrects an extension ID (as 29ce5c8 did) must be adopted, not reverted as
+// tamper. Every other authorized change is an incremental edit to what the
+// trusted copy already says.
+func selectConfig(outPath, extensions string) {
+	cfg, err := policy.LoadConfig(outPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
 	cfg.EnableOnly(splitAndTrim(extensions))
 	if !cfg.AnyEnabled() {
 		fmt.Fprintln(os.Stderr, "error: -extensions matched no known extension; refusing to disable them all")
@@ -267,20 +437,23 @@ func toggleExtension(cfg policy.Config, cfgPath, name string, enable bool) {
 	}
 	writeConfig(cfg, cfgPath)
 	if enable {
-		must(policy.Apply(cfg))
+		must(enforce.Default().Apply(activeNow(cfg)))
+		activity.Record(activity.Event{Kind: activity.ExtensionEnabled, Target: name})
 		fmt.Printf("enabled: %s is now force-installed\n", name)
 	} else {
 		must(policy.Remove(cfg.Only(name)))
+		activity.Record(activity.Event{Kind: activity.ExtensionDisabled, Target: name})
 		fmt.Printf("disabled: %s is no longer locked\n", name)
 	}
 	printStatus(cfg)
 }
 
-// writeConfig serializes the config back to disk (pretty-printed).
+// writeConfig persists an authorized config change: it records the config as the
+// trusted copy and then writes the file. Nothing else may write the config file -
+// a plain file write would be reverted by the service on its next cycle, which is
+// exactly the protection that makes hand-editing extension-ids.json ineffective.
 func writeConfig(cfg policy.Config, outPath string) {
-	data, err := json.MarshalIndent(cfg, "", "  ")
-	must(err)
-	must(os.WriteFile(outPath, append(data, '\n'), 0o644))
+	must(policy.Commit(cfg, outPath))
 }
 
 // splitAndTrim turns "a, b ,c" into ["a","b","c"], dropping blanks.
@@ -433,6 +606,11 @@ func updateCmd(cfg policy.Config, cfgPath string) {
 			fmt.Fprintf(os.Stderr, "warning: start service: %v\n", err)
 		}
 	}
+	activity.Record(activity.Event{
+		Kind:   activity.UpdateApplied,
+		Target: rel.Version,
+		Detail: "from " + buildinfo.Version,
+	})
 	fmt.Printf("updated to %s. Restart the status window to load the new UI.\n", rel.Version)
 }
 
@@ -460,30 +638,94 @@ func waitForStop(name string, timeout time.Duration) {
 	}
 }
 
-func usage() {
+// printUsage is the help text. It is not called "usage" because that name now
+// belongs to the package that counts how long a limited block has been used.
+func printUsage() {
 	fmt.Println(`Extension Guard
 
 usage: guard [flags] <command>
 
 policy commands (admin):
-  apply              write the force-install policy now
-  verify             show the lock status of each browser (alias: status)
-  remove             delete the force-install policy
+  apply              enforce everything the config asks for now
+  verify             show what is enforced, per area and target (alias: status)
+  remove             lift everything the guard enforces
   detect             list which supported browsers are installed
   select             enable only -extensions, disable the rest (used by the installer)
+
+domain commands:
+  domains            list the blocked domains and whether each is enforced now
+  block-domain       <domain>  block a domain and all its subdomains (admin; no
+                               password - it only adds protection)
+  unblock-domain     <domain>  stop filtering a domain (password, unless paused)
+
+application commands:
+  apps               list the blocked applications and whether each is enforced now
+  block-app          <app>     keep an application closed (admin; no password -
+                               it only adds protection). -kind picks what <app> is:
+                                 exe    (default) a path or a name: steam.exe
+                                 folder every .exe in a folder
+                                 store  a Microsoft Store app, by package family
+                                 title  any window whose title contains the text
+                               -label sets the name the status window shows
+  unblock-app        <app>     let an application run again (password, unless
+                               paused); pass the same -kind it was added with
+
+schedule commands:
+  blocks             list each block, whether it is enforcing now, its daily
+                     limit, and its lock
+  limits             show each daily time limit and how much of today is left
+                     (no admin and no password - the person a limit applies to
+                     is meant to be able to see where they stand)
+  add-block          [id]      create a block. -label names it (the id is derived
+                               from the label when you omit it), -extensions /
+                               -domains / -apps say what it governs (naming none
+                               governs everything), and -days -from -to give it a
+                               window. -limit gives it a daily time limit
+                               (45m, 1h30m, or a number of minutes), which may
+                               only cover applications - the guard measures use
+                               by watching processes, and a browser never
+                               reports back. With a window or a limit it needs
+                               the password: both enforce things only sometimes,
+                               which is weaker than around the clock. With
+                               neither it is always on, so it is free - that is
+                               the shape to create and then lock.
+  remove-block       <id>      delete a block, returning what it governed to
+                               around-the-clock enforcement (password; refused
+                               while the block is locked)
+  lock               <id>      lock a block until -until (admin; no password -
+                               a lock can be extended but never shortened)
+  commit             adopt a hand-edited config file (requires the password;
+                               refused outright if it would weaken a locked block)
   enable-extension   <name>   start locking an extension (adds protection; no password)
   disable-extension  <name>   stop locking an extension (password, unless already paused)
 
 service commands (admin):
   install-service    install + harden + start the guard service (sets password)
   uninstall-service  remove the service (requires the password)
-  disable            temporarily turn protection off (requires the password)
-  enable             turn protection back on after a disable (no password; only strengthens)
+  disable            pause protection (requires the password). -for says how long
+                     - 30m, 2h, 1d, or a time - and the guard turns protection
+                     back on by itself when it is up. Omit -for to pause until
+                     you turn it back on. The service stays installed and running
+                     either way, so a pause can end on its own; it is refused
+                     outright while any block is locked
+  enable             end a pause (no password; only strengthens)
   set-password       set or change the uninstall password
   start              start the service
   stop               stop the service
   run                run in the foreground (also used by the service manager)
   watchdog           run the watchdog loop (internal; spawned by the service)
+  blocked            report that a launch was blocked (internal; Windows starts
+                     this in place of a blocked application)
+  agent              sweep window-title rules in the signed-in user's session
+                     (internal; spawned by the service, which cannot see them)
+
+record commands:
+  activity           show what the guard did and what was done to it, newest
+                     first: refused launches, pauses, rules added and lifted,
+                     tamper it corrected, wrong passwords. No admin and no
+                     password - the record is meant to be readable by everyone
+                     it is about. Show more with the flag before the command,
+                     as everywhere else here: "guard -n 200 activity".
 
 update commands:
   check-update       report whether a newer release is available (no admin)
@@ -495,4 +737,29 @@ update commands:
 
 flags:`)
 	flag.PrintDefaults()
+}
+
+// pauseDeadline turns the -for flag into a moment to resume at. An empty flag
+// means an indefinite pause, which is the zero time.
+//
+// It accepts what -until accepts, so "30m", "1d" and "2026-09-01T17:00" all mean
+// what they look like and there is one place that decides what a deadline is.
+func pauseDeadline(spec string, now time.Time) (time.Time, error) {
+	if strings.TrimSpace(spec) == "" {
+		return time.Time{}, nil
+	}
+	at, err := parseUntil(spec, now)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("cannot read -for %q: %w", spec, err)
+	}
+	return at, nil
+}
+
+// pauseDetail describes a pause the way both the log and the console should say
+// it, so the record and what the user was told match word for word.
+func pauseDetail(deadline time.Time) string {
+	if deadline.IsZero() {
+		return "until it is turned back on"
+	}
+	return "until " + deadline.Local().Format(time.RFC1123)
 }

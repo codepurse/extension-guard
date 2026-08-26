@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: 2026-07-06_
+_Last updated: 2026-08-21_
 
 **Extension Guard collects no personal data.** There are no accounts, no
 telemetry, no analytics, and no tracking of any kind. Nothing about you or your
@@ -15,6 +15,21 @@ Everything Extension Guard needs lives locally and never leaves your computer:
   stored or transmitted.
 - **The extension configuration** (`extension-ids.json`) — the list of
   extensions to lock — stays on disk next to the app.
+- **The activity log** (`C:\ProgramData\ExtensionGuard\activity.jsonl`, or
+  `/var/log/extension-guard/activity.jsonl` on Linux) records what the guard
+  did and what was done to it: launches it refused, rules added and lifted,
+  pauses, tamper it corrected, and wrong password attempts. It is a plain text
+  file on your own machine, readable by every user of that machine — including
+  the person being filtered, deliberately — and **it is never sent anywhere**.
+  See the *Activity log* section of the README for exactly what is recorded.
+- **The daily-usage ledger** (`C:\ProgramData\ExtensionGuard\usage.json`, or
+  `/var/lib/extension-guard/usage.json` on Linux) exists only if you set a daily
+  time limit. It records **how many seconds** each limited block was in use, per
+  day, for the last 14 days - a number per block, nothing else: no window titles,
+  no document names, no timestamps of individual sessions. It is readable by every
+  user of the machine, deliberately, so the person a limit applies to can see how
+  much of the day is left; only SYSTEM and administrators can change it. Like
+  everything else here, **it is never sent anywhere**.
 
 ## The only network activity
 
@@ -34,7 +49,12 @@ You can turn this off entirely by setting `"autoUpdate": "off"` in
 ## No content filtering or data access
 
 Extension Guard does **not** read, filter, or transmit your browsing history or
-page content. It only writes the browsers' enterprise "force-install" policy so
+page content. The activity log records the guard's **own actions** — that a site
+was added to the block list, that a blocked application was closed — never which
+pages you visited or what was on them. A daily time limit counts how long an
+application you chose to limit was **running**, which is the minimum the limit
+needs in order to exist; it is not a record of what you did in that application,
+and nothing is counted for programs no limit covers. It only writes the browsers' enterprise "force-install" policy so
 the configured extensions cannot be removed. Any actual content filtering is done
 by those extensions, under their own privacy policies.
 

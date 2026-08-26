@@ -94,12 +94,28 @@ func runElevatedAndWait(exe string, args []string) (int, error) {
 	return int(code), nil
 }
 
-// buildArgs quotes each argument so values with spaces (config paths, the
-// password) survive Windows command-line parsing.
+// buildArgs turns an argument list into a Windows command line that parses back
+// to exactly that list.
+//
+// This has to be exact, not merely good enough for spaces, because several of
+// these arguments are free-form text: a window title someone typed, a label, a
+// path from the file picker, and a Store app's DisplayName - which comes from a
+// registry key any standard user can write. The command line it builds is handed
+// to an *elevated* guard.exe, so a value that escapes its own quoting stops being
+// a value and becomes arguments: `a\" -extensions blocknsfw select "` would
+// redirect the invocation to `select`, which rewrites the enforced config with no
+// password. That is the one thing the password gate exists to prevent.
+//
+// The previous implementation wrapped each argument in quotes and doubled any
+// quote inside it, which handles spaces but not backslashes - and `\"` is a
+// literal quote to the parser, so a trailing backslash escaped the closing quote
+// and let the rest of the argument be read as new arguments. syscall.EscapeArg
+// implements the full CommandLineToArgvW convention (backslash runs before a
+// quote and at the end of the argument are doubled), so no input can break out.
 func buildArgs(args []string) string {
 	q := make([]string, len(args))
 	for i, a := range args {
-		q[i] = `"` + strings.ReplaceAll(a, `"`, `""`) + `"`
+		q[i] = syscall.EscapeArg(a)
 	}
 	return strings.Join(q, " ")
 }

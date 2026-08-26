@@ -39,9 +39,10 @@ var linuxBrowserBins = map[Kind][]string{
 	Firefox: {"firefox", "firefox-esr"},
 }
 
-// Apply writes the force-install policy for every configured extension, across
-// every browser. Writing for a browser that isn't installed is harmless.
-// Requires root.
+// Apply reconciles the force-install policy with cfg across every browser:
+// every enabled extension is written, and every disabled one removed. The
+// removal half is what lets a schedule release as well as tighten. Writing for a
+// browser that isn't installed is harmless. Requires root.
 func Apply(cfg Config) error {
 	var errs []string
 	for _, k := range ChromiumKinds {
@@ -49,7 +50,7 @@ func Apply(cfg Config) error {
 			errs = append(errs, fmt.Sprintf("%s: %v", k, err))
 		}
 	}
-	if err := applyFirefox(cfg.Targets(Firefox)); err != nil {
+	if err := applyFirefox(cfg.Targets(Firefox), cfg.InactiveTargets(Firefox)); err != nil {
 		errs = append(errs, fmt.Sprintf("firefox: %v", err))
 	}
 	if len(errs) > 0 {
@@ -60,10 +61,18 @@ func Apply(cfg Config) error {
 
 func applyChromium(k Kind, targets []Target) error {
 	vals := chromiumForcelistValues(targets)
-	if len(vals) == 0 {
-		return nil // not configured - skip quietly
-	}
 	dir := chromiumManagedDir[k]
+	if len(vals) == 0 {
+		// Nothing active for this browser. We own this file outright, so an existing
+		// one must be cleared rather than left holding a stale list - otherwise the
+		// last extension to go out of window would stay force-installed. If we never
+		// wrote one, there is nothing to do.
+		path := filepath.Join(dir, policyFileName)
+		if _, err := os.Stat(path); err != nil {
+			return nil
+		}
+		vals = []string{}
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
@@ -75,9 +84,9 @@ func applyChromium(k Kind, targets []Target) error {
 	return os.WriteFile(filepath.Join(dir, policyFileName), data, 0o644)
 }
 
-func applyFirefox(targets []Target) error {
+func applyFirefox(targets, inactive []Target) error {
 	configured := configuredFirefox(targets)
-	if len(configured) == 0 {
+	if len(configured) == 0 && len(inactive) == 0 {
 		return nil // not configured - skip quietly
 	}
 	if err := os.MkdirAll(firefoxPoliciesDir, 0o755); err != nil {
@@ -89,6 +98,13 @@ func applyFirefox(targets []Target) error {
 		extSettings[t.AddonID] = map[string]any{
 			"installation_mode": "force_installed",
 			"install_url":       t.InstallURL,
+		}
+	}
+	// Drop anything switched off. policies.json is shared with policies we did not
+	// write, so only our own add-on ids are touched.
+	for _, t := range inactive {
+		if t.AddonID != "" {
+			delete(extSettings, t.AddonID)
 		}
 	}
 	data, err := json.MarshalIndent(doc, "", "  ")

@@ -1,8 +1,8 @@
 // Package announce fetches a small remote "announcement" document from a static
-// URL (a raw file in the GitHub repo) so the status window can show occasional
-// messages - a promo, a heads-up, a migration notice - without shipping a new
-// build. It is best-effort and read-only: any error yields an inactive
-// announcement so the UI simply shows nothing.
+// URL so the status window can show occasional messages - a promo, a heads-up, a
+// migration notice - without shipping a new build. It is best-effort and
+// read-only: any error yields an inactive announcement so the UI simply shows
+// nothing.
 package announce
 
 import (
@@ -13,13 +13,18 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/codepurse/extension-guard/internal/endpoint"
 )
 
-// SourceURL is the raw announcement document the status window reads. It is a var
-// so tests can point it at a local server. To change what users see, edit the
-// file at this URL and push - no new release required (raw.githubusercontent.com
-// caches for a few minutes).
-var SourceURL = "https://raw.githubusercontent.com/codepurse/extension-guard/main/announcement.json"
+// LegacySourceURL is the original announcement document: a raw file in the
+// GitHub repository. It is the fallback used while endpoint.Base is unset, and
+// it is the only source every build shipped before the endpoint indirection
+// knows about - which is exactly why the repository must keep its current name
+// until those builds have aged out. See internal/endpoint.
+//
+// It is a var so tests can point it at a local server.
+var LegacySourceURL = "https://raw.githubusercontent.com/codepurse/extension-guard/main/announcement.json"
 
 const (
 	userAgent   = "ExtensionGuard-Announce"
@@ -44,12 +49,45 @@ type Announcement struct {
 	LinkText   string `json:"linkText"`
 }
 
-// Fetch retrieves the announcement document. On any failure it returns a zero
-// (Active=false) Announcement and the error; callers that only care about "is
-// there anything to show" can ignore the error and check Active.
+// Sources returns the announcement URLs to try, most-preferred first: the
+// configured endpoint (when set), then the legacy GitHub raw URL. Trying both
+// means a build can ship before the endpoint host exists and still show
+// announcements, and keeps showing them if the host is later unreachable.
+func Sources() []string {
+	var out []string
+	if u := endpoint.Announcement(); u != "" {
+		out = append(out, u)
+	}
+	if LegacySourceURL != "" {
+		out = append(out, LegacySourceURL)
+	}
+	return out
+}
+
+// Fetch retrieves the announcement document, trying each source in order and
+// returning the first that answers. On total failure it returns a zero
+// (Active=false) Announcement and the last error; callers that only care about
+// "is there anything to show" can ignore the error and check Active.
 func Fetch(ctx context.Context) (Announcement, error) {
+	sources := Sources()
+	if len(sources) == 0 {
+		return Announcement{}, fmt.Errorf("no announcement source configured")
+	}
+	var lastErr error
+	for _, src := range sources {
+		a, err := fetchFrom(ctx, src)
+		if err == nil {
+			return a, nil
+		}
+		lastErr = err
+	}
+	return Announcement{}, lastErr
+}
+
+// fetchFrom retrieves and decodes the announcement document at one URL.
+func fetchFrom(ctx context.Context, url string) (Announcement, error) {
 	var a Announcement
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, SourceURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return a, err
 	}
@@ -60,7 +98,7 @@ func Fetch(ctx context.Context) (Announcement, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return a, fmt.Errorf("GET %s: %s", SourceURL, resp.Status)
+		return a, fmt.Errorf("GET %s: %s", url, resp.Status)
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxJSON))
 	if err != nil {

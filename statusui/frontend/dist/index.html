@@ -57,11 +57,15 @@
   .row .toggle:hover { filter: brightness(1.2); }
   .exthint { font-size: 12px; color: var(--muted); margin: -6px 0 0; }
   .row .extname { text-transform: none; }
-  input[type=password] {
+  input[type=password], input[type=text] {
     background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
     color: var(--text); padding: 8px 10px; font-size: 13px; outline: none;
   }
-  input[type=password]:focus { border-color: var(--accent); }
+  input[type=password]:focus, input[type=text]:focus { border-color: var(--accent); }
+  .schedtag {
+    margin-left: 8px; font-size: 10px; color: var(--faint); background: var(--surface2);
+    padding: 1px 7px; border-radius: 999px; vertical-align: middle; text-transform: none;
+  }
   button {
     background: var(--accent-dim); color: #fff; border: none; border-radius: 8px;
     padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
@@ -92,12 +96,100 @@
     border: none; font-size: 18px; line-height: 1; padding: 0 4px; cursor: pointer; font-weight: 400;
   }
   .announce-x:hover { color: var(--text); background: transparent; }
+  /* Site block list. */
+  .addrow { display: flex; gap: 8px; margin-bottom: 6px; }
+  .addrow input[type=text] { flex: 1; min-width: 0; }
+  .badge.idlewin { color: var(--warn); background: var(--warn-bg); }
+  .row .dname { font-size: 13px; text-transform: none; word-break: break-all; }
+  /* Application block list. Four ways in, because "the app I want gone" is a
+     file, a folder, a Store app, or just a window. */
+  .btnrow { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+  .btnrow button { padding: 6px 12px; font-size: 12px; background: var(--surface2); color: var(--muted); }
+  .btnrow button:hover { background: var(--accent-dim); color: #fff; }
+  .row .ainfo { min-width: 0; }
+  .row .aname { font-size: 13px; word-break: break-all; }
+  .row .anote { font-size: 11px; color: var(--faint); word-break: break-all; }
+  .picker { max-height: 230px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+  .picker button {
+    width: 100%; text-align: left; background: var(--surface2); color: var(--text);
+    font-weight: 400; font-size: 12px; padding: 7px 10px;
+  }
+  .picker button:hover { background: var(--accent-dim); color: #fff; }
+  .picker .none { font-size: 12px; color: var(--muted); padding: 6px 2px; }
+  .modal.wide { width: 420px; }
+  /* Scheduled blocks - a group of extensions enforced on a timetable. */
+  .blockrow {
+    display: flex; align-items: flex-start; gap: 10px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px;
+  }
+  .blockrow.islocked { border-color: var(--accent-dim); }
+  .blockrow .binfo { min-width: 0; }
+  .blockrow .btitle { font-size: 13px; }
+  .blockrow .bmeta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .blockrow .bright {
+    margin-left: auto; display: flex; flex-direction: column; align-items: flex-end;
+    gap: 6px; flex-shrink: 0;
+  }
+  .badge.idle { color: var(--faint); background: var(--surface2); }
+  /* A block with time left today: on, in window, and enforcing nothing yet. It
+     gets the "warning" colour rather than the idle grey because it is a countdown,
+     not a resting state. */
+  .badge.budget { color: var(--warn); background: var(--warn-bg); }
+  .badge.lockbadge { color: var(--accent); background: rgba(99,102,241,0.14); }
+  .lockbtn {
+    padding: 3px 12px; font-size: 11px; font-weight: 600; border-radius: 999px;
+    background: var(--surface2); color: var(--muted);
+  }
+  .lockbtn:hover { background: var(--accent-dim); color: #fff; }
+  /* Section heading with an action on the right ("Scheduled blocks" + New block). */
+  .section-head { display: flex; align-items: center; gap: 10px; }
+  button.small { padding: 4px 11px; font-size: 11px; }
+  /* New-block form: day chips, a scope choice, and the item picker. */
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips button {
+    padding: 4px 10px; font-size: 11px; font-weight: 600; border-radius: 999px;
+    background: var(--surface2); color: var(--muted);
+  }
+  .chips button.sel, .chips button:hover { background: var(--accent-dim); color: #fff; }
+  .nb-row { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
+  .nb-row .nb-lbl { font-size: 12px; color: var(--muted); }
+  .nb-row input[type=text] { width: 88px; }
+  .nb-sub { font-size: 12px; color: var(--faint); margin: 6px 0 0; }
+  .nb-check { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); }
+  .nb-check input { accent-color: var(--accent); }
+  .picker .item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; background: var(--surface2); }
+  .picker .item .kind { margin-left: auto; font-size: 10px; color: var(--faint); }
+  .picker .item label { font-size: 12px; display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+  .picker .item span.nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .warnbox { border-color: var(--warn); }
+  .warnbox .lbl { color: var(--warn); font-weight: 600; }
+  .lock-choices { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .lock-choices button { padding: 5px 12px; font-size: 12px; background: var(--surface2); color: var(--muted); }
+  .lock-choices button.sel, .lock-choices button:hover { background: var(--accent-dim); color: #fff; }
+  .modal-note { font-size: 12px; color: var(--muted); margin: 0 0 12px; }
+  .modal input[type=text] { width: 100%; }
   /* Password prompt modal - shown only for actions that weaken protection. */
   .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; z-index: 50; }
   .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; width: 340px; max-width: 90%; }
   .modal .modal-title { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
   .modal input[type=password] { width: 100%; }
   .modal .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+
+  /* Recent activity. A row is a coloured dot, what happened, and when - the dot
+     is what makes "protection held" and "protection was weakened" separable at a
+     glance, which is what the list is scanned for. */
+  .act {
+    display: flex; align-items: flex-start; gap: 10px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px;
+  }
+  .act .dot { width: 6px; height: 6px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; background: var(--faint); }
+  .act.enforced .dot { background: var(--ok); }
+  .act.weakened .dot { background: var(--warn); }
+  .act .body { flex: 1; min-width: 0; }
+  .act .text { font-size: 13px; }
+  .act .sub { font-size: 11px; color: var(--muted); margin-top: 1px; }
+  .act .when { font-size: 11px; color: var(--faint); white-space: nowrap; margin-top: 2px; }
+  .actpath { font-size: 11px; color: var(--faint); word-break: break-all; margin: -4px 0 0; }
 </style>
 </head>
 <body>
@@ -142,12 +234,60 @@
     <button id="announce-link" class="announce-link" style="display:none;"></button>
   </div>
 
+  <div class="section-head">
+    <div class="section-title">Recent activity</div>
+    <button id="act-more" class="ghost small" style="display:none;">Show more</button>
+  </div>
+  <p class="exthint">What the guard did, and what was done to it. Kept on this PC only &mdash; nothing is sent anywhere.</p>
+  <div class="rows" id="act-rows"></div>
+  <p class="exthint" id="act-empty" style="display:none;">Nothing recorded yet.</p>
+  <p class="actpath" id="act-path"></p>
+
   <div class="section-title">Browsers</div>
   <div class="rows" id="rows"></div>
 
   <div class="section-title">Protected extensions</div>
   <p class="exthint" id="exthint">Turning one on adds protection (free). Turning one off needs the password.</p>
   <div class="rows" id="ext-rows"></div>
+
+  <div class="section-title">Blocked sites</div>
+  <p class="exthint">Blocking a site covers every subdomain, in all supported browsers. Adding one is free; removing one needs the password.</p>
+  <div class="addrow">
+    <input id="domain-input" type="text" placeholder="reddit.com" autocomplete="off" spellcheck="false" />
+    <button id="domain-add">Block</button>
+  </div>
+  <div class="rows" id="domain-rows"></div>
+  <p class="exthint" id="domain-empty" style="display:none;">Nothing blocked yet.</p>
+
+  <div class="section-title">Blocked apps</div>
+  <p class="exthint">A blocked application does not start, and is closed if it is already running. Adding one is free; removing one needs the password.</p>
+  <div class="btnrow">
+    <button id="app-add-exe">Add .exe file</button>
+    <button id="app-add-folder">Add folder</button>
+    <button id="app-add-store">Add Store app</button>
+    <button id="app-add-title">Add window title</button>
+  </div>
+  <div class="rows" id="app-rows"></div>
+  <p class="exthint" id="app-empty" style="display:none;">Nothing blocked yet.</p>
+
+  <div id="block-section">
+    <div class="section-head">
+      <div class="section-title">Scheduled blocks</div>
+      <button id="block-new" class="ghost small">New block</button>
+    </div>
+    <p class="exthint">A block enforces what it governs only during its windows, or &mdash; with a daily limit &mdash; once that much time has been used. Locking one means it cannot be released early.</p>
+    <div id="schedule-warning" class="card warnbox" style="display:none; margin-bottom:6px;">
+      <div class="lbl">This schedule is not being used</div>
+      <div class="announce-msg" id="schedule-warning-msg"></div>
+      <div class="announce-msg">Everything stays protected around the clock until it is fixed.</div>
+    </div>
+    <div id="usage-warning" class="card warnbox" style="display:none; margin-bottom:6px;">
+      <div class="lbl">Today&rsquo;s usage could not be read</div>
+      <div class="announce-msg" id="usage-warning-msg"></div>
+    </div>
+    <div class="rows" id="block-rows"></div>
+    <p class="exthint" id="block-empty" style="display:none;">No blocks yet &mdash; everything you have turned on is enforced around the clock.</p>
+  </div>
 
   <div class="foot">
     <span id="ver">Extension Guard</span>
@@ -166,6 +306,115 @@
     <div class="modal-actions">
       <button class="ghost" id="pw-modal-cancel">Cancel</button>
       <button id="pw-modal-ok">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- One-field prompt, for a rule with nothing to browse for (a window title). -->
+<div id="text-modal" class="modal-backdrop" style="display:none;">
+  <div class="modal">
+    <div class="modal-title" id="text-modal-title">Add</div>
+    <p class="modal-note" id="text-modal-note"></p>
+    <input id="text-modal-input" type="text" autocomplete="off" spellcheck="false" />
+    <div id="text-modal-msg" class="msg"></div>
+    <div class="modal-actions">
+      <button class="ghost" id="text-modal-cancel">Cancel</button>
+      <button id="text-modal-ok">Block</button>
+    </div>
+  </div>
+</div>
+
+<!-- Microsoft Store apps cannot be browsed to as files - they live in a versioned
+     system folder - so they are chosen from the installed list instead. -->
+<div id="store-modal" class="modal-backdrop" style="display:none;">
+  <div class="modal wide">
+    <div class="modal-title">Block a Microsoft Store app</div>
+    <input id="store-filter" type="text" placeholder="Search installed apps" autocomplete="off" spellcheck="false" />
+    <div class="picker" id="store-list"></div>
+    <div class="modal-actions">
+      <button class="ghost" id="store-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- New block. A schedule is the one kind of "add" that can weaken protection -
+     it enforces things only sometimes - so the form says so before you create it,
+     and the password is asked for afterwards only when a window was set. -->
+<div id="newblock-modal" class="modal-backdrop" style="display:none;">
+  <div class="modal wide">
+    <div class="modal-title">New block</div>
+    <input id="nb-label" type="text" placeholder="Name, e.g. Work hours" autocomplete="off" />
+    <div class="nb-row">
+      <label class="nb-check"><input type="checkbox" id="nb-always" /> Always on &mdash; no timetable, made to be locked</label>
+    </div>
+    <div id="nb-schedule">
+      <div class="chips" id="nb-days">
+        <button type="button" data-day="mon">Mon</button>
+        <button type="button" data-day="tue">Tue</button>
+        <button type="button" data-day="wed">Wed</button>
+        <button type="button" data-day="thu">Thu</button>
+        <button type="button" data-day="fri">Fri</button>
+        <button type="button" data-day="sat">Sat</button>
+        <button type="button" data-day="sun">Sun</button>
+      </div>
+      <p class="nb-sub">No day chosen means every day. An end before the start runs past midnight.</p>
+      <div class="nb-row">
+        <span class="nb-lbl">From</span><input id="nb-from" type="text" placeholder="09:00" autocomplete="off" />
+        <span class="nb-lbl">To</span><input id="nb-to" type="text" placeholder="17:00" autocomplete="off" />
+      </div>
+    </div>
+    <div class="nb-row">
+      <span class="nb-lbl">Daily limit</span><input id="nb-limit" type="text" placeholder="45m (leave empty for none)" autocomplete="off" />
+    </div>
+    <p class="nb-sub">A limit may only cover applications &mdash; the guard counts time by watching programs run, and a browser never reports back how long a site was open. Leave the times above empty for a limit that applies at any hour.</p>
+    <div class="nb-row">
+      <span class="nb-lbl">Governs</span>
+      <div class="chips" id="nb-scope">
+        <button type="button" data-scope="all" class="sel">Everything</button>
+        <button type="button" data-scope="some">Choose&hellip;</button>
+      </div>
+    </div>
+    <div class="picker" id="nb-items" style="display:none;"></div>
+    <p class="modal-note" id="nb-note"></p>
+    <div id="nb-msg" class="msg"></div>
+    <div class="modal-actions">
+      <button class="ghost" id="nb-cancel">Cancel</button>
+      <button id="nb-ok">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Lock prompt. Locking needs no password (it only strengthens), but it is
+     irreversible until the deadline, so it gets an explicit confirmation. -->
+<div id="pause-modal" class="modal-backdrop" style="display:none;">
+  <div class="modal">
+    <div class="modal-title">Turn protection off</div>
+    <p class="modal-note">The guard stays installed and keeps running, so it can turn protection back on by itself when the time is up.</p>
+    <div class="lock-choices" id="pause-choices"></div>
+    <input id="pause-pw" type="password" placeholder="Password" autocomplete="off" />
+    <div id="pause-msg" class="msg"></div>
+    <div class="modal-actions">
+      <button class="ghost" id="pause-cancel">Cancel</button>
+      <button id="pause-ok">Turn off</button>
+    </div>
+  </div>
+</div>
+
+<div id="lock-modal" class="modal-backdrop" style="display:none;">
+  <div class="modal">
+    <div class="modal-title" id="lock-modal-title">Lock block</div>
+    <p class="modal-note">Once locked it cannot be shortened, changed, or removed until the deadline &mdash; not with the password, not by restarting.</p>
+    <div class="lock-choices" id="lock-choices">
+      <button type="button" data-value="24h">24 hours</button>
+      <button type="button" data-value="3d">3 days</button>
+      <button type="button" data-value="7d">7 days</button>
+      <button type="button" data-value="30d">30 days</button>
+    </div>
+    <input id="lock-custom" type="text" placeholder="or a date: 2026-09-01, 2026-09-01T17:00" autocomplete="off" />
+    <div id="lock-modal-msg" class="msg"></div>
+    <div class="modal-actions">
+      <button class="ghost" id="lock-modal-cancel">Cancel</button>
+      <button id="lock-modal-ok">Lock</button>
     </div>
   </div>
 </div>
@@ -216,6 +465,304 @@
     });
   }
 
+  // askText shows a one-field prompt and resolves with the trimmed value, or null
+  // if the user cancels. Used for the window-title rule, which has no file to
+  // browse to.
+  function askText(title, note, placeholder) {
+    return new Promise(function (resolve) {
+      const modal = document.getElementById('text-modal');
+      const input = document.getElementById('text-modal-input');
+      const tmsg = document.getElementById('text-modal-msg');
+      const okBtn = document.getElementById('text-modal-ok');
+      const cancelBtn = document.getElementById('text-modal-cancel');
+      document.getElementById('text-modal-title').textContent = title;
+      document.getElementById('text-modal-note').textContent = note || '';
+      input.placeholder = placeholder || '';
+      input.value = ''; tmsg.textContent = ''; tmsg.className = 'msg';
+      modal.style.display = 'flex';
+      setTimeout(function () { input.focus(); }, 0);
+
+      function cleanup() {
+        modal.style.display = 'none';
+        okBtn.removeEventListener('click', onOk);
+        cancelBtn.removeEventListener('click', onCancel);
+        input.removeEventListener('keydown', onKey);
+      }
+      function onOk() {
+        const v = input.value.trim();
+        if (!v) { tmsg.className = 'msg err'; tmsg.textContent = 'Type something to block.'; return; }
+        cleanup(); resolve(v);
+      }
+      function onCancel() { cleanup(); resolve(null); }
+      function onKey(e) {
+        if (e.key === 'Enter') { e.preventDefault(); onOk(); }
+        else if (e.key === 'Escape') { onCancel(); }
+      }
+      okBtn.addEventListener('click', onOk);
+      cancelBtn.addEventListener('click', onCancel);
+      input.addEventListener('keydown', onKey);
+    });
+  }
+
+  // askStoreApp lists the Store apps installed for this user and resolves with the
+  // chosen one, or null if the user cancels. Clicking an entry is the choice -
+  // there is no second confirm step, because the real confirmation is the Windows
+  // permission prompt that follows.
+  async function askStoreApp() {
+    const modal = document.getElementById('store-modal');
+    const list = document.getElementById('store-list');
+    const filter = document.getElementById('store-filter');
+    const cancelBtn = document.getElementById('store-cancel');
+
+    let apps = [];
+    try { apps = (await window.go.main.App.ListStoreApps()) || []; }
+    catch (e) { apps = []; }
+
+    return new Promise(function (resolve) {
+      function draw() {
+        const q = filter.value.trim().toLowerCase();
+        const shown = apps.filter(function (a) {
+          return !q || (a.name || '').toLowerCase().indexOf(q) >= 0 || (a.family || '').toLowerCase().indexOf(q) >= 0;
+        });
+        list.innerHTML = '';
+        if (!shown.length) {
+          const none = document.createElement('div');
+          none.className = 'none';
+          none.textContent = apps.length ? 'No installed app matches that.' : 'No Store apps found for this user.';
+          list.appendChild(none);
+          return;
+        }
+        shown.forEach(function (a) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.textContent = a.name;
+          btn.title = a.family;
+          btn.addEventListener('click', function () { cleanup(); resolve(a); });
+          list.appendChild(btn);
+        });
+      }
+      function cleanup() {
+        modal.style.display = 'none';
+        filter.removeEventListener('input', draw);
+        cancelBtn.removeEventListener('click', onCancel);
+        filter.removeEventListener('keydown', onKey);
+      }
+      function onCancel() { cleanup(); resolve(null); }
+      function onKey(e) { if (e.key === 'Escape') { onCancel(); } }
+
+      filter.value = '';
+      draw();
+      modal.style.display = 'flex';
+      setTimeout(function () { filter.focus(); }, 0);
+      filter.addEventListener('input', draw);
+      filter.addEventListener('keydown', onKey);
+      cancelBtn.addEventListener('click', onCancel);
+    });
+  }
+
+  // askBlockDraft collects a new block and resolves with it, or null if the user
+  // cancels. It asks for a *name* rather than an id - the guard derives the id, so
+  // nobody has to invent a stable identifier for something they think of as
+  // "evenings".
+  function askBlockDraft(status) {
+    return new Promise(function (resolve) {
+      const modal = document.getElementById('newblock-modal');
+      const label = document.getElementById('nb-label');
+      const always = document.getElementById('nb-always');
+      const sched = document.getElementById('nb-schedule');
+      const daysBox = document.getElementById('nb-days');
+      const from = document.getElementById('nb-from');
+      const to = document.getElementById('nb-to');
+      const limit = document.getElementById('nb-limit');
+      const scopeBox = document.getElementById('nb-scope');
+      const items = document.getElementById('nb-items');
+      const note = document.getElementById('nb-note');
+      const msg = document.getElementById('nb-msg');
+      const okBtn = document.getElementById('nb-ok');
+      const cancelBtn = document.getElementById('nb-cancel');
+
+      label.value = ''; from.value = ''; to.value = ''; limit.value = '';
+      always.checked = false;
+      msg.textContent = ''; msg.className = 'msg';
+      Array.prototype.forEach.call(daysBox.children, function (c) { c.classList.remove('sel'); });
+
+      // Everything the block could govern, in the same words the rest of the window
+      // uses for it. The value carries the kind, because a window title and an
+      // executable can read identically.
+      const catalog = []
+        .concat((status.extensions || []).map(function (e) { return { kind: 'extension', value: e.name, name: e.label || e.name }; }))
+        .concat((status.domains || []).map(function (d) { return { kind: 'domain', value: d.name, name: d.name }; }))
+        .concat((status.apps || []).map(function (a) { return { kind: 'app', value: a.value, name: a.label || a.value }; }));
+      items.innerHTML = '';
+      catalog.forEach(function (c, i) {
+        const row = document.createElement('div');
+        row.className = 'item';
+        const lab = document.createElement('label');
+        const box = document.createElement('input');
+        box.type = 'checkbox'; box.dataset.idx = String(i);
+        const nm = document.createElement('span');
+        nm.className = 'nm'; nm.textContent = c.name;
+        const kind = document.createElement('span');
+        kind.className = 'kind'; kind.textContent = c.kind;
+        lab.appendChild(box); lab.appendChild(nm);
+        row.appendChild(lab); row.appendChild(kind);
+        items.appendChild(row);
+      });
+
+      let scope = 'all';
+      function paint() {
+        sched.style.display = always.checked ? 'none' : '';
+        items.style.display = scope === 'some' ? '' : 'none';
+        // Three notes for three gates. A limit and a window both make enforcement
+        // less than around the clock, which is why either one costs the password;
+        // saying which of them applies is more use than saying "this may need a
+        // password" and leaving the user to work out why.
+        if (limit.value.trim()) {
+          note.textContent = 'A daily limit lets the apps it covers run for that long each day, and blocks them once the time is used up. That is weaker than blocking them outright, so creating it needs the password.';
+        } else if (always.checked) {
+          note.textContent = 'An always-on block only adds protection, so this is free. Lock it afterwards to make it stick.';
+        } else {
+          note.textContent = 'A schedule enforces what it governs only during its windows — the rest of the day it is not enforced. That is weaker than around the clock, so creating it needs the password.';
+        }
+      }
+      function onScope(e) {
+        const btn = e.target.closest('button[data-scope]');
+        if (!btn) { return; }
+        scope = btn.getAttribute('data-scope');
+        Array.prototype.forEach.call(scopeBox.children, function (c) { c.classList.remove('sel'); });
+        btn.classList.add('sel');
+        paint();
+      }
+      function onDay(e) {
+        const btn = e.target.closest('button[data-day]');
+        if (btn) { btn.classList.toggle('sel'); }
+      }
+      function cleanup() {
+        modal.style.display = 'none';
+        okBtn.removeEventListener('click', onOk);
+        cancelBtn.removeEventListener('click', onCancel);
+        scopeBox.removeEventListener('click', onScope);
+        daysBox.removeEventListener('click', onDay);
+        always.removeEventListener('change', paint);
+        limit.removeEventListener('input', paint);
+        label.removeEventListener('keydown', onKey);
+        modal.removeEventListener('keydown', onKey);
+      }
+      function fail(text) { msg.className = 'msg err'; msg.textContent = text; }
+      function onOk() {
+        const name = label.value.trim();
+        if (!name) { fail('Give the block a name.'); label.focus(); return; }
+        const draft = { label: name, days: [], from: '', to: '', limit: '', extensions: [], domains: [], apps: [] };
+        const lim = limit.value.trim();
+        if (lim) {
+          // Shapes the guard accepts: 45m, 1h30m, 1.5h, or a bare number of minutes.
+          if (!/^(\d+(\.\d+)?\s*[mh]?|\d+h\s*\d+m?)$/i.test(lim)) {
+            fail('A limit looks like 45m, 1h30m, or a number of minutes.'); limit.focus(); return;
+          }
+          draft.limit = lim;
+        }
+        // A limit on its own is a whole rule - "45 minutes a day, whenever you like" -
+        // so leaving both times empty is not a mistake in that case. Without a limit
+        // it is: a block with neither is the always-on kind, which is what the
+        // checkbox is for.
+        const noTimes = !from.value.trim() && !to.value.trim();
+        if (!always.checked && !(lim && noTimes)) {
+          const f = from.value.trim(), t = to.value.trim();
+          if (!/^\d{1,2}:\d{2}$/.test(f) || !/^\d{1,2}:\d{2}$/.test(t)) { fail('Times look like 09:00.'); return; }
+          if (f === t) { fail('A window that starts and ends at the same time never applies.'); return; }
+          draft.from = f; draft.to = t;
+          Array.prototype.forEach.call(daysBox.children, function (c) {
+            if (c.classList.contains('sel')) { draft.days.push(c.getAttribute('data-day')); }
+          });
+        }
+        if (scope === 'some') {
+          Array.prototype.forEach.call(items.querySelectorAll('input[type=checkbox]'), function (box) {
+            if (!box.checked) { return; }
+            const c = catalog[Number(box.dataset.idx)];
+            if (c.kind === 'extension') { draft.extensions.push(c.value); }
+            else if (c.kind === 'domain') { draft.domains.push(c.value); }
+            else { draft.apps.push(c.value); }
+          });
+          if (!draft.extensions.length && !draft.domains.length && !draft.apps.length) {
+            fail('Choose what it governs, or switch back to Everything.');
+            return;
+          }
+        }
+        // The same two rules the guard enforces, answered here so the user is not
+        // refused after typing a password. Only applications can be measured, so a
+        // limit has to name some and nothing else.
+        if (draft.limit && !draft.apps.length) {
+          fail('A time limit has to cover applications — choose the apps it applies to.');
+          return;
+        }
+        if (draft.limit && (draft.extensions.length || draft.domains.length)) {
+          fail('A time limit can only cover applications, not extensions or sites.');
+          return;
+        }
+        cleanup(); resolve(draft);
+      }
+      function onCancel() { cleanup(); resolve(null); }
+      // Escape closes this the way it closes every other prompt in the window.
+      function onKey(e) {
+        if (e.key === 'Enter') { e.preventDefault(); onOk(); }
+        else if (e.key === 'Escape') { onCancel(); }
+      }
+
+      Array.prototype.forEach.call(scopeBox.children, function (c) { c.classList.remove('sel'); });
+      scopeBox.firstElementChild.classList.add('sel');
+      paint();
+      modal.style.display = 'flex';
+      setTimeout(function () { label.focus(); }, 0);
+      okBtn.addEventListener('click', onOk);
+      cancelBtn.addEventListener('click', onCancel);
+      scopeBox.addEventListener('click', onScope);
+      daysBox.addEventListener('click', onDay);
+      always.addEventListener('change', paint);
+      limit.addEventListener('input', paint);
+      label.addEventListener('keydown', onKey);
+      modal.addEventListener('keydown', onKey);
+    });
+  }
+
+  // askLockDuration resolves with a deadline string the guard understands, or
+  // null if the user cancels. The value is passed through untouched so the window
+  // accepts exactly what the CLI does.
+  function askLockDuration(label) {
+    return new Promise(function (resolve) {
+      const modal = document.getElementById('lock-modal');
+      const input = document.getElementById('lock-custom');
+      const lmsg = document.getElementById('lock-modal-msg');
+      const okBtn = document.getElementById('lock-modal-ok');
+      const cancelBtn = document.getElementById('lock-modal-cancel');
+      const choices = document.getElementById('lock-choices');
+      document.getElementById('lock-modal-title').textContent = 'Lock ' + label;
+      input.value = ''; lmsg.textContent = ''; lmsg.className = 'msg';
+      Array.prototype.forEach.call(choices.children, function (c) { c.classList.remove('sel'); });
+      modal.style.display = 'flex';
+      setTimeout(function () { input.focus(); }, 0);
+
+      function cleanup() {
+        modal.style.display = 'none';
+        okBtn.removeEventListener('click', onOk);
+        cancelBtn.removeEventListener('click', onCancel);
+        input.removeEventListener('keydown', onKey);
+      }
+      function onOk() {
+        const v = input.value.trim();
+        if (!v) { lmsg.className = 'msg err'; lmsg.textContent = 'Choose a length, or type one.'; return; }
+        cleanup(); resolve(v);
+      }
+      function onCancel() { cleanup(); resolve(null); }
+      function onKey(e) {
+        if (e.key === 'Enter') { e.preventDefault(); onOk(); }
+        else if (e.key === 'Escape') { onCancel(); }
+      }
+      okBtn.addEventListener('click', onOk);
+      cancelBtn.addEventListener('click', onCancel);
+      input.addEventListener('keydown', onKey);
+    });
+  }
+
   function render(s) {
     current = s;
     const active = !!s.serviceRunning && !s.disabled;
@@ -230,11 +777,15 @@
     document.getElementById('hero-title').textContent =
       paused ? 'Protection paused' : (s.serviceRunning ? 'Protection active' : 'Protection inactive');
     document.getElementById('hero-sub').textContent =
-      paused ? 'You turned protection off. Turn it back on to resume filtering.'
+      paused ? (s.pausedUntil
+                  ? 'Protection is off until ' + s.pausedUntil + '. It turns itself back on then.'
+                  : 'You turned protection off. It stays off until you turn it back on.')
              : (s.serviceRunning ? 'The guard service is running and watching your browsers.'
                                  : 'The guard service is not running.');
 
-    document.getElementById('svc-val').textContent = paused ? 'Paused' : (s.serviceRunning ? 'Running' : 'Stopped');
+    document.getElementById('svc-val').textContent =
+      paused ? (s.pausedUntil ? 'Paused till ' + s.pausedUntil.replace(/,.*/, '') : 'Paused')
+             : (s.serviceRunning ? 'Running' : 'Stopped');
     document.getElementById('locked-val').textContent = s.lockedCount;
 
     // One prominent control: disable when active (weakens -> password), else enable
@@ -271,6 +822,12 @@
       const name = document.createElement('span');
       name.className = 'bname extname';
       name.textContent = e.label || e.name;
+      if (e.scheduled) {
+        const tag = document.createElement('span');
+        tag.className = 'schedtag';
+        tag.textContent = 'scheduled';
+        name.appendChild(tag);
+      }
       const tog = document.createElement('button');
       tog.className = 'toggle ' + (e.enabled ? 'on' : 'off');
       tog.textContent = e.enabled ? 'On' : 'Off';
@@ -279,6 +836,354 @@
       row.appendChild(tog);
       extRows.appendChild(row);
     });
+
+    renderDomains(s);
+    renderApps(s);
+    renderBlocks(s);
+  }
+
+  // renderDomains lists the site block list. A site can be switched on yet not
+  // blocking right now because a schedule has it out of window - that is shown as
+  // "Waiting", because a user who sees "On" and reaches the site otherwise has
+  // every reason to think the app is broken.
+  function renderDomains(s) {
+    const rows = document.getElementById('domain-rows');
+    const empty = document.getElementById('domain-empty');
+    const domains = s.domains || [];
+    rows.innerHTML = '';
+    empty.style.display = domains.length ? 'none' : '';
+
+    domains.forEach(function (d) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      const name = document.createElement('span');
+      name.className = 'dname';
+      name.textContent = d.name;
+      row.appendChild(name);
+
+      if (d.enabled && d.scheduled && !d.blocked) {
+        const badge = document.createElement('span');
+        badge.className = 'badge idlewin';
+        badge.textContent = 'Waiting';
+        badge.title = 'On, but outside its schedule window right now';
+        row.appendChild(badge);
+      }
+
+      const tog = document.createElement('button');
+      tog.className = 'toggle ' + (d.enabled ? 'on' : 'off');
+      tog.textContent = d.enabled ? 'On' : 'Off';
+      tog.style.marginLeft = d.enabled && d.scheduled && !d.blocked ? '8px' : 'auto';
+      tog.addEventListener('click', function () { toggleDomain(d.name, d.enabled); });
+      row.appendChild(tog);
+      rows.appendChild(row);
+    });
+  }
+
+  // addDomain blocks a new site. Free of the password since it only strengthens.
+  async function addDomain() {
+    if (!bound() || !window.go.main.App.BlockDomain) { return; }
+    const input = document.getElementById('domain-input');
+    const value = input.value.trim();
+    if (!value) { setMsg('Type a site to block.', 'err'); input.focus(); return; }
+    setMsg('Approve the Windows permission prompt...');
+    let res;
+    try { res = await window.go.main.App.BlockDomain(value); }
+    catch (e) { res = { ok: false, message: String(e) }; }
+    setMsg(res.message, res.ok ? 'ok' : 'err');
+    if (res.ok) { input.value = ''; }
+    await refresh();
+  }
+
+  // toggleDomain switches one site off (weakens -> password, unless paused) or
+  // back on (strengthens -> free).
+  async function toggleDomain(name, enabled) {
+    if (!bound()) { return; }
+    let res;
+    if (enabled) {
+      if (!current.disabled) {
+        const pw = await askPassword('Enter the password to stop blocking ' + name);
+        if (pw === null) { return; }
+        setMsg('Approve the Windows permission prompt...');
+        try { res = await window.go.main.App.UnblockDomain(name, pw); } catch (e) { res = { ok: false, message: String(e) }; }
+      } else {
+        setMsg('Approve the Windows permission prompt...');
+        try { res = await window.go.main.App.UnblockDomain(name, ''); } catch (e) { res = { ok: false, message: String(e) }; }
+      }
+    } else {
+      setMsg('Approve the Windows permission prompt...');
+      try { res = await window.go.main.App.BlockDomain(name); } catch (e) { res = { ok: false, message: String(e) }; }
+    }
+    setMsg(res.message, res.ok ? 'ok' : 'err');
+    await refresh();
+  }
+
+  // renderApps lists the application block list. Each row says what the rule
+  // actually covers underneath its name, because "Steam" alone does not
+  // distinguish one executable from a whole folder or a window title - and the
+  // difference is the whole reason there are four ways to add one.
+  function renderApps(s) {
+    const rows = document.getElementById('app-rows');
+    const empty = document.getElementById('app-empty');
+    const apps = s.apps || [];
+    rows.innerHTML = '';
+    empty.style.display = apps.length ? 'none' : '';
+
+    apps.forEach(function (a) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      const info = document.createElement('div');
+      info.className = 'ainfo';
+      const name = document.createElement('div');
+      name.className = 'aname';
+      name.textContent = a.label || a.value;
+      const note = document.createElement('div');
+      note.className = 'anote';
+      note.textContent = a.note || '';
+      info.appendChild(name);
+      info.appendChild(note);
+      row.appendChild(info);
+
+      const waiting = a.enabled && a.scheduled && !a.blocked;
+      if (waiting) {
+        const badge = document.createElement('span');
+        badge.className = 'badge idlewin';
+        badge.textContent = 'Waiting';
+        badge.title = 'On, but outside its schedule window right now';
+        row.appendChild(badge);
+      }
+
+      const tog = document.createElement('button');
+      tog.className = 'toggle ' + (a.enabled ? 'on' : 'off');
+      tog.textContent = a.enabled ? 'On' : 'Off';
+      tog.style.marginLeft = waiting ? '8px' : 'auto';
+      tog.addEventListener('click', function () { toggleApp(a); });
+      row.appendChild(tog);
+      rows.appendChild(row);
+    });
+  }
+
+  // fileName is the last path component, used as the friendly label for a picked
+  // file or folder.
+  function fileName(p) {
+    const parts = String(p).split(/[\\/]/).filter(Boolean);
+    return parts.length ? parts[parts.length - 1] : String(p);
+  }
+
+  // blockApp sends one new rule to the guard. Free of the password since it only
+  // strengthens protection; the UAC prompt is the confirmation.
+  async function blockApp(kind, value, label) {
+    if (!bound() || !window.go.main.App.BlockApp) { return; }
+    setMsg('Approve the Windows permission prompt…');
+    let res;
+    try { res = await window.go.main.App.BlockApp(kind, value, label || ''); }
+    catch (e) { res = { ok: false, message: String(e) }; }
+    setMsg(res.message, res.ok ? 'ok' : 'err');
+    await refresh();
+  }
+
+  // The four ways in. Browsing and picking change nothing by themselves, so none
+  // of them prompts until there is something to block.
+  async function addExe() {
+    if (!bound() || !window.go.main.App.BrowseForExe) { return; }
+    let path = '';
+    try { path = await window.go.main.App.BrowseForExe(); } catch (e) { return; }
+    if (!path) { return; }
+    await blockApp('exe', path, fileName(path));
+  }
+
+  async function addFolder() {
+    if (!bound() || !window.go.main.App.BrowseForFolder) { return; }
+    let path = '';
+    try { path = await window.go.main.App.BrowseForFolder(); } catch (e) { return; }
+    if (!path) { return; }
+    await blockApp('folder', path, fileName(path));
+  }
+
+  async function addStoreApp() {
+    if (!bound() || !window.go.main.App.ListStoreApps) { return; }
+    const pick = await askStoreApp();
+    if (!pick) { return; }
+    await blockApp('store', pick.family, pick.name);
+  }
+
+  async function addTitle() {
+    const text = await askText(
+      'Block a window title',
+      'Any window whose title contains this text is closed. Useful for an app that moves its files, or for one window of an app you otherwise want.',
+      'e.g. Solitaire');
+    if (!text) { return; }
+    await blockApp('title', text, text);
+  }
+
+  // toggleApp switches one rule off (weakens -> password, unless paused) or back
+  // on (strengthens -> free).
+  async function toggleApp(app) {
+    if (!bound()) { return; }
+    const label = app.label || app.value;
+    let res;
+    if (app.enabled) {
+      if (!current.disabled) {
+        const pw = await askPassword('Enter the password to unblock ' + label);
+        if (pw === null) { return; }
+        setMsg('Approve the Windows permission prompt…');
+        try { res = await window.go.main.App.UnblockApp(app.kind, app.value, pw); } catch (e) { res = { ok: false, message: String(e) }; }
+      } else {
+        setMsg('Approve the Windows permission prompt…');
+        try { res = await window.go.main.App.UnblockApp(app.kind, app.value, ''); } catch (e) { res = { ok: false, message: String(e) }; }
+      }
+    } else {
+      setMsg('Approve the Windows permission prompt…');
+      try { res = await window.go.main.App.BlockApp(app.kind, app.value, label); } catch (e) { res = { ok: false, message: String(e) }; }
+    }
+    setMsg(res.message, res.ok ? 'ok' : 'err');
+    await refresh();
+  }
+
+  // renderBlocks lists each scheduled block, whether it is enforcing right now,
+  // and its lock. The whole section stays hidden when nothing is scheduled, so
+  // an install that never uses blocks looks exactly as it did before.
+  function renderBlocks(s) {
+    const rows = document.getElementById('block-rows');
+    const empty = document.getElementById('block-empty');
+    const blocks = s.blocks || [];
+    // The section stays visible with nothing in it, because it is now also where
+    // blocks are created - hiding it would hide the way in.
+    empty.style.display = blocks.length ? 'none' : '';
+
+    const usageWarn = document.getElementById('usage-warning');
+    if (s.usageError) {
+      usageWarn.style.display = '';
+      document.getElementById('usage-warning-msg').textContent = s.usageError;
+    } else {
+      usageWarn.style.display = 'none';
+    }
+
+    const warn = document.getElementById('schedule-warning');
+    if (s.scheduleError) {
+      warn.style.display = '';
+      document.getElementById('schedule-warning-msg').textContent = s.scheduleError;
+    } else {
+      warn.style.display = 'none';
+    }
+    rows.innerHTML = '';
+    if (!blocks.length) { return; }
+
+    blocks.forEach(function (b) {
+      const row = document.createElement('div');
+      row.className = 'blockrow' + (b.locked ? ' islocked' : '');
+
+      const info = document.createElement('div');
+      info.className = 'binfo';
+      const title = document.createElement('div');
+      title.className = 'btitle';
+      title.textContent = b.label || b.id;
+      const meta = document.createElement('div');
+      meta.className = 'bmeta';
+      // The limit belongs on this line with the timetable: both answer "when does
+      // this block apply", and a row that showed one without the other would be
+      // describing half the rule.
+      meta.textContent = b.schedule + '  •  ' + b.extensions + (b.limit ? '  •  ' + b.limit : '');
+      info.appendChild(title);
+      info.appendChild(meta);
+
+      const right = document.createElement('div');
+      right.className = 'bright';
+      const badge = document.createElement('span');
+      // Three states. An idle block is not a fault - it is outside its window and
+      // meant to be - and a block with time left today is not idle either: it is
+      // counting down, which is the state the person checking most wants to see.
+      if (b.inBudget) {
+        badge.className = 'badge budget';
+        badge.textContent = (b.left || '0m') + ' left today';
+        badge.title = b.used ? b.used + ' used so far today' : '';
+      } else {
+        badge.className = 'badge ' + (b.active ? 'locked' : 'idle');
+        badge.textContent = b.active ? 'Enforcing' : 'Idle';
+        if (b.limit && b.active && b.used) {
+          // Enforcing *because* the budget ran out, rather than because a window
+          // opened. Saying which is the difference between "working" and "broken".
+          badge.textContent = 'Used up';
+          badge.title = b.used + ' used today';
+        }
+      }
+      right.appendChild(badge);
+
+      if (b.locked) {
+        const lb = document.createElement('span');
+        lb.className = 'badge lockbadge';
+        lb.textContent = 'Locked until ' + b.lockedUntil;
+        right.appendChild(lb);
+      } else {
+        const btn = document.createElement('button');
+        btn.className = 'lockbtn';
+        btn.textContent = 'Lock';
+        btn.addEventListener('click', function () { lockBlock(b.id, b.label || b.id); });
+        right.appendChild(btn);
+        // No Remove on a locked block: the guard refuses it anyway, and offering a
+        // button that always fails reads as a bug rather than as the promise it is.
+        const del = document.createElement('button');
+        del.className = 'lockbtn';
+        del.textContent = 'Remove';
+        del.addEventListener('click', function () { removeBlock(b.id, b.label || b.id); });
+        right.appendChild(del);
+      }
+
+      row.appendChild(info);
+      row.appendChild(right);
+      rows.appendChild(row);
+    });
+  }
+
+  // lockBlock locks a block until a chosen deadline. Free of the password since
+  // it only strengthens protection, but still elevated (UAC).
+  async function lockBlock(id, label) {
+    if (!bound() || !window.go.main.App.LockBlock) { return; }
+    const until = await askLockDuration(label);
+    if (until === null) { return; }
+    setMsg('Approve the Windows permission prompt...');
+    let res;
+    try { res = await window.go.main.App.LockBlock(id, until); }
+    catch (e) { res = { ok: false, message: String(e) }; }
+    setMsg(res.message, res.ok ? 'ok' : 'err');
+    await refresh();
+  }
+
+  // newBlock creates a block from the form. The password is asked for only when a
+  // window was set, because that is the case that weakens protection - an always-on
+  // block is free, and it is the shape you create and then lock.
+  async function newBlock() {
+    if (!bound() || !window.go.main.App.CreateBlock) { return; }
+    const draft = await askBlockDraft(current);
+    if (!draft) { return; }
+    let pw = '';
+    if (draft.from && !current.disabled) {
+      pw = await askPassword('Enter the password to put ' + draft.label + ' on a schedule');
+      if (pw === null) { return; }
+    }
+    setMsg('Approve the Windows permission prompt…');
+    let res;
+    try { res = await window.go.main.App.CreateBlock(draft, pw); }
+    catch (e) { res = { ok: false, message: String(e) }; }
+    setMsg(res.message, res.ok ? 'ok' : 'err');
+    await refresh();
+  }
+
+  // removeBlock deletes a block. It asks for the password even though it usually
+  // restores around-the-clock enforcement: with two blocks over the same thing,
+  // dropping one can narrow when it is enforced.
+  async function removeBlock(id, label) {
+    if (!bound() || !window.go.main.App.RemoveBlock) { return; }
+    let pw = '';
+    if (!current.disabled) {
+      pw = await askPassword('Enter the password to remove ' + label);
+      if (pw === null) { return; }
+    }
+    setMsg('Approve the Windows permission prompt…');
+    let res;
+    try { res = await window.go.main.App.RemoveBlock(id, pw); }
+    catch (e) { res = { ok: false, message: String(e) }; }
+    setMsg(res.message, res.ok ? 'ok' : 'err');
+    await refresh();
   }
 
   // toggleProtection flips overall protection. Disabling weakens it -> ask the
@@ -288,16 +1193,81 @@
     const disabling = current.serviceRunning && !current.disabled;
     let res;
     if (disabling) {
-      const pw = await askPassword('Enter the password to turn protection off');
-      if (pw === null) { return; }
+      const chosen = await askPause();
+      if (chosen === null) { return; }
       setMsg('Approve the Windows permission prompt…');
-      try { res = await window.go.main.App.Disable(pw); } catch (e) { res = { ok: false, message: String(e) }; }
+      try { res = await window.go.main.App.Disable(chosen.password, chosen.spec); }
+      catch (e) { res = { ok: false, message: String(e) }; }
     } else {
       setMsg('Approve the Windows permission prompt…');
       try { res = await window.go.main.App.Enable(); } catch (e) { res = { ok: false, message: String(e) }; }
     }
     setMsg(res.message, res.ok ? 'ok' : 'err');
     await refresh();
+  }
+
+  // askPause collects how long to turn protection off for, and the password, in
+  // one dialog. Resolves to {spec, password} or null if cancelled.
+  //
+  // The durations come from the backend rather than being written here, so the
+  // window and the guard agree on what is offered and the list is decided in one
+  // place. The first choice is preselected: a bounded pause is the one that
+  // cannot be forgotten about, so it should be what you get by just typing the
+  // password and pressing enter.
+  async function askPause() {
+    const modal = document.getElementById('pause-modal');
+    const box = document.getElementById('pause-choices');
+    const pw = document.getElementById('pause-pw');
+    const msg = document.getElementById('pause-msg');
+    const okBtn = document.getElementById('pause-ok');
+    const cancelBtn = document.getElementById('pause-cancel');
+
+    let choices = [];
+    try { choices = (await window.go.main.App.PauseChoices()) || []; } catch (e) { choices = []; }
+    if (!choices.length) { choices = [{ label: 'Until I turn it back on', spec: '' }]; }
+
+    let spec = choices[0].spec;
+    box.innerHTML = '';
+    choices.forEach(function (c, i) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = c.label;
+      if (i === 0) { b.classList.add('sel'); }
+      b.addEventListener('click', function () {
+        Array.prototype.forEach.call(box.children, function (o) { o.classList.remove('sel'); });
+        b.classList.add('sel');
+        spec = c.spec;
+      });
+      box.appendChild(b);
+    });
+
+    return new Promise(function (resolve) {
+      msg.textContent = '';
+      pw.value = '';
+      modal.style.display = 'flex';
+      pw.focus();
+
+      function cleanup() {
+        modal.style.display = 'none';
+        okBtn.removeEventListener('click', onOk);
+        cancelBtn.removeEventListener('click', onCancel);
+        document.removeEventListener('keydown', onKey);
+      }
+      function onOk() {
+        if (!pw.value) { msg.className = 'msg err'; msg.textContent = 'Enter the password.'; pw.focus(); return; }
+        const out = { spec: spec, password: pw.value };
+        cleanup();
+        resolve(out);
+      }
+      function onCancel() { cleanup(); resolve(null); }
+      function onKey(e) {
+        if (e.key === 'Enter') { e.preventDefault(); onOk(); }
+        if (e.key === 'Escape') { onCancel(); }
+      }
+      okBtn.addEventListener('click', onOk);
+      cancelBtn.addEventListener('click', onCancel);
+      document.addEventListener('keydown', onKey);
+    });
   }
 
   // toggleExt flips one extension. Turning off weakens protection -> ask the
@@ -332,6 +1302,10 @@
       return;
     }
     render(await window.go.main.App.GetStatus());
+    // Reload the record too: every action that reaches here has just written an
+    // entry, and a list that needed a second refresh to show it would read as
+    // nothing having happened.
+    await loadActivity();
   }
 
   // loadVersion shows the running build in the footer, e.g. "Extension Guard v1.2.0".
@@ -429,6 +1403,110 @@
     };
     banner.style.display = '';
   }
+
+  // How many activity entries the list shows collapsed and expanded. Expanding
+  // asks the backend again rather than filtering what is already here, because the
+  // point of "Show more" is to reach further back than the first call asked for.
+  const ACT_COLLAPSED = 6;
+  const ACT_EXPANDED = 50;
+  let actLimit = ACT_COLLAPSED;
+
+  // loadActivity fills the Recent activity list. Every value goes in through
+  // textContent: the entries contain sites and window titles somebody typed, and
+  // the record is appendable by any user on the machine (see internal/activity),
+  // so none of it may reach the DOM as markup.
+  async function loadActivity() {
+    if (!bound() || !window.go.main.App.GetActivity) { return; }
+    const rows = document.getElementById('act-rows');
+    const empty = document.getElementById('act-empty');
+    const more = document.getElementById('act-more');
+
+    let list = [];
+    try { list = (await window.go.main.App.GetActivity(actLimit)) || []; } catch (e) { list = []; }
+
+    rows.innerHTML = '';
+    empty.style.display = list.length ? 'none' : '';
+    // Offer "Show more" only when there is plausibly more to show: a list shorter
+    // than the collapsed limit is already everything there is.
+    more.style.display = (actLimit > ACT_COLLAPSED || list.length >= ACT_COLLAPSED) ? '' : 'none';
+    more.textContent = actLimit > ACT_COLLAPSED ? 'Show less' : 'Show more';
+
+    list.forEach(function (e) {
+      const row = document.createElement('div');
+      row.className = 'act ' + (e.severity || 'neutral');
+
+      const dot = document.createElement('span');
+      dot.className = 'dot';
+      row.appendChild(dot);
+
+      const body = document.createElement('div');
+      body.className = 'body';
+      const text = document.createElement('div');
+      text.className = 'text';
+      text.textContent = e.text || '';
+      body.appendChild(text);
+
+      // The detail and who did it share one quiet line; either can be absent.
+      const bits = [];
+      if (e.detail) { bits.push(e.detail); }
+      if (e.actor) { bits.push(e.actor); }
+      if (bits.length) {
+        const sub = document.createElement('div');
+        sub.className = 'sub';
+        sub.textContent = bits.join(' · ');
+        body.appendChild(sub);
+      }
+      row.appendChild(body);
+
+      const when = document.createElement('span');
+      when.className = 'when';
+      when.textContent = e.when || '';
+      row.appendChild(when);
+
+      rows.appendChild(row);
+    });
+
+    await showActivityPath(list.length > 0);
+  }
+
+  // showActivityPath names the file under the list, so a parent who wants to read
+  // or keep the raw record does not have to be told where it is.
+  async function showActivityPath(any) {
+    const el = document.getElementById('act-path');
+    if (!any || !window.go.main.App.ActivityPath) { el.textContent = ''; return; }
+    if (el.dataset.path) { el.textContent = el.dataset.path; return; }
+    try {
+      const p = await window.go.main.App.ActivityPath();
+      el.dataset.path = p ? 'Kept at ' + p : '';
+      el.textContent = el.dataset.path;
+    } catch (e) { el.textContent = ''; }
+  }
+
+  // toggleActivity switches between the short list and the long one.
+  async function toggleActivity() {
+    actLimit = actLimit > ACT_COLLAPSED ? ACT_COLLAPSED : ACT_EXPANDED;
+    await loadActivity();
+  }
+
+  document.getElementById('act-more').addEventListener('click', toggleActivity);
+  document.getElementById('domain-add').addEventListener('click', addDomain);
+  document.getElementById('domain-input').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); addDomain(); }
+  });
+
+  document.getElementById('block-new').addEventListener('click', newBlock);
+  document.getElementById('app-add-exe').addEventListener('click', addExe);
+  document.getElementById('app-add-folder').addEventListener('click', addFolder);
+  document.getElementById('app-add-store').addEventListener('click', addStoreApp);
+  document.getElementById('app-add-title').addEventListener('click', addTitle);
+
+  document.getElementById('lock-choices').addEventListener('click', function (e) {
+    const btn = e.target.closest('button[data-value]');
+    if (!btn) { return; }
+    Array.prototype.forEach.call(this.children, function (c) { c.classList.remove('sel'); });
+    btn.classList.add('sel');
+    document.getElementById('lock-custom').value = btn.getAttribute('data-value');
+  });
 
   document.getElementById('protection-btn').addEventListener('click', toggleProtection);
   document.getElementById('refresh').addEventListener('click', refresh);

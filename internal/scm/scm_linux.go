@@ -22,9 +22,12 @@ const (
 )
 
 type state struct {
-	GuardDisabled bool   `json:"guardDisabled"`
-	GuardUpdating bool   `json:"guardUpdating"`
-	PasswordHash  string `json:"passwordHash"`
+	GuardDisabled bool `json:"guardDisabled"`
+	GuardUpdating bool `json:"guardUpdating"`
+	// GuardPausedUntil is the raw pause value; see pause.go for what it means.
+	GuardPausedUntil string `json:"guardPausedUntil,omitempty"`
+	PasswordHash     string `json:"passwordHash"`
+	TrustedConfig    string `json:"trustedConfig,omitempty"`
 }
 
 func statePath() string { return filepath.Join(stateDir, stateFile) }
@@ -103,6 +106,16 @@ func SetUpdating(v bool) error {
 // IsUpdating reports whether an update is currently in progress.
 func IsUpdating() bool { return loadState().GuardUpdating }
 
+// setPauseValue and pauseValue are the raw store for the pause state; pause.go
+// holds what the string means.
+func setPauseValue(v string) error {
+	s := loadState()
+	s.GuardPausedUntil = v
+	return saveState(s)
+}
+
+func pauseValue() string { return loadState().GuardPausedUntil }
+
 // SetPasswordHash stores the bcrypt hash of the uninstall password.
 func SetPasswordHash(hash string) error {
 	s := loadState()
@@ -122,6 +135,30 @@ func GetPasswordHash() (string, bool) {
 func ClearPasswordHash() error {
 	s := loadState()
 	s.PasswordHash = ""
+	return saveState(s)
+}
+
+// SetTrustedConfig stores the config the guard considers authoritative, in the
+// root-owned (0600) state file rather than the world-readable JSON next to the
+// binary. See the Windows implementation for what this does and does not buy.
+func SetTrustedConfig(data []byte) error {
+	s := loadState()
+	s.TrustedConfig = string(data)
+	return saveState(s)
+}
+
+// GetTrustedConfig returns the trusted config and whether one is stored.
+func GetTrustedConfig() ([]byte, bool) {
+	if c := loadState().TrustedConfig; c != "" {
+		return []byte(c), true
+	}
+	return nil, false
+}
+
+// ClearTrustedConfig removes the trusted copy (after a verified uninstall).
+func ClearTrustedConfig() error {
+	s := loadState()
+	s.TrustedConfig = ""
 	return saveState(s)
 }
 
