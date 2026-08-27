@@ -79,7 +79,7 @@ func blockDomainCmd(cfg policy.Config, cfgPath, name string) {
 	if governed := governingBlocks(cfg, host); governed != "" {
 		fmt.Printf("(scheduled by %s, so it is only enforced during those windows)\n", governed)
 	}
-	printFirefoxNote()
+	printRestartNote()
 }
 
 // unblockDomainCmd stops enforcing a domain, keeping it in the list so it can be
@@ -103,19 +103,26 @@ func unblockDomainCmd(cfg policy.Config, cfgPath, name, password string) {
 	must(enforce.Default().Apply(activeNow(cfg)))
 	activity.Record(activity.Event{Kind: activity.DomainUnblocked, Target: host})
 	fmt.Printf("unblocked: %s is no longer filtered\n", host)
-	printFirefoxNote()
+	printRestartNote()
 }
 
-// printFirefoxNote says so when Firefox is open, because Firefox reads its
-// policies once at startup and cannot be made to re-read them - see
-// policy.FirefoxRunning. Chrome, Edge and Brave are refreshed as part of applying
-// the change, so they need nothing said about them; staying quiet about Firefox
-// would mean reporting a block that is not blocking in the browser the user is
-// looking at.
-func printFirefoxNote() {
-	if policy.FirefoxRunning() {
-		fmt.Println("(Firefox picks this up the next time it starts; the other browsers already have it)")
+// printRestartNote says so when Firefox or Zen is open, because Mozilla's policy
+// engine reads its settings once at startup and cannot be made to re-read them -
+// see policy.GeckoRunning. Chrome, Edge and Brave are refreshed as part of
+// applying the change, so they need nothing said about them; staying quiet about
+// the others would mean reporting a block that is not blocking in the browser the
+// user is looking at.
+func printRestartNote() {
+	running := policy.GeckoRunning()
+	if len(running) == 0 {
+		return
 	}
+	verb, subject := "picks", "it starts"
+	if len(running) > 1 {
+		verb, subject = "pick", "they start"
+	}
+	fmt.Printf("(%s %s this up the next time %s; the other browsers already have it)\n",
+		policy.BrowserNames(running), verb, subject)
 }
 
 // governingBlocks names the blocks that put a domain on a schedule, so a user who

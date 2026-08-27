@@ -57,7 +57,7 @@ func allowedCmd(cfg policy.Config) {
 	if !a.On {
 		fmt.Println("\n(the mode is off, so these are not doing anything; turn it on with `guard allow-only on`)")
 	}
-	printFirefoxNote()
+	printRestartNote()
 }
 
 // allowOnlyCmd turns the mode on or off. On only strengthens - it blocks the entire
@@ -109,7 +109,7 @@ func allowOnlyCmd(cfg policy.Config, cfgPath, arg, password string) {
 		fmt.Println("allowed sites only: off - the web is reachable again, except what is on the block list")
 	}
 	printUnmanagedAllowNote(cfg)
-	printFirefoxNote()
+	printRestartNote()
 }
 
 // allowCmd puts a site on the allowlist. This *weakens* protection - it opens
@@ -145,7 +145,7 @@ func allowCmd(cfg policy.Config, cfgPath, name, password string) {
 	if !cfg.Allowing().On {
 		fmt.Println("(allowed sites only is off, so this is not letting anything through yet)")
 	}
-	printFirefoxNote()
+	printRestartNote()
 }
 
 // unallowCmd takes a site off the allowlist, closing it again. That only
@@ -164,7 +164,7 @@ func unallowCmd(cfg policy.Config, cfgPath, name string) {
 	must(enforce.Default().Apply(activeNow(cfg)))
 	activity.Record(activity.Event{Kind: activity.SiteUnallowed, Target: host})
 	fmt.Printf("no longer allowed: %s\n", host)
-	printFirefoxNote()
+	printRestartNote()
 }
 
 // allowSummary describes the mode for the activity record, so a line in the log

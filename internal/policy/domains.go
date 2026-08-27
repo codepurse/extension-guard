@@ -12,8 +12,9 @@ import (
 //     host, every subdomain, and every scheme and path under it - so "reddit.com"
 //     covers www.reddit.com, old.reddit.com and https://reddit.com/r/whatever
 //     with one entry.
-//   - Firefox: WebsiteFilter/Block, which takes match patterns. "*://*.reddit.com/*"
-//     covers the bare host and its subdomains the same way.
+//   - The Firefox family (Firefox, Zen): WebsiteFilter/Block, which takes match
+//     patterns. "*://*.reddit.com/*" covers the bare host and its subdomains the
+//     same way, written under each browser's own policy root.
 //
 // Why here and not the hosts file: a hosts entry is resolved by the OS, and both
 // Chrome and Firefox can be configured to use DNS-over-HTTPS, which bypasses the
@@ -29,9 +30,10 @@ import (
 // Writing the policy is only half of it: a browser has to re-read it. Chromium is
 // nudged into doing that immediately (see gprefresh_windows.go), and then applies
 // the change to the next navigation - an already-open tab keeps showing what it
-// loaded until it is reloaded. Firefox reads its policies only at startup and has
-// no reload path, so a change made while it is running waits for the next start,
-// which is why the window and the CLI say so when Firefox is open.
+// loaded until it is reloaded. Mozilla's engine reads its policies only at startup
+// and has no reload path, so a change made while Firefox or Zen is running waits
+// for the next start, which is why the window and the CLI say so when one of them
+// is open.
 
 // Domain is one blocked site. Name is a hostname; blocking it also blocks every
 // subdomain. Disabled keeps it in the list but stops enforcing it, exactly as it

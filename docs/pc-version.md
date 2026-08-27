@@ -13,8 +13,15 @@ extension:
 
 - **Chromium** (Chrome, Edge, Brave): `ExtensionInstallForcelist` under
   `HKLM\SOFTWARE\Policies\<vendor>\<browser>`.
-- **Firefox**: `ExtensionSettings` with `installation_mode = force_installed`
-  under `HKLM\SOFTWARE\Policies\Mozilla\Firefox`.
+- **Firefox family** (Firefox, Zen): `ExtensionSettings` with
+  `installation_mode = force_installed` under
+  `HKLM\SOFTWARE\Policies\Mozilla\<application name>` — that is
+  `...\Mozilla\Firefox` and `...\Mozilla\Zen`. A fork reads the same policies
+  from a key named after itself, and installs the same add-on from
+  addons.mozilla.org, so it needs no target of its own in the config. Forks the
+  guard has never heard of are covered by reading the name out of the
+  `application.ini` in their install directory rather than from a list in the
+  binary — see `internal/policy/gecko.go`.
 
 A force-installed extension shows **no Remove or Disable button** in the browser.
 

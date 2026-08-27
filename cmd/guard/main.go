@@ -127,7 +127,7 @@ func main() {
 		fmt.Println("policy removed")
 	case "detect":
 		detected := policy.DetectBrowsers()
-		for _, k := range []policy.Kind{policy.Chrome, policy.Edge, policy.Brave, policy.Firefox} {
+		for _, k := range policy.AllKinds() {
 			fmt.Printf("  %-8s %v\n", k, detected[k])
 		}
 	case "browsers":

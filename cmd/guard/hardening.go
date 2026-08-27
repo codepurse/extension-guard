@@ -85,7 +85,7 @@ func hardenCmd(cfg policy.Config, cfgPath, what, level, password string) {
 	activity.Record(activity.Event{Kind: activity.HardeningEnabled, Target: knob.ID, Detail: state})
 	fmt.Printf("%s: %s (%s)\n", knob.ID, state, browsersFor(knob.ID))
 	fmt.Printf("\n%s\n", knob.Note)
-	printFirefoxNote()
+	printRestartNote()
 }
 
 // unhardenCmd turns one setting off, which weakens protection, so it takes the
@@ -119,7 +119,7 @@ func unhardenCmd(cfg policy.Config, cfgPath, what, password string) {
 	if knob.ID == policy.KnobPrivateBrowsing {
 		fmt.Println("(private windows work again, and a locked extension does not run in one)")
 	}
-	printFirefoxNote()
+	printRestartNote()
 }
 
 // browsersFor names the browsers a setting can actually be enforced in, so the
@@ -127,7 +127,7 @@ func unhardenCmd(cfg policy.Config, cfgPath, what, password string) {
 // applies.
 func browsersFor(knobID string) string {
 	var in []string
-	for _, k := range append(append([]policy.Kind{}, policy.ChromiumKinds...), policy.Firefox) {
+	for _, k := range policy.AllKinds() {
 		if policy.KnobSupported(knobID, k) {
 			in = append(in, string(k))
 		}

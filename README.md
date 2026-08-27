@@ -384,6 +384,14 @@ shell. The status UI elevates via **pkexec** (PolicyKit) instead of UAC.
 - Real-time tamper watching isn't wired up on Linux yet; the 30s backstop
   re-apply covers it. macOS is not started (needs an Apple Developer account +
   notarization).
+- **The Firefox family is Firefox alone here.** Zen, and the fork discovery that
+  covers Floorp/LibreWolf/Waterfox on Windows, both rest on a registry key named
+  after the application. Linux has no equivalent: Mozilla's engine reads a fork's
+  policies from the `distribution` directory inside the install, and where that
+  is depends on how it was installed (distro package, tarball in a home
+  directory, a flatpak the guard cannot write into at all). So the Linux build
+  lists Firefox and nothing else, rather than showing rows for browsers nothing
+  is written for — see `geckoBrowsers` in `internal/policy/policy_linux.go`.
 
 ## Config — extension-ids.json
 
@@ -473,7 +481,7 @@ guard unharden private-browsing        # password (unless protection is paused)
 
 | Setting | What it pins | Where |
 |---|---|---|
-| `private-browsing` | No Incognito or private windows, and no guest profiles. Brave's *private window with Tor* too, which the Chromium switch does not describe. | chrome, edge, brave, firefox |
+| `private-browsing` | No Incognito or private windows, and no guest profiles. Brave's *private window with Tor* too, which the Chromium switch does not describe. | chrome, edge, brave, firefox, zen |
 | `safe-search` | Google and Bing SafeSearch, and YouTube's restricted mode. `-level` takes `moderate` or `strict`. | chrome, edge, brave |
 
 **The hole is reported whether or not you close it.** `guard verify`, `guard
@@ -498,9 +506,10 @@ force-install reaches every named profile. It is only the two windows that carry
 extensions that had to be closed.
 
 **Firefox has no SafeSearch policy** — not a preference to lock, not an
-`ExtensionSettings` entry, nothing. So that setting is not enforced there, and
-`guard hardening` and the window both say "not enforced in firefox" rather than
-showing a row that looks applied. `guard verify` reports `not available in firefox`
+`ExtensionSettings` entry, nothing, and Zen inherits the gap it was forked from.
+So that setting is not enforced in either, and `guard hardening` and the window
+both say "not enforced in firefox, zen" rather than showing a row that looks
+applied. `guard verify` reports `not available in firefox`
 for the same reason, which is a different fact from `not configured`.
 
 **These are not schedulable.** A block narrows what is enforced during declared
@@ -838,9 +847,11 @@ could ship before the certificate; shipping this to end users should wait for it
 
 ## Browsers the guard cannot manage
 
-Everything above works by writing policy that **Chrome, Edge, Brave and Firefox
-read**. A fifth browser reads none of it: no locked extension, no blocked site,
-no filtering at all. Install Opera and every entry on the block list is one click
+Everything above works by writing policy that **Chrome, Edge, Brave, Firefox and
+Zen read** — and, since the guard asks each Firefox fork what it is called, any
+fork installed here as well (see [below](#zen-and-firefox-forks-generally)). A
+browser outside that reads none of it: no locked extension, no blocked site, no
+filtering at all. Install Opera and every entry on the block list is one click
 away, while the status window still says protection is active — a true statement
 doing the work of a false one.
 
@@ -853,10 +864,11 @@ guard browsers     # every browser here, and what the guard can do about each
 ```
   browser                            state      executable
   Internet Explorer                  reachable  C:\Program Files\Internet Explorer\iexplore.exe
-  Zen Browser                        reachable  C:\Program Files\Zen Browser\zen.exe
+  Opera Stable                       reachable  C:\Users\kid\AppData\Local\Programs\Opera\opera.exe
   Google Chrome                      filtered   C:\Program Files\Google\Chrome\Application\chrome.exe
   Microsoft Edge                     filtered   C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe
   Mozilla Firefox                    filtered   C:\Program Files\Mozilla Firefox\firefox.exe
+  Zen Browser                        filtered   C:\Program Files\Zen Browser\zen.exe
 ```
 
 | state | meaning |
@@ -876,7 +888,7 @@ see is one the household argues about instead of closing.
 Blocking them is an ordinary category:
 
 ```sh
-guard categories browsers          # see all 17 applications and 11 sites first
+guard categories browsers          # see all 16 applications and 10 sites first
 guard block-category browsers      # admin; no password - it only adds protection
 ```
 
@@ -888,6 +900,12 @@ executable to open a page with. The guard reads it from `HKLM`, from
 `WOW6432Node` (a 32-bit browser on 64-bit Windows), and from `HKCU` — that last
 one matters most, because a per-user install needs no administrator and is
 therefore exactly the install a standard account can perform for itself.
+
+The scan does one more read than that. A registration the executable name does
+not identify is looked up in its own install directory — `application.ini`, next
+to the exe — so a Firefox fork can be classified by what it calls itself. That is
+what moves a fork out of this list and into the filtered ones; see
+[Zen, and Firefox forks generally](#zen-and-firefox-forks-generally).
 
 This is a different question from `guard detect`, and both are worth having.
 `detect` asks *is Chrome here*, from a fixed list of four, to know whether a
@@ -906,10 +924,72 @@ decide whether a re-apply corrected anything — a row that is present and can
 never be enforced would read as permanent tamper and log a correction every 30
 seconds for as long as Opera stayed installed.
 
+### Zen, and Firefox forks generally
+
+Zen was on that block list until it stopped needing to be. Mozilla's policy
+engine does not read one shared key: it reads
+`SOFTWARE\Policies\Mozilla\<application name>` — `...\Mozilla\Firefox` in
+Firefox, `...\Mozilla\Zen` in Zen. Write the same `ExtensionSettings`,
+`WebsiteFilter` and `DisablePrivateBrowsing` values under Zen's own root and it
+honours every one of them, from the same add-on on addons.mozilla.org — so
+`extension-ids.json` needs no `zen` block at all: Zen force-installs the
+`firefox` target exactly as written, and a config from before this still encodes
+byte for byte the way it did.
+
+If you blocked the **Unmanaged browsers** category before this, your config
+still carries the `zen.exe` rule it expanded into — a category becomes ordinary
+rules at the moment it is added, and nothing rewrites them later. Zen is then
+filtered *and* closed on sight, which is not wrong so much as pointless: turn
+that rule off with `guard unblock-app zen.exe` (it needs the password, since it
+takes protection away) if you would rather have the filtering than the block.
+
+The other forks — Floorp, LibreWolf, Waterfox, and whatever ships next year —
+are covered without being named anywhere, because the guard asks instead of
+guessing. Every Gecko install ships an `application.ini` beside its executable
+with the name in it:
+
+```ini
+[App]
+Name=LibreWolf
+
+[Gecko]
+MinVersion=145.0
+```
+
+So when the browser scan finds a registration it does not recognise, it reads
+that file. A browser that declares a name **and** a `[Gecko]` section gets
+`SOFTWARE\Policies\Mozilla\<that name>` written for it, a row in `guard verify`,
+and every policy Firefox gets. One that declares neither stays in the unmanaged
+list, where `guard browsers` reports it as a hole to block.
+
+What that buys is that the guess is never made. A wrong policy key does not fail
+loudly: the write succeeds, verification passes — it verifies that the policy was
+*written*, which it was — and the browser reads a different key and carries none
+of it. `filtered` over a browser enforcing nothing is worse than the block the
+category already applies, so the name has to come from the browser itself.
+
+The name is refused unless it is a plain application name — no separators, no
+control characters, nothing over 40 characters. It arrives from a file inside the
+browser's own directory, which for a per-user install is a directory the person
+being filtered can write, and it ends up as part of a registry path under HKLM.
+
+Two limits, stated here rather than discovered later:
+
+| Limit | Why |
+|---|---|
+| **Only what is installed** | Firefox and Zen get their keys whether or not they are on the machine, so the lock is already waiting the day one is installed. A discovered fork gets its key on the first reconcile *after* it appears. |
+| **Per-machine installs, from the service** | The registration scan reads the calling user's `HKCU`, so the service — running as LocalSystem — sees per-machine installs and not a per-user one. The window and the CLI run as the person whose machine it is and see both, so a per-user fork shows up there and an elevated `guard apply` writes its key. |
+
+Blocking is still available and still means something stronger: a filtered
+browser runs, a blocked one does not. The **Unmanaged browsers** category still
+names Floorp, LibreWolf, Waterfox and the rest, and a browser that is both shows
+as `blocked` in `guard browsers`, because that is what the person in front of it
+sees.
+
 ### What the category covers, and what it cannot
 
 It names browsers that install under **their own executable name** — Opera and
-Opera GX, Vivaldi, Zen, Floorp, LibreWolf, Waterfox, Pale Moon, Basilisk, the
+Opera GX, Vivaldi, Floorp, LibreWolf, Waterfox, Pale Moon, Basilisk, the
 Avast/AVG/CCleaner browsers, Naver Whale, Maxthon, UC Browser, Slimjet, and
 Internet Explorer. Most entries also block the vendor's download page, since
 blocking the program alone leaves installing it again open.

@@ -86,8 +86,8 @@ var Knobs = []Knob{
 		Note: "This is the bypass that makes a locked extension optional: an extension cannot be " +
 			"force-installed into an Incognito or private window, and a guest profile carries no " +
 			"extensions at all, so every filter the guard installs is one keystroke from being off. " +
-			"Turning this on disables private windows and guest profiles in Chrome, Edge, Brave and " +
-			"Firefox. It does not cover a browser the guard writes no policy for - run " +
+			"Turning this on disables private windows and guest profiles in Chrome, Edge, Brave, " +
+			"Firefox and Zen. It does not cover a browser the guard writes no policy for - run " +
 			"`guard browsers` for those - and it leaves ordinary named profiles alone, which need no " +
 			"blocking because a machine-wide force-install reaches all of them.",
 	},
@@ -95,7 +95,8 @@ var Knobs = []Knob{
 		ID:    KnobSafeSearch,
 		Label: "SafeSearch and restricted mode",
 		Note: "Forces Google and Bing SafeSearch and YouTube's restricted mode in Chrome, Edge and " +
-			"Brave. Firefox has no policy for any of it, so this is not enforced there and " +
+			"Brave. The Firefox family has no policy for any of it, so this is not enforced in " +
+			"Firefox or Zen and " +
 			"`guard hardening` says so rather than reporting a setting that is not applied. It " +
 			"filters search results and YouTube; it is not a substitute for the block list, and a " +
 			"site reached directly is unaffected.",
@@ -108,20 +109,34 @@ var Knobs = []Knob{
 // it - a knob a browser has no setting for must not be reported as enforced on
 // either platform.
 //
-// Firefox is absent from safe-search because Mozilla ships no policy for it.
-// There is no Preferences entry to lock either: SafeSearch is not a Firefox
-// preference, it is something Google and Bing decide from the request. Naming the
-// gap here is what lets `guard hardening` say "not available" instead of showing a
-// row that looks enforced.
+// The Firefox family is absent from safe-search because Mozilla ships no policy
+// for it, and a fork inherits the gap. There is no Preferences entry to lock
+// either: SafeSearch is not a Firefox preference, it is something Google and Bing
+// decide from the request. Naming the gap here is what lets `guard hardening` say
+// "not available" instead of showing a row that looks enforced.
 var knobSupport = map[string][]Kind{
-	KnobPrivateBrowsing: {Chrome, Edge, Brave, Firefox},
+	KnobPrivateBrowsing: {Chrome, Edge, Brave, Firefox, Zen},
 	KnobSafeSearch:      {Chrome, Edge, Brave},
 }
 
 // KnobSupported reports whether a knob can be enforced in a browser at all.
+//
+// A fork found on this machine is not in the table above and cannot be: nobody
+// listed it. It is answered for as the Firefox it is a fork of - private
+// browsing yes, SafeSearch no - because that is a fact about Mozilla's policy
+// engine, which is the thing every fork inherits along with the gap.
 func KnobSupported(id string, k Kind) bool {
-	for _, supported := range knobSupport[id] {
-		if supported == k {
+	supported := knobSupport[id]
+	for _, s := range supported {
+		if s == k {
+			return true
+		}
+	}
+	if !k.Gecko() {
+		return false
+	}
+	for _, s := range supported {
+		if s == Firefox {
 			return true
 		}
 	}
@@ -139,7 +154,7 @@ func (h Hardening) Gaps() []string {
 			continue
 		}
 		var missing []string
-		for _, k := range append(append([]Kind{}, ChromiumKinds...), Firefox) {
+		for _, k := range AllKinds() {
 			if !KnobSupported(knob.ID, k) {
 				missing = append(missing, string(k))
 			}

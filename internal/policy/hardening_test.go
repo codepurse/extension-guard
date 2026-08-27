@@ -162,13 +162,18 @@ func TestHardenWeakens(t *testing.T) {
 }
 
 func TestKnobSupportAndGaps(t *testing.T) {
-	for _, k := range []Kind{Chrome, Edge, Brave, Firefox} {
+	for _, k := range []Kind{Chrome, Edge, Brave, Firefox, Zen} {
 		if !KnobSupported(KnobPrivateBrowsing, k) {
 			t.Errorf("private-browsing reported unsupported in %s", k)
 		}
 	}
-	if KnobSupported(KnobSafeSearch, Firefox) {
-		t.Error("safe-search reported supported in Firefox, which has no policy for it")
+	// A fork inherits the gap it forked from: neither has a SafeSearch policy, and
+	// claiming one for Zen because it is newer would show a row as enforced that
+	// nothing enforces.
+	for _, k := range GeckoKinds {
+		if KnobSupported(KnobSafeSearch, k) {
+			t.Errorf("safe-search reported supported in %s, which has no policy for it", k)
+		}
 	}
 
 	// A knob that is off produces no gap - the note is about what is being enforced

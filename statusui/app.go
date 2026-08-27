@@ -621,7 +621,7 @@ func (a *App) BlockDomain(name string) ActionResult {
 	}
 	return a.execGuard(
 		[]string{"-config", a.cfgPath, "block-domain", name},
-		withFirefoxNote("Blocked, including every subdomain."))
+		withRestartNote("Blocked, including every subdomain."))
 }
 
 // UnblockDomain stops filtering a site, keeping it in the list so it can be
@@ -641,20 +641,25 @@ func (a *App) UnblockDomain(name, password string) ActionResult {
 		args = append(args, pw...)
 	}
 	args = append(args, "unblock-domain", name)
-	return a.execGuard(args, withFirefoxNote(name+" is no longer filtered."))
+	return a.execGuard(args, withRestartNote(name+" is no longer filtered."))
 }
 
-// withFirefoxNote adds the one caveat a site block still has. Chrome, Edge and
+// withRestartNote adds the one caveat a site block still has. Chrome, Edge and
 // Brave are made to re-read their policy as part of applying the change, so they
-// honour it within a second or two - but Firefox reads its policies only when it
-// starts and offers no way to reload them, so a change made while Firefox is open
-// does not reach it until it is restarted. Saying so only when Firefox is actually
-// running keeps the message off the machines it does not apply to.
-func withFirefoxNote(msg string) string {
-	if !policy.FirefoxRunning() {
+// honour it within a second or two - but Firefox and Zen read their policies only
+// when they start and offer no way to reload them, so a change made while one of
+// them is open does not reach it until it is restarted. Naming only the ones
+// actually running keeps the message off the machines it does not apply to.
+func withRestartNote(msg string) string {
+	running := policy.GeckoRunning()
+	if len(running) == 0 {
 		return msg
 	}
-	return msg + " Firefox applies this the next time it starts."
+	verb, subject := "applies", "it starts"
+	if len(running) > 1 {
+		verb, subject = "apply", "they start"
+	}
+	return fmt.Sprintf("%s %s %s this the next time %s.", msg, policy.BrowserNames(running), verb, subject)
 }
 
 // BlockApp adds an application to the block list. Free of the password - it only
@@ -839,7 +844,7 @@ func hardeningMissing(knobID string) string {
 
 func hardeningKinds(knobID string, supported bool) []string {
 	var out []string
-	for _, k := range append(append([]policy.Kind{}, policy.ChromiumKinds...), policy.Firefox) {
+	for _, k := range policy.AllKinds() {
 		if policy.KnobSupported(knobID, k) == supported {
 			out = append(out, string(k))
 		}
@@ -881,7 +886,7 @@ func (a *App) Harden(id, level, password string) ActionResult {
 		args = append(args, "-level", level)
 	}
 	args = append(args, "harden", knob.ID)
-	return a.execGuard(args, withFirefoxNote(knob.Label+" is pinned."))
+	return a.execGuard(args, withRestartNote(knob.Label+" is pinned."))
 }
 
 // HardenNeedsPassword lets the window ask for the password only when the change
@@ -916,7 +921,7 @@ func (a *App) Unharden(id, password string) ActionResult {
 	if knob.ID == policy.KnobPrivateBrowsing {
 		msg += " Private windows work again, and a locked extension does not run in one."
 	}
-	return a.execGuard(args, withFirefoxNote(msg))
+	return a.execGuard(args, withRestartNote(msg))
 }
 
 // AllowOnly turns the allowed-sites-only mode on or off.
@@ -954,7 +959,7 @@ func (a *App) AllowOnly(on bool, password string) ActionResult {
 	} else if len(a.cfg.Allowing().AllowedSites()) == 0 {
 		msg = "Every site is blocked now - the allowlist is empty. Add the ones you need below."
 	}
-	return a.execGuard(args, withFirefoxNote(msg))
+	return a.execGuard(args, withRestartNote(msg))
 }
 
 // Allow lets a site through the mode. This is the one "add" in the window that
@@ -985,7 +990,7 @@ func (a *App) Allow(name, password string) ActionResult {
 		args = append(args, pw...)
 	}
 	args = append(args, "allow", name)
-	return a.execGuard(args, withFirefoxNote("Allowed, including every subdomain."))
+	return a.execGuard(args, withRestartNote("Allowed, including every subdomain."))
 }
 
 // Unallow closes a site again. Free of the password - it only strengthens, the
@@ -996,7 +1001,7 @@ func (a *App) Unallow(name string) ActionResult {
 	}
 	return a.execGuard(
 		[]string{"-config", a.cfgPath, "unallow", name},
-		withFirefoxNote(name+" is no longer allowed through."))
+		withRestartNote(name+" is no longer allowed through."))
 }
 
 // AllowNeedsPassword lets the window prompt only when the change actually calls for

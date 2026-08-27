@@ -13,7 +13,14 @@ func withBrowsers(t *testing.T, list ...InstalledBrowser) {
 	t.Helper()
 	prev := browserScan
 	browserScan = func() []InstalledBrowser { return list }
-	t.Cleanup(func() { browserScan = prev })
+	// The discovered browsers are held for a few seconds (see geckoBrowsers), and
+	// a cache filled by the previous test is the machine this one did not
+	// describe. Dropped on the way in and on the way out.
+	resetGeckoBrowsers()
+	t.Cleanup(func() {
+		browserScan = prev
+		resetGeckoBrowsers()
+	})
 }
 
 // opera is the ordinary unmanaged browser these tests use, installed where a
@@ -36,15 +43,21 @@ func chrome() InstalledBrowser {
 }
 
 // Classification decides whether a browser is a hole or not, so it has to know
-// exactly the four the guard writes policy for and nothing else. A false
+// exactly the ones the guard writes policy for and nothing else. A false
 // "managed" is the expensive direction: it means the report says the machine is
 // covered when it is not.
+//
+// The Firefox forks in the unmanaged list below are the ones this matters most
+// for. Zen reads the policies the guard writes and is classified; LibreWolf and
+// Waterfox are the same shape of browser and are not, because where they read
+// their policies from has not been checked - see GeckoKinds.
 func TestClassifyBrowserRecognizesOnlyWhatTheGuardWritesPolicyFor(t *testing.T) {
 	managed := map[string]Kind{
 		"chrome.exe":  Chrome,
 		"msedge.exe":  Edge,
 		"brave.exe":   Brave,
 		"firefox.exe": Firefox,
+		"zen.exe":     Zen,
 	}
 	for exe, want := range managed {
 		if got := ClassifyBrowser(exe); got != want {
@@ -292,12 +305,12 @@ func TestUnblockedBrowsersIgnoresARegistrationWhoseFileIsGone(t *testing.T) {
 func TestVanishedBrowsersOnlyReportsWhatWasBlocked(t *testing.T) {
 	blocked := InstalledBrowser{Name: "Opera Stable", Exe: `C:\gone\opera.exe`, Missing: true}
 	never := InstalledBrowser{Name: "Vivaldi", Exe: `C:\gone\vivaldi.exe`, Missing: true}
-	present := InstalledBrowser{Name: "Zen Browser", Exe: `C:\here\zen.exe`}
+	present := InstalledBrowser{Name: "Naver Whale", Exe: `C:\here\whale.exe`}
 	withBrowsers(t, blocked, never, present)
 
 	cfg := Config{Apps: []App{
 		{Kind: AppExe, Value: "opera.exe"},
-		{Kind: AppExe, Value: "zen.exe"},
+		{Kind: AppExe, Value: "whale.exe"},
 	}}
 	got := cfg.VanishedBrowsers()
 	if len(got) != 1 {

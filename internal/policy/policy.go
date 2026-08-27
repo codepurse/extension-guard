@@ -20,14 +20,72 @@ const (
 	Edge    Kind = "edge"
 	Brave   Kind = "brave"
 	Firefox Kind = "firefox"
+	Zen     Kind = "zen"
 )
 
 // ChromiumKinds are the Chromium-based browsers that share the
 // ExtensionInstallForcelist policy mechanism.
 var ChromiumKinds = []Kind{Chrome, Edge, Brave}
 
+// GeckoKinds are the Firefox-family browsers the guard knows by name, which
+// share Mozilla's policy engine: ExtensionSettings to force-install,
+// WebsiteFilter to block sites, DisablePrivateBrowsing to close the window a
+// locked extension does not run in.
+//
+// Zen is in it because it reads all of that. It is a Firefox fork, and Mozilla's
+// policy engine reads its settings from a key named after the application -
+// SOFTWARE\Policies\Mozilla\Zen rather than ...\Mozilla\Firefox - so the same
+// policies apply to it once they are written in the right place. That is the
+// whole difference, and it is why Zen needs no extension targets of its own: see
+// Extension.Target.
+//
+// It is not the whole family. The other forks - Floorp, LibreWolf, Waterfox, and
+// whatever ships next year - are found on the machine instead of being listed
+// here, by asking each install what it calls itself: see gecko.go. This list is
+// what the guard writes policy for whether or not it is installed; discovery is
+// what covers the rest once they are.
+var GeckoKinds = []Kind{Firefox, Zen}
+
+// AllKinds is every browser the guard writes policy for on this machine, which
+// is what a status table has a row for and what a hardening gap is measured
+// against.
+//
+// The Gecko half is geckoBrowsers() rather than GeckoKinds, and the difference is
+// the point twice over. On Windows it is longer than the list - a fork found on
+// the machine is written for, and has a row, without anybody adding a line. On
+// Linux it is shorter, because there is nowhere settled to write a fork's
+// policies yet (see policy_linux.go), and listing one there would have the window
+// claim a browser nothing is written for.
+//
+// It returns a fresh slice each call so a caller appending to it cannot reach the
+// package's own lists - which is what the append(append([]Kind{}, ...)) this
+// replaced was spelling out at every call site.
+func AllKinds() []Kind {
+	gecko := geckoBrowsers()
+	out := make([]Kind, 0, len(ChromiumKinds)+len(gecko))
+	out = append(out, ChromiumKinds...)
+	return append(out, geckoKinds(gecko)...)
+}
+
+// Gecko reports whether this browser is one of the Firefox family: the two the
+// guard knows by name, and any fork found on this machine. It is what decides
+// which spelling of a policy a browser gets, and which gaps it inherits.
+func (k Kind) Gecko() bool {
+	for _, g := range GeckoKinds {
+		if g == k {
+			return true
+		}
+	}
+	for _, g := range geckoBrowsers() {
+		if g.Kind == k {
+			return true
+		}
+	}
+	return false
+}
+
 // Target describes what to force-install for one browser. Chromium browsers
-// use ExtensionID + UpdateURL; Firefox uses AddonID + InstallURL.
+// use ExtensionID + UpdateURL; the Firefox family uses AddonID + InstallURL.
 type Target struct {
 	ExtensionID string `json:"extensionId,omitempty"`
 	UpdateURL   string `json:"updateUrl,omitempty"`
@@ -56,6 +114,15 @@ type Extension struct {
 }
 
 // Target returns the extension's target for a browser kind.
+//
+// Zen shares Firefox's target rather than having a field of its own, and that is
+// a fact about the browser rather than a shortcut: a Zen install takes its
+// add-ons from addons.mozilla.org, under the same add-on id and from the same
+// install URL as Firefox, so a separate field could only ever hold a copy. It
+// would also change the shape of every config: extension-ids.json is compared
+// against a trusted copy byte for byte (see trust.go), and adding a field would
+// make every config written before Zen support differ from the one written
+// after it, for a value that is already there.
 func (e Extension) Target(k Kind) Target {
 	switch k {
 	case Chrome:
@@ -64,7 +131,7 @@ func (e Extension) Target(k Kind) Target {
 		return e.Edge
 	case Brave:
 		return e.Brave
-	case Firefox:
+	case Firefox, Zen:
 		return e.Firefox
 	}
 	return Target{}

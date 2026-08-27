@@ -30,6 +30,38 @@ const (
 	firefoxPoliciesFile = "policies.json"
 )
 
+// geckoBrowsers is the Firefox-family half of AllKinds on this platform, and it
+// is deliberately shorter than the family: Firefox only, with neither Zen nor
+// the discovery that finds forks on Windows.
+//
+// The reason is where a fork reads its policies from, not what it is called.
+// Windows hands every one of them a registry key named after the application, so
+// writing one more key covers a browser the guard has only just heard of. Linux
+// has no equivalent: Mozilla's engine looks for policies.json in the
+// distribution directory *inside the install*, and where that is depends on how
+// the browser was installed - a distribution package, a tarball unpacked into a
+// home directory, a flatpak whose filesystem the guard cannot write at all.
+// There is no single path to write the way /etc/firefox/policies is for Firefox,
+// so there is nothing to discover yet.
+//
+// Naming a browser here before that is solved is the one thing that must not
+// happen: every row in the status table and every browser named in a hardening
+// gap comes from this list, so it would have the window report a browser as
+// covered while nothing was written for it anywhere.
+func geckoBrowsers() []GeckoBrowser {
+	return []GeckoBrowser{{
+		Kind:  Firefox,
+		Name:  "Firefox",
+		Root:  firefoxPoliciesPath(),
+		Image: "firefox",
+	}}
+}
+
+// resetGeckoBrowsers drops the cached scan on the platform that has one. Nothing
+// is discovered or cached here, so it does nothing - it exists so the test helper
+// that describes a machine reads the same on every platform.
+func resetGeckoBrowsers() {}
+
 // linuxBrowserBins maps each browser to the executables that indicate it is
 // installed (looked up on PATH; snap/flatpak browsers expose these names too).
 var linuxBrowserBins = map[Kind][]string{
@@ -249,7 +281,7 @@ func removeFirefox(targets []Target) error {
 // DetectBrowsers reports which supported browsers are installed (via PATH).
 func DetectBrowsers() map[Kind]bool {
 	out := make(map[Kind]bool, len(linuxBrowserBins))
-	for _, k := range []Kind{Chrome, Edge, Brave, Firefox} {
+	for _, k := range AllKinds() {
 		out[k] = false
 		for _, bin := range linuxBrowserBins[k] {
 			if _, err := exec.LookPath(bin); err == nil {

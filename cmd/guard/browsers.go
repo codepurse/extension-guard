@@ -54,6 +54,13 @@ func browsersCmd(cfg policy.Config) {
 	for _, b := range found {
 		state := browserFiltered
 		switch {
+		case b.Managed() && active.BlocksBrowser(b):
+			// Filtered and blocked at once, which a Firefox fork can now be: the
+			// guard writes policy it reads, and the browsers category also names it.
+			// Blocked is the truthful word for it - the window closes a second after
+			// it opens, and calling that "filtered" would describe a browser the user
+			// can still use.
+			state = browserBlocked
 		case b.Managed():
 			// A managed browser whose file is gone was uninstalled and left its
 			// registration behind. There is nothing to say about it: the guard's

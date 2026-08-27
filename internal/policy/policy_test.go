@@ -184,3 +184,79 @@ func TestOnly(t *testing.T) {
 		t.Error("Only() should force the returned extension enabled so its policy can be removed")
 	}
 }
+
+// Zen takes its add-ons from addons.mozilla.org, the same store as Firefox, under
+// the same add-on id and from the same install URL - so it force-installs the
+// Firefox target rather than one of its own. That is what makes Zen support cost
+// no change to any config that already exists, and if it ever stops being true
+// this is the test to argue with first.
+func TestZenForceInstallsTheSameAddOnAsFirefox(t *testing.T) {
+	e := Extension{Firefox: Target{AddonID: "a@b", InstallURL: "https://x/x.xpi"}}
+	if got, want := e.Target(Zen), e.Target(Firefox); got != want {
+		t.Errorf("Target(Zen) = %+v, want the Firefox target %+v", got, want)
+	}
+	if !firefoxConfigured(e.Target(Zen)) {
+		t.Error("Target(Zen) is not applyable, so nothing would be force-installed in Zen")
+	}
+	// A config that force-installs nothing in Firefox force-installs nothing in
+	// Zen either, rather than falling back to a Chromium target it cannot use.
+	chromiumOnly := Extension{Chrome: Target{ExtensionID: "abc", UpdateURL: "https://u/crx"}}
+	if got := chromiumOnly.Target(Zen); got != (Target{}) {
+		t.Errorf("Target(Zen) = %+v for a Chromium-only extension, want empty", got)
+	}
+}
+
+// The restart caveat names browsers in prose, and the prose has to read right for
+// one browser and for two - "Firefox applies this" against "Firefox and Zen apply
+// this". Getting it wrong is not a crash, it is a sentence nobody trusts.
+//
+// It uses each browser's declared name rather than its Kind for the reason a
+// discovered fork exists at all: the Kind is a lowercase identifier, and
+// "librewolf applies this the next time it starts" is not a sentence anybody
+// wrote on purpose.
+func TestBrowserNamesReadsAsASentence(t *testing.T) {
+	ff := GeckoBrowser{Kind: Firefox, Name: "Firefox"}
+	zen := GeckoBrowser{Kind: Zen, Name: "Zen"}
+	fork := GeckoBrowser{Kind: "librewolf", Name: "LibreWolf"}
+	cases := []struct {
+		in   []GeckoBrowser
+		want string
+	}{
+		{nil, ""},
+		{[]GeckoBrowser{ff}, "Firefox"},
+		{[]GeckoBrowser{ff, zen}, "Firefox and Zen"},
+		{[]GeckoBrowser{ff, zen, fork}, "Firefox, Zen and LibreWolf"},
+	}
+	for _, c := range cases {
+		if got := BrowserNames(c.in); got != c.want {
+			t.Errorf("BrowserNames(%v) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// AllKinds is what the status table has a row for and what a hardening gap is
+// measured against, so a browser missing from it is one the window never mentions
+// and a browser in it twice is a row printed twice.
+func TestAllKindsIsEveryBrowserOnceAndCannotBeReachedByACaller(t *testing.T) {
+	seen := map[Kind]bool{}
+	for _, k := range AllKinds() {
+		if seen[k] {
+			t.Errorf("%s appears twice in AllKinds", k)
+		}
+		seen[k] = true
+	}
+	for _, k := range ChromiumKinds {
+		if !seen[k] {
+			t.Errorf("%s is missing from AllKinds", k)
+		}
+	}
+	if !seen[Firefox] {
+		t.Error("firefox is missing from AllKinds")
+	}
+	// Appending to the returned slice must not reach ChromiumKinds' own backing
+	// array, which is what the copy in AllKinds is for.
+	_ = append(AllKinds(), "not-a-browser")
+	if len(ChromiumKinds) != 3 || ChromiumKinds[0] != Chrome {
+		t.Fatalf("ChromiumKinds was reachable through AllKinds: %v", ChromiumKinds)
+	}
+}

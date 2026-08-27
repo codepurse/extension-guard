@@ -10,8 +10,8 @@ import (
 //
 // Everything else in this package enforces something. A browser the guard has
 // never heard of is the opposite - there is nothing to apply, and so nothing to
-// notice. Chrome, Edge, Brave and Firefox read the enterprise policies the guard
-// writes; Opera does not, Vivaldi does not, and a copy of Tor Browser unpacked
+// notice. Chrome, Edge, Brave, Firefox and Zen read the enterprise policies the
+// guard writes; Opera does not, Vivaldi does not, and a copy of Tor Browser unpacked
 // into a user's own directory reads no policy the guard has written and carries
 // no extension it has locked. Every site on the block list is one download away
 // while the status window still reads "protection active" - which is the one
@@ -38,19 +38,22 @@ import (
 // blocks by - so a browser this calls unmanaged is one the browsers category can
 // actually name.
 //
-// The caveat is Firefox forks. Tor Browser, LibreWolf and Waterfox are Firefox
-// underneath, and Tor Browser ships its executable under Firefox's own name - so
-// a Tor Browser registration is indistinguishable here from Firefox itself and
+// The caveat is Firefox forks. Zen is one and is listed, because where it reads
+// its policies from has been checked - see GeckoKinds - and the guard writes
+// them there. The rest are not: Tor Browser, LibreWolf and Waterfox are Firefox
+// underneath too, and Tor Browser ships its executable under Firefox's own name,
+// so a Tor Browser registration is indistinguishable here from Firefox itself and
 // reads as managed. That is why the browsers category blocks Tor by tor.exe, the
 // daemon it cannot reach the network without, rather than trusting either the
-// name or the policy: whether a hardened fork honours the Firefox policy key the
-// guard writes is not something this code can know, and guessing towards
-// "managed" is guessing towards a hole.
+// name or the policy: whether a hardened fork honours a policy key the guard
+// writes is not something this code can assume, and guessing towards "managed"
+// is guessing towards a hole.
 var managedImages = map[string]Kind{
 	"chrome.exe":  Chrome,
 	"msedge.exe":  Edge,
 	"brave.exe":   Brave,
 	"firefox.exe": Firefox,
+	"zen.exe":     Zen,
 }
 
 // InstalledBrowser is one browser this machine has registered as a browser.
@@ -66,7 +69,19 @@ type InstalledBrowser struct {
 	Exe string
 	// Kind is the supported browser this is, or empty when the guard writes no
 	// policy it reads. See Managed.
+	//
+	// It is set two ways. A browser whose executable the guard knows by name is
+	// classified from that (ClassifyBrowser); a Firefox fork it has never heard of
+	// is classified from what the install says it is called, which is what makes a
+	// fork managed without anybody adding a line for it - see gecko.go.
 	Kind Kind
+	// App is the application name a Gecko install declares, in its own
+	// capitalization: "Firefox", "Zen", "LibreWolf". Empty for a browser that
+	// declares none, which is every Chromium browser and every install the guard
+	// could not read. It is the last element of the policy key the guard writes,
+	// so it is carried here rather than re-derived from Kind: the key is the
+	// browser's own spelling of its name, not a lowercased identifier.
+	App string
 	// Missing is set when the registration names an executable that is not there.
 	//
 	// It is the fingerprint of a rename. Renaming opera.exe walks out of every

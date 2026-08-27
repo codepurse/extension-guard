@@ -166,8 +166,8 @@ var Catalog = map[string]Category{
 
 	// Unlike the other two, this category does not remove a distraction. It
 	// closes the hole that makes every other block optional: the guard filters
-	// inside Chrome, Edge, Brave and Firefox by writing policy those four read,
-	// and a browser that reads none of it carries no locked extension and
+	// inside Chrome, Edge, Brave, Firefox and Zen by writing policy those five
+	// read, and a browser that reads none of it carries no locked extension and
 	// honours no blocked site. See browsers.go, which finds them.
 	"browsers": {
 		ID:    "browsers",
@@ -177,7 +177,9 @@ var Catalog = map[string]Category{
 			"It covers browsers that install under their own executable name, and it cannot cover " +
 			"one shipping as chrome.exe or firefox.exe - a raw Chromium build, ungoogled-chromium, " +
 			"Cent Browser - because blocking those by name would take the real Chrome or Firefox " +
-			"out with them. Tor Browser is one of those, and is covered by tor.exe instead: the " +
+			"out with them. Zen is not here for the opposite reason: the guard writes policy Zen " +
+			"reads, so it is filtered like Firefox rather than blocked. " +
+			"Tor Browser is one of those, and is covered by tor.exe instead: the " +
 			"window may still open, but with the daemon blocked no page will load. Yandex ships " +
 			"browser.exe, too common a name to block by name alone. Internet Explorer is included " +
 			"because it is on the machine whether anyone installed it or not; leave that one out if " +
@@ -197,7 +199,19 @@ var Catalog = map[string]Category{
 
 			// Firefox forks, each under its own name - so unlike Tor these are
 			// blocked outright rather than at the network.
-			{Kind: AppExe, Value: "zen.exe", Label: "Zen Browser"},
+			//
+			// The guard filters these when they are installed: each one is asked
+			// what it calls itself and written policy under that name (see
+			// gecko.go), so they are no longer holes. They stay in the category
+			// because blocking is the stronger answer and remains a coherent thing
+			// to want - a filtered browser still runs, and somebody who does not
+			// want a second browser on the machine at all can still say so. What
+			// they are not any more is the *only* answer.
+			//
+			// Zen is the one that left, and had to: it is a browser the guard
+			// writes policy for whether or not it is installed, and
+			// validateCategory refuses a shipped rule naming one of those,
+			// because blocking it would take the filtering with it.
 			{Kind: AppExe, Value: "floorp.exe", Label: "Floorp"},
 			{Kind: AppExe, Value: "librewolf.exe", Label: "LibreWolf"},
 			{Kind: AppExe, Value: "waterfox.exe", Label: "Waterfox"},
@@ -237,8 +251,11 @@ var Catalog = map[string]Category{
 		// whale.naver.com rather than naver.com for the same reason - the browser's
 		// page, not a portal millions of people use for everything else.
 		Domains: []string{
+			// zen-browser.app is not here for the same reason zen.exe is not above:
+			// there is nothing to stop anyone installing, since what they would
+			// install is filtered.
 			"opera.com", "vivaldi.com", "torproject.org",
-			"librewolf.net", "waterfox.net", "palemoon.org", "zen-browser.app",
+			"librewolf.net", "waterfox.net", "palemoon.org",
 			"whale.naver.com", "maxthon.com", "ucweb.com", "slimjet.com",
 		},
 	},

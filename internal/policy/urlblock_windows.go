@@ -65,20 +65,21 @@ func ApplyDomains(cfg Config) error {
 			errs = append(errs, fmt.Sprintf("%s allowlist: %v", k, err))
 		}
 	}
-	err := syncNumberedList(
-		firefoxPolicyRoot+`\`+firefoxFilterBlockSubkey,
-		append(mapPatterns(want, FirefoxBlockPattern), ffBlockAll...),
-		dropExact(append(mapPatterns(stale, FirefoxBlockPattern), ffStaleAll...)),
-	)
-	if err != nil {
-		errs = append(errs, fmt.Sprintf("firefox: %v", err))
-	}
-	if err := syncNumberedList(
-		firefoxPolicyRoot+`\`+firefoxFilterExceptSubkey,
-		mapPatterns(wantAllow, FirefoxAllowPattern),
-		dropExact(mapPatterns(staleAllow, FirefoxAllowPattern)),
-	); err != nil {
-		errs = append(errs, fmt.Sprintf("firefox allowlist: %v", err))
+	for _, g := range geckoBrowsers() {
+		if err := syncNumberedList(
+			g.Root+`\`+firefoxFilterBlockSubkey,
+			append(mapPatterns(want, FirefoxBlockPattern), ffBlockAll...),
+			dropExact(append(mapPatterns(stale, FirefoxBlockPattern), ffStaleAll...)),
+		); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", g.Kind, err))
+		}
+		if err := syncNumberedList(
+			g.Root+`\`+firefoxFilterExceptSubkey,
+			mapPatterns(wantAllow, FirefoxAllowPattern),
+			dropExact(mapPatterns(staleAllow, FirefoxAllowPattern)),
+		); err != nil {
+			errs = append(errs, fmt.Sprintf("%s allowlist: %v", g.Kind, err))
+		}
 	}
 	// Best effort, and after the writes: a running Chromium browser will not see
 	// any of this until group policy is refreshed. A refresh that fails is retried
@@ -105,7 +106,8 @@ func VerifyDomains(cfg Config) []Status {
 	// would let the table read "domains: ok" on a machine where the entry blocking the
 	// web had been deleted. Both keys are tallied into one matched/total so a partial
 	// count stays meaningful.
-	out := make([]Status, 0, len(ChromiumKinds)+1)
+	gecko := geckoBrowsers()
+	out := make([]Status, 0, len(ChromiumKinds)+len(gecko))
 	for _, k := range ChromiumKinds {
 		root := chromiumPolicyRoot[k]
 		blocked := mapPatterns(want, ChromiumBlockPattern)
@@ -124,12 +126,14 @@ func VerifyDomains(cfg Config) []Status {
 	if allowing {
 		ffBlocked = append(ffBlocked, FirefoxBlockAll)
 	}
-	matched, total := tally(firefoxPolicyRoot+`\`+firefoxFilterBlockSubkey, ffBlocked)
-	if allowing {
-		m, t := tally(firefoxPolicyRoot+`\`+firefoxFilterExceptSubkey, mapPatterns(allowed, FirefoxAllowPattern))
-		matched, total = matched+m, total+t
+	for _, g := range gecko {
+		matched, total := tally(g.Root+`\`+firefoxFilterBlockSubkey, ffBlocked)
+		if allowing {
+			m, t := tally(g.Root+`\`+firefoxFilterExceptSubkey, mapPatterns(allowed, FirefoxAllowPattern))
+			matched, total = matched+m, total+t
+		}
+		out = append(out, lockStatus(Status{Kind: g.Kind, Installed: installed[g.Kind]}, matched, total))
 	}
-	out = append(out, lockStatus(Status{Kind: Firefox, Installed: installed[Firefox]}, matched, total))
 	return out
 }
 
@@ -188,14 +192,15 @@ func RemoveDomains(cfg Config) error {
 			errs = append(errs, fmt.Sprintf("%s allowlist: %v", k, err))
 		}
 	}
-	path := firefoxPolicyRoot + `\` + firefoxFilterBlockSubkey
 	ffDrop := append(mapPatterns(managed, FirefoxBlockPattern), FirefoxBlockAll)
-	if err := syncNumberedList(path, nil, dropExact(ffDrop)); err != nil {
-		errs = append(errs, fmt.Sprintf("firefox: %v", err))
-	}
-	ffAllow := firefoxPolicyRoot + `\` + firefoxFilterExceptSubkey
-	if err := syncNumberedList(ffAllow, nil, dropExact(mapPatterns(allowed, FirefoxAllowPattern))); err != nil {
-		errs = append(errs, fmt.Sprintf("firefox allowlist: %v", err))
+	for _, g := range geckoBrowsers() {
+		if err := syncNumberedList(g.Root+`\`+firefoxFilterBlockSubkey, nil, dropExact(ffDrop)); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", g.Kind, err))
+		}
+		ffAllow := g.Root + `\` + firefoxFilterExceptSubkey
+		if err := syncNumberedList(ffAllow, nil, dropExact(mapPatterns(allowed, FirefoxAllowPattern))); err != nil {
+			errs = append(errs, fmt.Sprintf("%s allowlist: %v", g.Kind, err))
+		}
 	}
 	// Unblocking needs the browser told just as much as blocking did.
 	_ = refreshBrowserPolicy()

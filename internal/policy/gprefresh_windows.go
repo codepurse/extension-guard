@@ -31,11 +31,11 @@ import (
 // is reloaded, which is how Chromium's URL filter works and not something a
 // refresh changes.
 //
-// Firefox cannot be fixed from here. Its policy engine reads
-// SOFTWARE\Policies\Mozilla\Firefox once during startup and has no reload path at
-// all, so a change made while Firefox is running takes effect the next time it
-// starts. FirefoxRunning exists so the window and the CLI can say that plainly
-// instead of reporting a block that is not yet blocking.
+// The Firefox family cannot be fixed from here. Mozilla's policy engine reads
+// SOFTWARE\Policies\Mozilla\<app> once during startup and has no reload path at
+// all, so a change made while Firefox or Zen is running takes effect the next
+// time it starts. GeckoRunning exists so the window and the CLI can say that
+// plainly instead of reporting a block that is not yet blocking.
 
 var (
 	modUserenv          = windows.NewLazySystemDLL("userenv.dll")
@@ -94,22 +94,33 @@ func refreshMachinePolicy() error {
 	return nil
 }
 
-// FirefoxRunning reports whether Firefox has a process running right now, which
-// is exactly the case where a domain change will not be visible until it is
-// restarted. Best effort: if the process list cannot be read, this says no rather
-// than warning about a browser that may not even be open.
-func FirefoxRunning() bool {
-	// No needs: this asks only whether a process called firefox.exe exists, which
-	// the plain snapshot answers. Nothing here is a block rule, so nothing here
-	// wants paths, titles, or the name compiled into the image.
+// GeckoRunning lists the Firefox-family browsers with a process running right
+// now, which is exactly the set a domain change will not be visible in until they
+// are restarted. Best effort: if the process list cannot be read, this says none
+// rather than warning about a browser that may not even be open.
+//
+// It answers for the browsers this platform writes policy for, not for the family
+// - a running browser nothing was written for has nothing to pick up on restart,
+// so naming it would be a caveat about a change that never applied to it.
+func GeckoRunning() []GeckoBrowser {
+	// No needs: this asks only whether a process by a given name exists, which the
+	// plain snapshot answers. Nothing here is a block rule, so nothing here wants
+	// paths, titles, or the name compiled into the image.
 	procs, err := snapshotProcesses(SnapshotNeeds{})
 	if err != nil && len(procs) == 0 {
-		return false
+		return nil
 	}
-	for _, p := range procs {
-		if strings.EqualFold(p.Name, appPathExe[Firefox]) {
-			return true
+	var out []GeckoBrowser
+	for _, g := range geckoBrowsers() {
+		if g.Image == "" {
+			continue
+		}
+		for _, p := range procs {
+			if strings.EqualFold(p.Name, g.Image) {
+				out = append(out, g)
+				break
+			}
 		}
 	}
-	return false
+	return out
 }

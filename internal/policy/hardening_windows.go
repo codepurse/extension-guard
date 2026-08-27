@@ -43,21 +43,12 @@ const (
 	// describe, and leaving it out would close the front door of the one browser
 	// that ships a back one.
 	valTorDisabled = "TorDisabled"
-	// valFirefoxPrivate is Firefox's equivalent of the two Chromium switches at
-	// once: Firefox has no guest profile, so private browsing is the whole surface.
-	// Firefox reads booleans from the registry as REG_DWORD 0/1.
+	// valFirefoxPrivate is the Firefox family's equivalent of the two Chromium
+	// switches at once: there is no guest profile, so private browsing is the whole
+	// surface. Mozilla's policy engine reads booleans from the registry as REG_DWORD
+	// 0/1, and Zen reads this one from its own root exactly as Firefox does.
 	valFirefoxPrivate = "DisablePrivateBrowsing"
 )
-
-// hardeningRoot is the policy key each browser's values are written under. It is
-// the same root the forcelist and URL filter use, one level up from their
-// subkeys.
-func hardeningRoot(k Kind) string {
-	if k == Firefox {
-		return firefoxPolicyRoot
-	}
-	return chromiumPolicyRoot[k]
-}
 
 // managedNames is every value name the guard may write for a browser, mapped to
 // every DWORD it may write there.
@@ -72,10 +63,10 @@ func hardeningRoot(k Kind) string {
 // already set to the same thing. Erring the other way would leave Incognito
 // disabled after an authorized uninstall, which is worse - the machine has to come
 // back the way it was.
-func managedNames(k Kind) map[string][]uint32 {
+func managedNames(k Kind, gecko bool) map[string][]uint32 {
 	out := map[string][]uint32{}
 	if KnobSupported(KnobPrivateBrowsing, k) {
-		if k == Firefox {
+		if gecko {
 			out[valFirefoxPrivate] = []uint32{1}
 		} else {
 			out[valIncognito] = []uint32{1}
@@ -98,10 +89,10 @@ func managedNames(k Kind) map[string][]uint32 {
 // wantedValues is what one browser's policy root should hold right now. An empty
 // map means the guard asks nothing of this browser, either because no knob is on
 // or because none of the knobs that are on exist for it.
-func wantedValues(k Kind, h Hardening) map[string]uint32 {
+func wantedValues(k Kind, gecko bool, h Hardening) map[string]uint32 {
 	out := map[string]uint32{}
 	if h.PrivateBrowsing && KnobSupported(KnobPrivateBrowsing, k) {
-		if k == Firefox {
+		if gecko {
 			out[valFirefoxPrivate] = 1
 		} else {
 			out[valIncognito] = 1
@@ -132,9 +123,9 @@ func wantedValues(k Kind, h Hardening) map[string]uint32 {
 func ApplyHardening(cfg Config) error {
 	h := cfg.Hardened()
 	var errs []string
-	for _, k := range append(append([]Kind{}, ChromiumKinds...), Firefox) {
-		if err := syncPolicyValues(hardeningRoot(k), wantedValues(k, h), managedNames(k)); err != nil {
-			errs = append(errs, fmt.Sprintf("%s: %v", k, err))
+	for _, t := range policyTargets() {
+		if err := syncPolicyValues(t.Root, wantedValues(t.Kind, t.Gecko, h), managedNames(t.Kind, t.Gecko)); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", t.Kind, err))
 		}
 	}
 	// Same reason as ApplyDomains: a running Chromium will not see any of this
@@ -154,13 +145,13 @@ func ApplyHardening(cfg Config) error {
 func VerifyHardening(cfg Config) []Status {
 	h := cfg.Hardened()
 	installed := DetectBrowsers()
-	kinds := append(append([]Kind{}, ChromiumKinds...), Firefox)
-	out := make([]Status, 0, len(kinds))
-	for _, k := range kinds {
+	targets := policyTargets()
+	out := make([]Status, 0, len(targets))
+	for _, t := range targets {
 		out = append(out, verifyHardeningOne(
-			Status{Kind: k, Installed: installed[k]},
-			hardeningRoot(k),
-			wantedValues(k, h),
+			Status{Kind: t.Kind, Installed: installed[t.Kind]},
+			t.Root,
+			wantedValues(t.Kind, t.Gecko, h),
 			h.Any(),
 		))
 	}
@@ -196,9 +187,9 @@ func verifyHardeningOne(s Status, root string, want map[string]uint32, asked boo
 // a pause has to hand Incognito back, or protection being off would not be off.
 func RemoveHardening(cfg Config) error {
 	var errs []string
-	for _, k := range append(append([]Kind{}, ChromiumKinds...), Firefox) {
-		if err := syncPolicyValues(hardeningRoot(k), nil, managedNames(k)); err != nil {
-			errs = append(errs, fmt.Sprintf("%s: %v", k, err))
+	for _, t := range policyTargets() {
+		if err := syncPolicyValues(t.Root, nil, managedNames(t.Kind, t.Gecko)); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", t.Kind, err))
 		}
 	}
 	_ = refreshBrowserPolicy()
