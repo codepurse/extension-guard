@@ -8,6 +8,7 @@
 package scm
 
 import (
+	"errors"
 	"fmt"
 	"syscall"
 	"time"
@@ -281,7 +282,20 @@ func deleteValueIn(root registry.Key, name string) error {
 		return nil // key absent -> nothing to clear
 	}
 	defer key.Close()
-	return key.DeleteValue(name)
+	// A value that was never written is already the state this is trying to
+	// reach, so its absence is not a failure. The key existing while one of its
+	// values does not is the ordinary case - the key holds several of them, and
+	// whichever was written first created it - but RegDeleteValue reports the
+	// missing value as an error.
+	//
+	// Resume clears the pause value this way on every enable, so returning that
+	// error made "Enable protection" fail with exit code 1 on any machine that
+	// had the state key and had never been paused: the guard gave up before it
+	// ever got as far as installing the service.
+	if err := key.DeleteValue(name); err != nil && !errors.Is(err, registry.ErrNotExist) {
+		return err
+	}
+	return nil
 }
 
 var procCreateMutexW = windows.NewLazySystemDLL("kernel32.dll").NewProc("CreateMutexW")
