@@ -106,8 +106,11 @@ if ($doInstaller) {
   Copy-Item (Join-Path $root "guard.exe") $release
   Copy-Item (Join-Path $root "statusui\build\bin\extension-guard-status.exe") $release
   Copy-Item (Join-Path $root "installer\output\Extension-Guard-Setup.exe") $release
-  # Ship the config next to the binaries so they find it without walking the tree.
-  Copy-Item (Join-Path $root "extension-ids.json") $release
+  # Ship the *template* next to the binaries so they find a config without walking
+  # the tree - never the repo's own extension-ids.json, which is a working config
+  # with the developer's blocks and app rules in it. See the [Files] note in
+  # installer\Extension-Guard.iss.
+  Copy-Item (Join-Path $root "extension-ids.default.json") (Join-Path $release "extension-ids.json")
 }
 
 if ($doManifest) {

@@ -49,7 +49,18 @@ Name: "sieve"; Description: "Sieve - blocks gambling, dark patterns & doomscroll
 [Files]
 Source: "..\guard.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\statusui\build\bin\extension-guard-status.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\extension-ids.json"; DestDir: "{app}"; Flags: ignoreversion
+; The config is shipped from extension-ids.default.json - the clean template -
+; rather than from the repo's own extension-ids.json, which is a working config
+; carrying whatever blocks, sites and app rules the developer happens to have.
+; Shipping that would hand every user someone else's schedule.
+;
+; onlyifdoesntexist is what makes an upgrade safe: an install that already has a
+; config keeps it, so a new version cannot replace a household's blocks, limits
+; and locked schedules with an empty template. The template is also laid down
+; under its own name, so a later version can offer to adopt corrected extension
+; ids from it without guessing what the user changed.
+Source: "..\extension-ids.default.json"; DestDir: "{app}"; DestName: "extension-ids.json"; Flags: onlyifdoesntexist
+Source: "..\extension-ids.default.json"; DestDir: "{app}"; Flags: ignoreversion
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut for the status window"; GroupDescription: "Additional shortcuts:"

@@ -34,8 +34,5 @@
         "installUrl": "https://addons.mozilla.org/firefox/downloads/latest/sieve-site-content-blocker/latest.xpi"
       }
     }
-  ],
-  "hardening": {
-    "privateBrowsing": true
-  }
+  ]
 }
