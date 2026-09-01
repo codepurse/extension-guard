@@ -130,6 +130,10 @@ type program struct {
 	// once a second for the rest of the evening.
 	usageDay  string
 	exhausted map[string]bool
+	// lastSkew is the clock offset last reported, so a clock that has been moved is
+	// logged when it moves and not once a second for as long as it stays wrong -
+	// the same reason usageDay and exhausted exist.
+	lastSkew time.Duration
 }
 
 // New builds the service. configPath is embedded into the service's launch
@@ -660,6 +664,49 @@ func (p *program) logAgent(msg string) {
 	p.lastAgentErr = msg
 }
 
+// reportSkew logs and records a clock that has been moved far enough for the
+// tracker to stop believing it, and again when it comes back.
+//
+// It reports the transition rather than the state, like every other once-a-second
+// check here. A limit being got around is worth a line in the record; the same
+// line every second for the rest of the evening is worth nothing.
+//
+// Callers must hold applyMu.
+func (p *program) reportSkew() {
+	skew := p.usage.Skew()
+	if skew == p.lastSkew {
+		return
+	}
+	switch {
+	case skew == 0:
+		p.logger.Infof("the system clock agrees with the guard again")
+		activity.Record(activity.Event{Kind: activity.ClockChanged, Detail: "back in agreement"})
+	default:
+		p.logger.Warningf("the system clock is %s from the guard's own reckoning; daily limits are being counted against the real day, not the clock", policy.HumanDuration(abs(skew)))
+		activity.Record(activity.Event{
+			Kind:   activity.ClockChanged,
+			Detail: describeSkew(skew),
+		})
+	}
+	p.lastSkew = skew
+}
+
+// describeSkew says which way the clock was moved, in the words somebody reading
+// the activity log would use.
+func describeSkew(d time.Duration) string {
+	if d < 0 {
+		return "moved back " + policy.HumanDuration(-d) + "; daily limits ignored it"
+	}
+	return "moved forward " + policy.HumanDuration(d) + "; daily limits ignored it"
+}
+
+func abs(d time.Duration) time.Duration {
+	if d < 0 {
+		return -d
+	}
+	return d
+}
+
 // spent is the service's view of how much of each daily budget has gone. It comes
 // from the live tracker rather than the ledger file, because the file is up to a
 // flush interval behind and enforcement cannot be.
@@ -669,8 +716,11 @@ func (p *program) spent(now time.Time) policy.Spent {
 	if p.usage == nil {
 		return p.cfg.SpentAt(now) // no tracker yet: read the ledger, which fails closed
 	}
+	// The tracker's clock, not the machine's. Winding the wall clock past the reset
+	// hour would otherwise name a day with nothing charged against it and hand back
+	// a whole fresh budget - see usage.Tracker.Now.
 	return policy.Spent{
-		ByBlock:    p.usage.Spent(p.cfg.DayKey(now)),
+		ByBlock:    p.usage.Spent(p.cfg.DayKey(p.usage.Now(now))),
 		Unreadable: p.usage.State() == usage.StateUnreadable,
 	}
 }
@@ -748,7 +798,11 @@ func (p *program) measureUsage() bool {
 		return false // nothing configured; do not even look at the process list
 	}
 	now := time.Now()
-	day := p.cfg.DayKey(now)
+	// Charged against the day the tracker believes it is, for the same reason the
+	// read path uses it: the wall clock decides which day a limit is spent from,
+	// and the wall clock belongs to the person being limited.
+	day := p.cfg.DayKey(p.usage.Now(now))
+	p.reportSkew()
 	if day != p.usageDay {
 		p.usageDay, p.exhausted = day, map[string]bool{}
 	}

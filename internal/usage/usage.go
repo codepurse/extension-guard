@@ -450,6 +450,21 @@ type Tracker struct {
 	// rather than assumed from the tick interval, so a tick that arrives late
 	// charges what actually passed.
 	last time.Time
+	// anchorWall and anchorMono are the tracker's own reckoning of the time: the
+	// wall clock as it stood when the anchor was taken, and the monotonic reading
+	// at that same instant. Together they answer "what time is it really", which
+	// is not the same question as "what does the clock say".
+	//
+	// They exist because the day a limit is charged against comes from the clock,
+	// and the clock belongs to the person being limited. Winding it forward past
+	// the reset hour used to hand back a whole fresh budget, which is the cheapest
+	// bypass there was: no password, no admin, one trip to the date settings.
+	// LastDay already refused the other direction; this refuses this one.
+	anchorWall time.Time
+	anchorMono time.Duration
+	// skew is how far the clock was last found to be ahead of that reckoning, and
+	// is what the service reports. Zero once the clock agrees again.
+	skew time.Duration
 	// carry is the fraction of a second left over from the last observation.
 	//
 	// It matters more than it looks. The ledger counts whole seconds, and a ticker
@@ -464,6 +479,86 @@ type Tracker struct {
 	// block can be charged to another that starts immediately afterwards, which is
 	// wrong by less than a second and only ever once.
 	carry time.Duration
+}
+
+// ClockTolerance is how far the wall clock may drift from the tracker's own
+// reckoning before the difference is treated as the clock being *moved* rather
+// than corrected.
+//
+// It has to be wide enough to absorb the ordinary corrections a machine makes -
+// an NTP step after a suspend, a virtual machine resuming - because treating one
+// of those as an attack would freeze the day boundary on a machine doing nothing
+// wrong. It has to be far narrower than the hours it takes to reach a reset hour,
+// which is the thing being protected. Ninety seconds is comfortably both.
+//
+// The gap this leaves is a clock nudged forward in steps under the tolerance,
+// which accumulates. Reaching a day boundary that way needs dozens of trips to
+// the date settings, which is deliberate work rather than an impulse - the same
+// bar the typing challenge sets, arrived at from the other side.
+const ClockTolerance = 90 * time.Second
+
+// processStart and mono are the monotonic source. It is taken from the clock Go
+// guarantees moves forward at a real rate whatever the wall clock does.
+//
+// It is a var, and the reading is a plain duration rather than the monotonic part
+// carried inside a time.Time, for one reason each. The var is so a test can drive
+// real time by hand, which is the only way to test any of this. The plain
+// duration is because time.Time subtraction silently prefers the monotonic
+// reading when both operands have one - so comparing a "trusted" time built by
+// adding to an anchor against the wall clock would compare the two monotonic
+// readings and find them identical every time, and the whole guard would look
+// like it worked while checking nothing.
+var (
+	processStart = time.Now()
+	mono         = func() time.Duration { return time.Since(processStart) }
+)
+
+// Now returns the time the tracker is willing to believe, given what the wall
+// clock says. The service asks it for the day key rather than using the clock
+// directly - see program.spent and the sweep.
+//
+// An ordinary correction is accepted and re-anchored to, so a machine whose clock
+// legitimately steps does not drift away from it forever. A jump larger than
+// ClockTolerance is not: the tracker keeps its own reckoning, and reports the
+// difference through Skew. It re-anchors again as soon as the clock comes back
+// into agreement, so a clock put back is simply believed again rather than
+// leaving the machine wrong until a restart.
+func (t *Tracker) Now(wall time.Time) time.Time {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.nowLocked(wall)
+}
+
+func (t *Tracker) nowLocked(wall time.Time) time.Time {
+	m := mono()
+	if t.anchorWall.IsZero() {
+		t.anchorWall, t.anchorMono = wall, m
+		return wall
+	}
+	// Round(0) strips the monotonic reading so this is a wall-clock comparison.
+	// Without it the two sides carry the same monotonic reading and the drift is
+	// always zero. See the note on mono above.
+	trusted := t.anchorWall.Add(m - t.anchorMono).Round(0)
+	drift := wall.Round(0).Sub(trusted)
+	if drift < 0 {
+		drift = -drift
+	}
+	if drift <= ClockTolerance {
+		t.anchorWall, t.anchorMono, t.skew = wall, m, 0
+		return wall
+	}
+	t.skew = wall.Round(0).Sub(trusted)
+	return trusted
+}
+
+// Skew is how far the wall clock is currently ahead of - or behind, as a negative
+// - what the tracker believes. Zero when they agree. The service logs it and
+// writes it to the activity log, because a clock moved far enough to matter is
+// somebody trying to get a limit back and is worth a line in the record.
+func (t *Tracker) Skew() time.Duration {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.skew
 }
 
 // NewTracker loads the ledger from disk and returns a tracker over it. Loading is

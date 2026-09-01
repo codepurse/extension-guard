@@ -147,6 +147,12 @@ const (
 	ChallengeFailed   = "challenge.failed"
 	ChallengeRefused  = "challenge.refused"
 
+	// ClockChanged is the system clock being moved far enough that the guard stops
+	// believing it. It belongs with the weakening events rather than with
+	// housekeeping: winding the clock past the daily reset hour was the cheapest
+	// way there was to get a spent budget back, needing no password and no admin.
+	ClockChanged = "clock.changed"
+
 	// Housekeeping.
 	UpdateApplied = "update.applied"
 	LogRotated    = "log.rotated"
@@ -404,6 +410,11 @@ func Describe(e Event) string {
 			return "The typing challenge could not be asked for, so " + e.Target + " was refused"
 		}
 		return "The typing challenge could not be asked for, so the action was refused"
+	case ClockChanged:
+		if e.Detail != "" {
+			return "The system clock was " + e.Detail
+		}
+		return "The system clock was moved"
 	case UpdateApplied:
 		return "Updated to " + or(e.Target, "a new version")
 	case LogRotated:
@@ -426,7 +437,7 @@ func (e Event) Severity() string {
 	case DomainUnblocked, AppUnblocked, ExtensionDisabled, BlockRemoved, HardeningDisabled,
 		AllowlistOff, SiteAllowed,
 		ProtectionPaused, ProtectionRemoved, PasswordFailed, UsageReset, PauseRefused,
-		ChallengeDisabled, ChallengeFailed:
+		ChallengeDisabled, ChallengeFailed, ClockChanged:
 		return SeverityWeakened
 	}
 	return SeverityNeutral

@@ -1434,19 +1434,45 @@ Three things it deliberately refuses to be fooled by:
   (`usage.reset`), because it is a budget coming back and every other way that can
   happen is recorded too. The window and `guard limits` both say what happened
   rather than showing a limit that looks broken.
-- **The clock going back** does not un-spend time: the ledger remembers the latest
-  day it has recorded and refuses to serve an earlier one.
+- **The clock, in both directions.** Going back does not un-spend time: the ledger
+  remembers the latest day it has recorded and refuses to serve an earlier one.
+  Going *forward* no longer rolls into a fresh day either — the service anchors the
+  wall clock to a monotonic reading when it starts, and counts limits against the
+  day real elapsed time says it is, not the day the clock claims. Winding the clock
+  past the reset hour was the cheapest bypass in the program: no password, no
+  admin, one trip to the date settings. It is recorded as `clock.changed`.
 - **A long gap between observations** is capped, so a machine that slept for eight
   hours is not charged for them.
 
-And two it cannot. An administrator can **delete** the file, and a missing ledger
-is indistinguishable from a fresh install; and setting the clock *forward* rolls
-into a day nothing has been spent on. Both are the same class of hole as stopping
-the service, and are answered the same way - the watchdog, and the fact that they
-have to be done again every day. (Moving the clock forward and back again does not
-help: the ledger's day only ever advances, so the day you left is not the one you
-return to.) The honest ceiling is the one in `docs/pc-version.md`, and it has not
-moved.
+An ordinary correction is still believed. A clock that steps by up to 90 seconds —
+NTP after a suspend, a virtual machine resuming — is accepted and re-anchored to,
+because a guard strict enough to freeze the day boundary on a machine doing nothing
+wrong is one that gets turned off. Putting a moved clock *back* is believed
+immediately too, so correcting the mistake works rather than needing a restart.
+
+Three things it still cannot do:
+
+- An administrator can **delete** the file, and a missing ledger is
+  indistinguishable from a fresh install. Same class of hole as stopping the
+  service, answered the same way: the watchdog, and having to do it again every
+  day.
+- **The anchor is taken when the service starts.** Stop it — or reboot — change the
+  clock, and start again, and it anchors to whatever the clock now says. That is a
+  materially higher bar than changing the date while the machine runs, and it is
+  as far as user space reaches: closing it properly needs a time source the person
+  being limited cannot rewrite, which this program does not have.
+- **Nudges under the tolerance accumulate.** Ninety seconds at a time, repeatedly,
+  eventually reaches a boundary. That is dozens of deliberate trips to the date
+  settings rather than one, which is the same bar
+  [the typing challenge](#the-typing-challenge) sets, arrived at from the other
+  side.
+
+One thing worth knowing about the display rather than the enforcement: `guard
+limits` and the status window read the day from the machine's clock, because they
+are separate processes with no anchor of their own. While a clock is wound
+forward they can therefore show a budget the service is not honouring. The service
+is the only thing that enforces, and it is counting the real day — but the two can
+disagree on screen until the clock is put back.
 
 ## Time used
 
