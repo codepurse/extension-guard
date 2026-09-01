@@ -428,3 +428,249 @@ func TestCategoryEntriesListEverythingAndMarkWhatIsHeld(t *testing.T) {
 		t.Errorf("%d entries unmarked but CategoryMissing says %d", absent, full.CategoryMissing(cat))
 	}
 }
+
+// adultCat is the settings-only catalog entry, read from the catalog for the
+// same reason socialCat is: these tests should fail if the shipped category is
+// ever given a shape the rest of the guard refuses.
+func adultCat(t *testing.T) Category {
+	t.Helper()
+	cat, ok := LookupCategory("adult")
+	if !ok {
+		t.Fatal("the adult category is missing from the catalog")
+	}
+	return cat
+}
+
+// The adult category must never grow a list, and this test is the guardrail that
+// says so out loud. Hostnames compiled into the binary would be out of date the
+// week they shipped, and the block would look like it worked while the next site
+// along loaded fine - which is worse than not offering the category at all,
+// because the user stops checking. Anybody who wants to add one has to delete
+// this test first, and then argue with its name.
+func TestAdultCategoryShipsNoListAtAll(t *testing.T) {
+	cat := adultCat(t)
+	if len(cat.Domains) != 0 {
+		t.Errorf("the adult category ships %d domains; it must ship none - the classification belongs to the resolver", len(cat.Domains))
+	}
+	if len(cat.Apps) != 0 {
+		t.Errorf("the adult category ships %d app rules; it must ship none", len(cat.Apps))
+	}
+	if len(cat.Settings) == 0 {
+		t.Fatal("the adult category covers nothing at all")
+	}
+	if cat.BlocksAnything() {
+		t.Error("the adult category reports that it blocks something")
+	}
+}
+
+// Applying it turns the settings on and creates no block - there is nothing for
+// a block to govern. Before Settings existed this path returned "nothing could
+// be added", having just changed the machine.
+func TestApplyCategoryWithOnlySettingsSetsThemAndMakesNoBlock(t *testing.T) {
+	cat := adultCat(t)
+	var cfg Config
+	res, err := cfg.ApplyCategory(cat)
+	if err != nil {
+		t.Fatalf("applying the adult category failed: %v", err)
+	}
+	if !res.Changed() {
+		t.Fatal("applying it on a clean config reported no change")
+	}
+	if res.NewBlock {
+		t.Error("a settings-only category created a block")
+	}
+	if _, ok := cfg.Block(cat.ID); ok {
+		t.Error("a block turned up under the category id")
+	}
+	if len(res.Settings) != len(cat.Settings) {
+		t.Errorf("reported %d settings changed, want %d", len(res.Settings), len(cat.Settings))
+	}
+	if len(cfg.Apps) != 0 || len(cfg.Domains) != 0 {
+		t.Error("a settings-only category added rules")
+	}
+	h := cfg.Hardened()
+	if _, on := h.DNSFilterOn(); !on {
+		t.Error("filtered DNS is not on")
+	}
+	if level, on := h.SafeSearchOn(); !on || level != SafeSearchStrict {
+		t.Errorf("SafeSearch is %q (on=%v), want strict", level, on)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("the resulting config does not validate: %v", err)
+	}
+	if !cfg.CategoryApplied(cat) {
+		t.Error("the category does not read as applied after applying it")
+	}
+	if n := cfg.CategoryMissing(cat); n != 0 {
+		t.Errorf("%d settings still count as missing", n)
+	}
+}
+
+// Re-applying is how a category is topped up, and it has to be a no-op when
+// everything it asks for is already in force.
+func TestApplyCategoryWithOnlySettingsTwiceChangesNothing(t *testing.T) {
+	cat := adultCat(t)
+	var cfg Config
+	if _, err := cfg.ApplyCategory(cat); err != nil {
+		t.Fatalf("first apply failed: %v", err)
+	}
+	res, err := cfg.ApplyCategory(cat)
+	if err != nil {
+		t.Fatalf("second apply failed: %v", err)
+	}
+	if res.Changed() {
+		t.Errorf("applying it twice changed something: %+v", res)
+	}
+}
+
+// A category costs no password, so it must never become a way to filter less.
+// The gate that holds this everywhere else is HardenWeakens; this checks the
+// category path honours it rather than reaching around it through SetKnob.
+func TestApplyCategoryNeverLowersASetting(t *testing.T) {
+	var cfg Config
+	if _, err := cfg.SetKnob(KnobSafeSearch, true, SafeSearchStrict); err != nil {
+		t.Fatalf("setting up strict SafeSearch failed: %v", err)
+	}
+	weaker := Category{
+		ID:       "weaker",
+		Label:    "Asks for less",
+		Settings: []CategorySetting{{Knob: KnobSafeSearch, Level: SafeSearchModerate}},
+	}
+	res, err := cfg.ApplyCategory(weaker)
+	if err != nil {
+		t.Fatalf("applying it failed: %v", err)
+	}
+	if res.Changed() {
+		t.Errorf("a category asking for a weaker level changed something: %+v", res)
+	}
+	if level, _ := cfg.Hardened().SafeSearchOn(); level != SafeSearchStrict {
+		t.Errorf("SafeSearch was lowered to %q", level)
+	}
+}
+
+// The other direction is a strengthening, and has to go through.
+func TestApplyCategoryRaisesASettingThatIsTooWeak(t *testing.T) {
+	var cfg Config
+	if _, err := cfg.SetKnob(KnobSafeSearch, true, SafeSearchModerate); err != nil {
+		t.Fatalf("setting up moderate SafeSearch failed: %v", err)
+	}
+	stronger := Category{
+		ID:       "stronger",
+		Label:    "Asks for more",
+		Settings: []CategorySetting{{Knob: KnobSafeSearch, Level: SafeSearchStrict}},
+	}
+	if _, err := cfg.ApplyCategory(stronger); err != nil {
+		t.Fatalf("applying it failed: %v", err)
+	}
+	if level, _ := cfg.Hardened().SafeSearchOn(); level != SafeSearchStrict {
+		t.Errorf("SafeSearch is %q, want strict", level)
+	}
+}
+
+// A resolver the user chose is theirs, exactly as a rule they added by hand is.
+// Swapping it for whichever this program happens to name first would be a
+// lateral move dressed up as protection, taken without a password.
+func TestApplyCategoryLeavesAResolverAlreadyChosen(t *testing.T) {
+	var cfg Config
+	if _, err := cfg.SetKnob(KnobDNSFilter, true, ResolverCloudflareFamily); err != nil {
+		t.Fatalf("setting up a resolver failed: %v", err)
+	}
+	before := cfg.Hardened().DNSFilter
+	if !cfg.hasSetting(CategorySetting{Knob: KnobDNSFilter, Level: ResolverCloudflareFamily}) {
+		t.Fatal("a resolver that is on does not read as in force")
+	}
+	if _, err := cfg.ApplyCategory(adultCat(t)); err != nil {
+		t.Fatalf("applying the adult category failed: %v", err)
+	}
+	if got := cfg.Hardened().DNSFilter; got != before {
+		t.Errorf("the resolver changed from %q to %q", before, got)
+	}
+}
+
+// Half applied is not applied. This is what stops the window reading "On" for a
+// category whose second setting never went in.
+func TestCategoryAppliedNeedsEverySetting(t *testing.T) {
+	cat := adultCat(t)
+	var cfg Config
+	if _, err := cfg.SetKnob(KnobDNSFilter, true, ResolverCloudflareFamily); err != nil {
+		t.Fatalf("setting one knob failed: %v", err)
+	}
+	if cfg.CategoryApplied(cat) {
+		t.Error("the category reads as applied with only one of its settings on")
+	}
+	if n := cfg.CategoryMissing(cat); n != 1 {
+		t.Errorf("%d settings count as missing, want 1", n)
+	}
+}
+
+// The entries list is what a person reads before agreeing, so a setting has to
+// appear in it, say what it will be set to, and be marked when it is already on.
+func TestCategoryEntriesListSettingsAndMarkWhatIsOn(t *testing.T) {
+	cat := adultCat(t)
+	var cfg Config
+	if _, err := cfg.SetKnob(KnobDNSFilter, true, ResolverCloudflareFamily); err != nil {
+		t.Fatalf("setting one knob failed: %v", err)
+	}
+	entries := cfg.CategoryEntries(cat)
+	if len(entries) != len(cat.Settings) {
+		t.Fatalf("got %d entries, want %d", len(entries), len(cat.Settings))
+	}
+	var present, absent int
+	for _, e := range entries {
+		if e.Kind != EntrySetting {
+			t.Errorf("entry %q has kind %q, want %q", e.Label, e.Kind, EntrySetting)
+		}
+		if strings.TrimSpace(e.Label) == "" {
+			t.Error("an entry has no label")
+		}
+		if strings.TrimSpace(e.Detail) == "" {
+			t.Errorf("entry %q says nothing about what it sets", e.Label)
+		}
+		if e.Present {
+			present++
+		} else {
+			absent++
+		}
+	}
+	if present != 1 || absent != 1 {
+		t.Errorf("got %d already on and %d new, want 1 and 1", present, absent)
+	}
+	// The resolver entry has to name who does the filtering: that is the whole
+	// substance of the setting, and the one fact a reader cannot guess.
+	var sawResolver bool
+	for _, e := range entries {
+		if e.Value == KnobDNSFilter && strings.Contains(e.Detail, "Cloudflare") {
+			sawResolver = true
+		}
+	}
+	if !sawResolver {
+		t.Error("the filtered-DNS entry does not name the resolver")
+	}
+}
+
+// The catalog rules have to fire on data that breaks them, not merely pass on
+// data that does not - a guardrail nobody has seen work is not a guardrail.
+func TestCatalogRefusesUnusableSettings(t *testing.T) {
+	cases := []struct {
+		name string
+		cat  Category
+	}{
+		{"unknown knob", Category{ID: "x", Label: "X", Settings: []CategorySetting{{Knob: "not-a-knob"}}}},
+		{"level a knob refuses", Category{ID: "x", Label: "X", Settings: []CategorySetting{{Knob: KnobPrivateBrowsing, Level: "strict"}}}},
+		{"level that does not parse", Category{ID: "x", Label: "X", Settings: []CategorySetting{{Knob: KnobSafeSearch, Level: "sort-of"}}}},
+		{"resolver nobody vetted", Category{ID: "x", Label: "X", Settings: []CategorySetting{{Knob: KnobDNSFilter, Level: "https://dns.example/query"}}}},
+		{"the same knob twice", Category{ID: "x", Label: "X", Settings: []CategorySetting{
+			{Knob: KnobSafeSearch, Level: SafeSearchStrict},
+			{Knob: KnobSafeSearch, Level: SafeSearchModerate},
+		}}},
+	}
+	for _, tc := range cases {
+		if err := validateCategory("x", tc.cat); err == nil {
+			t.Errorf("%s: the catalog rules accepted it", tc.name)
+		}
+	}
+	// And a category with no rules and no settings still covers nothing.
+	if err := validateCategory("empty", Category{ID: "empty", Label: "Empty"}); err == nil {
+		t.Error("a category covering nothing at all was accepted")
+	}
+}

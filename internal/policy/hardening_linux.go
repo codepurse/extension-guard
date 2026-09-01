@@ -20,11 +20,13 @@ import (
 // policy.
 const hardeningPolicyFileName = "extension-guard-hardening.json"
 
-// chromiumHardeningKeys is every key the guard may write for a Chromium browser.
-// It exists for removal: the guard owns its own policy file outright, so clearing
-// it is a file delete, but Firefox's document is shared and has to be edited key
-// by key.
-const firefoxPrivateKey = "DisablePrivateBrowsing"
+// The Firefox policy keys the guard owns. They exist for removal: the guard owns
+// its own Chromium policy file outright, so clearing that is a file delete, but
+// Firefox's document is shared and has to be edited key by key.
+const (
+	firefoxPrivateKey = "DisablePrivateBrowsing"
+	firefoxDoHKey     = "DNSOverHTTPS"
+)
 
 // chromiumHardeningDoc is what one Chromium browser's policy file should contain.
 // An empty map means the guard asks nothing of this browser - either no knob is on
@@ -53,6 +55,46 @@ func chromiumHardeningDoc(k Kind, h Hardening) map[string]any {
 		doc["ForceYouTubeRestrict"] = restrict
 		if k == Edge {
 			doc["ForceBingSafeSearch"] = restrict
+		}
+	}
+	if r, on := h.DNSFilterOn(); on && KnobSupported(KnobDNSFilter, k) {
+		// "secure" is DoH only with no fallback to plaintext DNS, which is the
+		// difference between a filter and a preference. Chromium requires the
+		// template to be non-empty in that mode, so the two are written together or
+		// not at all.
+		doc["DnsOverHttpsMode"] = dohModeSecure
+		doc["DnsOverHttpsTemplates"] = r.Template
+	}
+	return doc
+}
+
+// dohModeSecure is Chromium's DoH-only mode. Named here as well as in the Windows
+// writer because the two platforms share no code and a string this load-bearing
+// should not be spelled out twice in a row that reads the same either way.
+const dohModeSecure = "secure"
+
+// firefoxHardeningDoc is every policy key the guard sets in Firefox's shared
+// policies.json, and its absence from this map is what removes it. It mirrors
+// chromiumHardeningDoc so the two halves of one knob are written the same way.
+//
+// Mozilla's DoH policy is an object rather than a flat value, and all four members
+// matter: Enabled turns it on, ProviderURL points it at the filter, Locked stops
+// the user repointing it in about:preferences, and Fallback false is what makes it
+// fail closed instead of quietly reverting to the machine's resolver. Fallback is
+// honoured from Firefox 124; an older build ignores that one member and keeps the
+// weaker behaviour, which the knob's note states rather than this pretending
+// otherwise.
+func firefoxHardeningDoc(h Hardening) map[string]any {
+	doc := map[string]any{}
+	if h.PrivateBrowsing && KnobSupported(KnobPrivateBrowsing, Firefox) {
+		doc[firefoxPrivateKey] = true
+	}
+	if r, on := h.DNSFilterOn(); on && KnobSupported(KnobDNSFilter, Firefox) {
+		doc[firefoxDoHKey] = map[string]any{
+			"Enabled":     true,
+			"ProviderURL": r.Template,
+			"Locked":      true,
+			"Fallback":    false,
 		}
 	}
 	return doc
@@ -101,15 +143,17 @@ func applyChromiumHardening(k Kind, h Hardening) error {
 }
 
 // applyFirefoxHardening merges into the shared policies.json, touching only the
-// one key it owns, so the extension enforcer's ExtensionSettings and the domain
+// keys it owns, so the extension enforcer's ExtensionSettings and the domain
 // enforcer's WebsiteFilter survive a cycle in which all three run.
 //
-// Firefox is absent from knobSupport for safe-search, so this only ever has
-// private browsing to write.
+// Firefox is absent from knobSupport for safe-search, so what this writes is
+// private browsing and the DNS filter.
 func applyFirefoxHardening(h Hardening) error {
 	path := firefoxPoliciesPath()
-	want := h.PrivateBrowsing && KnobSupported(KnobPrivateBrowsing, Firefox)
-	if !want {
+	want := firefoxHardeningDoc(h)
+	if len(want) == 0 {
+		// Nothing wanted and no document to clean up: leave the machine alone
+		// rather than creating a policies.json to hold nothing.
 		if _, err := os.Stat(path); err != nil {
 			return nil
 		}
@@ -119,10 +163,15 @@ func applyFirefoxHardening(h Hardening) error {
 	}
 	doc := readFirefoxDoc()
 	policies := childMap(doc, "policies")
-	if want {
-		policies[firefoxPrivateKey] = true
-	} else {
-		delete(policies, firefoxPrivateKey)
+	// Every owned key is set or deleted on every pass, which reconciles by
+	// construction: a knob turned off has its key removed on the next cycle
+	// without anything having to remember that it used to be on.
+	for _, key := range []string{firefoxPrivateKey, firefoxDoHKey} {
+		if val, ok := want[key]; ok {
+			policies[key] = val
+		} else {
+			delete(policies, key)
+		}
 	}
 	data, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
@@ -168,7 +217,8 @@ func verifyChromiumHardening(k Kind, h Hardening, installed bool) Status {
 
 func verifyFirefoxHardening(h Hardening, installed bool) Status {
 	s := Status{Kind: Firefox, Installed: installed}
-	if !(h.PrivateBrowsing && KnobSupported(KnobPrivateBrowsing, Firefox)) {
+	want := firefoxHardeningDoc(h)
+	if len(want) == 0 {
 		return notAvailableOr(s, h.Any())
 	}
 	var doc struct {
@@ -178,10 +228,15 @@ func verifyFirefoxHardening(h Hardening, installed bool) Status {
 		_ = json.Unmarshal(data, &doc)
 	}
 	matched := 0
-	if v, ok := doc.Policies[firefoxPrivateKey].(bool); ok && v {
-		matched = 1
+	for key, val := range want {
+		// Through JSON for the reason verifyChromiumHardening does it: the DoH
+		// policy is an object, and comparing a decoded map[string]any against the
+		// one built above by == is not something Go will even allow.
+		if sameJSON(doc.Policies[key], val) {
+			matched++
+		}
 	}
-	return lockStatus(s, matched, 1)
+	return lockStatus(s, matched, len(want))
 }
 
 // notAvailableOr distinguishes "nobody asked" from "somebody asked and this

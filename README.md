@@ -461,7 +461,7 @@ administrator and no rename, while the status window read *protection active* �
 the same failure [`guard browsers`](#browsers-the-guard-cannot-manage) exists to
 report one step further out.
 
-Two settings close it, and they are pinned the way everything else here is
+Three settings close it, and they are pinned the way everything else here is
 enforced: policy values in `HKLM\SOFTWARE\Policies`, which the tamper watcher
 already watches, so a deleted one is restored within milliseconds for free.
 
@@ -470,12 +470,17 @@ guard hardening                        # what is pinned, where it reaches, and w
 guard harden private-browsing          # admin; no password - it only adds protection
 guard harden safe-search               # strict by default
 guard -level moderate harden safe-search
+guard harden dns-filter                # resolve through a filtering resolver, pinned closed
 guard unharden private-browsing        # password (unless protection is paused)
 ```
 
 ```json
 {
-  "hardening": { "privateBrowsing": true, "safeSearch": "strict" }
+  "hardening": {
+    "privateBrowsing": true,
+    "safeSearch": "strict",
+    "dnsFilter": "cloudflare-family"
+  }
 }
 ```
 
@@ -483,6 +488,7 @@ guard unharden private-browsing        # password (unless protection is paused)
 |---|---|---|
 | `private-browsing` | No Incognito or private windows, and no guest profiles. Brave's *private window with Tor* too, which the Chromium switch does not describe. | chrome, edge, brave, firefox, zen |
 | `safe-search` | Google and Bing SafeSearch, and YouTube's restricted mode. `-level` takes `moderate` or `strict`. | chrome, edge, brave |
+| `dns-filter` | Every browser's DNS, pinned to [Cloudflare for Families](https://developers.cloudflare.com/1.1.1.1/setup/) — malware and adult content — with no fallback, so it cannot be turned off by breaking it. | chrome, edge, brave, firefox, zen |
 
 **The hole is reported whether or not you close it.** `guard verify`, `guard
 hardening` and the status window all say so while any extension is being
@@ -512,10 +518,136 @@ both say "not enforced in firefox, zen" rather than showing a row that looks
 applied. `guard verify` reports `not available in firefox`
 for the same reason, which is a different fact from `not configured`.
 
+### Filtered DNS, and why it is not a list
+
+`dns-filter` is the one setting here that blocks content, and the only one in the
+whole guard that does it **without shipping a list**. That is the point of it.
+
+The block list uses each browser's `URLBlocklist`, and Chromium silently ignores
+entries past **1,000** — so a hand-curated set of adult domains is stale on
+release day and can never be more than a gesture. A filtering resolver moves the
+classification to someone who maintains it continuously, and the config stores one
+readable line naming *who*, rather than a few dozen hostnames compiled into the
+binary. Cloudflare for Families answers `0.0.0.0` for anything it filters.
+
+What gets written, and it is fail-closed by construction:
+
+| Family | Policy | Value |
+|---|---|---|
+| Chrome/Edge/Brave | `DnsOverHttpsMode` | `secure` — DoH only, **no** fallback to plaintext DNS |
+| | `DnsOverHttpsTemplates` | `https://family.cloudflare-dns.com/dns-query` |
+| Firefox/Zen | `DNSOverHTTPS\Enabled` | `1` |
+| | `DNSOverHTTPS\ProviderURL` | the same endpoint |
+| | `DNSOverHTTPS\Locked` | `1` — not changeable in `about:preferences` |
+| | `DNSOverHTTPS\Fallback` | `0` — Firefox 124+ |
+
+`automatic` mode is deliberately not used: it falls back to plaintext DNS on any
+error, which turns *make the resolver unreachable* into a working bypass rather
+than a broken browser. Same for Mozilla's `Fallback`.
+
+**The costs are real, and you should decide before turning it on.** Fail-closed
+means a resolver that cannot be reached is a browser that loads nothing:
+captive-portal wifi (hotels, airports, some campuses) will not come up, a VPN or
+corporate network with its own internal names will not resolve them in the
+browser, and a Cloudflare outage is your outage. Turning it back off takes the
+password, like every other weakening.
+
+What it does **not** cover:
+
+- **Any non-browser application.** DNS is pinned per browser, by browser policy.
+  Everything else on the machine uses the machine's own resolver.
+- **A browser the guard writes no policy for** — run
+  [`guard browsers`](#browsers-the-guard-cannot-manage).
+- **One page of a site.** DNS answers for whole hostnames, so this cannot do
+  "YouTube but not that video". That stays `safe-search`'s and the extensions'
+  job.
+- **Firefox before 124**, which has no `Fallback` policy: the other three values
+  still apply, and it reverts to the machine's resolver on error. Weaker than the
+  Chromium half, and `guard harden dns-filter` says so when you turn it on.
+
+So the honest division of labour: `dns-filter` is coverage, the locked extensions
+catch the tail and the paths, `safe-search` handles search results, the block list
+is a small set you chose by hand, and [allowed-sites-only](#allowed-sites-only) is
+the airtight option when you want one.
+
 **These are not schedulable.** A block narrows what is enforced during declared
 windows; "Incognito is disabled on Tuesdays" is not worth the complexity, and a
 setting that is off half the time is a setting that does nothing — the same reason
 a limit that cannot be measured is refused outright.
+
+### Adult content, as a category with nothing in it
+
+Cold Turkey ships *block adult websites*. So does this, as `guard block-category
+adult` — and it contains **no websites at all**:
+
+```sh
+guard categories adult          # read what it will change before agreeing to it
+guard block-category adult      # admin; no password - it only adds protection
+```
+
+```
+Adult content - 2 browser settings
+none of it is in force yet
+
+  entry                          state            covers
+  Filtered DNS                   new              Cloudflare for Families - malware and adult content
+  SafeSearch and restricted mode new              strict
+```
+
+That is the entire category. It turns on `dns-filter` and `safe-search`, and
+stops.
+
+**Why there is no list.** What counts as adult content is a question with
+millions of answers that change daily. A few dozen hostnames compiled into this
+binary would be out of date the week they shipped, and the failure mode is the
+bad one: the block *looks* like it worked while the next site along loads fine,
+so the person relying on it stops checking. Shipping a list here would be making
+a promise the program cannot keep. A filtering resolver already answers that
+question continuously, and keeping the answer current is somebody's full-time
+job — which is the same argument [Filtered DNS](#filtered-dns-and-why-it-is-not-a-list)
+makes one level down, applied to the feature that would most obviously have been
+written as a blocklist.
+
+`TestAdultCategoryShipsNoListAtAll` is the guardrail. Anybody who wants to add
+hostnames has to delete that test first, and then argue with its name.
+
+**No application rules either**, and that is not an omission. This content is
+reached through a browser. Naming executables would be guessing at software
+nobody has verified is installed anywhere, and a shipped rule is applied by
+somebody who has not looked at it — the same reason `ValidateCatalog` refuses
+window-title rules outright.
+
+**`private-browsing` is deliberately not the third setting.** It is the right
+knob for a locked extension, which cannot load in an Incognito window — but both
+settings here are *browser policy*, and browser policy applies to Incognito too.
+Adding it would take a feature away to buy nothing, under a switch that costs no
+password.
+
+#### What a category with no rules changes elsewhere
+
+This is the first category that creates **no block**, and the wording follows the
+thing rather than the habit: it is turned **on**, never *blocked*; the window
+badges it `On` and offers `Turn on` rather than `Block`; there is nothing to put
+on a schedule and nothing to lock. `policy.Category.BlocksAnything` is the single
+place that decides which of the two shapes is in hand, and `Config.CategoryApplied`
+is what *in force* means when there is no block to look for — without it, adult
+would read `available` forever, having been applied.
+
+Two rules hold the settings half to the same bar the rules half is held to:
+
+- **A category can never lower a setting.** Applying one costs no password, so a
+  category asking for `moderate` on a machine already set to `strict` would be
+  the way around `HardenWeakens`. `ApplyCategory` skips any setting that would
+  filter less than what is already in force.
+- **A resolver you already chose is yours.** If filtered DNS is already on,
+  applying this category leaves your resolver alone rather than swapping it for
+  whichever one this program happens to name first. That is the same principle
+  that leaves a hand-added rule unclaimed by the category that would have added
+  it: a lateral move taken without a password is not protection.
+
+Lifting it is `guard unharden dns-filter` and `guard unharden safe-search`, which
+take the **password**, because those are the steps that weaken. There is no
+`remove-block adult`, because there was never a block.
 
 ### The gate, and the one place it inverts
 

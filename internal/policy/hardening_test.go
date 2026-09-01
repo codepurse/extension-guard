@@ -287,3 +287,140 @@ func TestHardeningSurvivesScheduleResolution(t *testing.T) {
 		t.Error("hardening was resolved away outside a block's window")
 	}
 }
+
+// TestNormalizeDNSFilter holds the resolver id to the same rule as a SafeSearch
+// level: what the guard does not recognize is refused rather than quietly read as
+// off. More is riding on it here - a config naming a resolver while the browsers
+// resolve through whatever they used before is a machine whose DNS nobody is
+// filtering and whose config says otherwise.
+func TestNormalizeDNSFilter(t *testing.T) {
+	for _, in := range []string{"", "off", "OFF", "  "} {
+		if got, err := NormalizeDNSFilter(in); err != nil || got != "" {
+			t.Errorf("NormalizeDNSFilter(%q) = %q, %v; want \"\", nil", in, got, err)
+		}
+	}
+	// The friendly spellings all land on the one resolver there is. They have to
+	// keep landing there when a second is added, or an upgrade would repoint a
+	// machine's DNS at a different operator without anybody asking for it.
+	for _, in := range []string{"on", "true", "yes", "cloudflare", "family", ResolverCloudflareFamily, "CLOUDFLARE-FAMILY"} {
+		if got, err := NormalizeDNSFilter(in); err != nil || got != ResolverCloudflareFamily {
+			t.Errorf("NormalizeDNSFilter(%q) = %q, %v; want %q", in, got, err, ResolverCloudflareFamily)
+		}
+	}
+	for _, in := range []string{"quad9", "https://example.com/dns-query", "nonsense"} {
+		if _, err := NormalizeDNSFilter(in); err == nil {
+			t.Errorf("NormalizeDNSFilter(%q) was accepted; an unvetted resolver must not be", in)
+		}
+	}
+}
+
+// TestEveryResolverIsUsable checks the table rather than one entry: a resolver
+// whose id does not normalize, or whose template is not an https URL, would be
+// selectable and then written into every browser's DNS policy.
+func TestEveryResolverIsUsable(t *testing.T) {
+	if len(Resolvers) == 0 {
+		t.Fatal("no resolver ships, so the knob can never be turned on")
+	}
+	seen := map[string]bool{}
+	for _, r := range Resolvers {
+		if got, err := NormalizeDNSFilter(r.ID); err != nil || got != r.ID {
+			t.Errorf("resolver %q does not normalize to itself: %q, %v", r.ID, got, err)
+		}
+		if _, ok := LookupResolver(r.ID); !ok {
+			t.Errorf("resolver %q is not findable by its own id", r.ID)
+		}
+		if seen[r.ID] {
+			t.Errorf("resolver %q is listed twice", r.ID)
+		}
+		seen[r.ID] = true
+		if !strings.HasPrefix(r.Template, "https://") {
+			t.Errorf("resolver %q has template %q, which is not an https DoH endpoint", r.ID, r.Template)
+		}
+		for _, field := range []struct{ name, val string }{
+			{"Label", r.Label}, {"Short", r.Short}, {"Covers", r.Covers},
+		} {
+			if strings.TrimSpace(field.val) == "" {
+				t.Errorf("resolver %q has no %s, so the window would offer a blank row", r.ID, field.name)
+			}
+		}
+		// Short lands in a ten-wide column in `guard hardening` and reads as the
+		// state of the setting. Longer than that and the table stops lining up.
+		if len(r.Short) > 10 {
+			t.Errorf("resolver %q has Short %q (%d chars), which overflows the state column", r.ID, r.Short, len(r.Short))
+		}
+	}
+}
+
+// TestSetKnobDNSFilter walks the knob through the states the CLI and the window
+// put it in.
+func TestSetKnobDNSFilter(t *testing.T) {
+	var cfg Config
+
+	changed, err := cfg.SetKnob(KnobDNSFilter, true, "")
+	if err != nil || !changed {
+		t.Fatalf("turning dns-filter on: changed=%v err=%v", changed, err)
+	}
+	// An empty level means the default resolver rather than an error: `guard harden
+	// dns-filter` with no flags is the way almost everybody will turn this on.
+	r, on := cfg.Hardened().DNSFilterOn()
+	if !on || r.ID != ResolverCloudflareFamily {
+		t.Fatalf("DNSFilterOn() = %+v, %v; want the default resolver", r, on)
+	}
+	if !cfg.Hardened().On(KnobDNSFilter) || !cfg.Hardened().Any() {
+		t.Error("the knob is on but On/Any do not say so")
+	}
+	// The state names who is filtering, not just that something is. With one
+	// resolver that is guessable; with two it is the whole substance of the row.
+	if got := cfg.Hardened().Describe(KnobDNSFilter); got != r.Short {
+		t.Errorf("Describe(dns-filter) = %q, want %q", got, r.Short)
+	}
+	if changed, err := cfg.SetKnob(KnobDNSFilter, true, ""); err != nil || changed {
+		t.Errorf("re-enabling reported changed=%v err=%v", changed, err)
+	}
+	if _, err := cfg.SetKnob(KnobDNSFilter, true, "quad9"); err == nil {
+		t.Error("an unknown resolver was accepted")
+	}
+	if _, err := cfg.SetKnob(KnobDNSFilter, false, ResolverCloudflareFamily); err == nil {
+		t.Error("turning dns-filter off accepted a resolver")
+	}
+	if _, err := cfg.SetKnob(KnobDNSFilter, false, ""); err != nil {
+		t.Fatalf("turning dns-filter off: %v", err)
+	}
+	if cfg.Hardening != nil {
+		t.Error("the last knob went off but the Hardening object stayed")
+	}
+}
+
+// TestDNSFilterHasNoGap is the claim the knob's own note makes: unlike
+// safe-search, every browser the guard writes policy for can be pinned. If a
+// browser ever cannot, this fails and the note has to change with it - a row
+// reading "on" over a browser resolving through its own DNS is the half-truth
+// Gaps() exists to prevent.
+func TestDNSFilterHasNoGap(t *testing.T) {
+	h := Hardening{DNSFilter: ResolverCloudflareFamily}
+	for _, k := range AllKinds() {
+		if !KnobSupported(KnobDNSFilter, k) {
+			t.Errorf("dns-filter is not supported in %s", k)
+		}
+	}
+	if gaps := h.Gaps(); len(gaps) != 0 {
+		t.Errorf("Gaps() = %v, want none", gaps)
+	}
+}
+
+// TestValidateRejectsUnknownResolver mirrors TestValidateRejectsUnknownLevel: a
+// hand-edited config naming a resolver the guard does not know is refused at load
+// rather than enforcing nothing while claiming to filter.
+func TestValidateRejectsUnknownResolver(t *testing.T) {
+	cfg := Config{
+		Extensions: []Extension{{Name: "blocknsfw"}},
+		Hardening:  &Hardening{DNSFilter: "some-resolver"},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("a config naming an unknown resolver validated")
+	}
+	// And it reads as off in the meantime, so nothing downstream acts on it.
+	if _, on := cfg.Hardened().DNSFilterOn(); on {
+		t.Error("an unknown resolver read as on")
+	}
+}

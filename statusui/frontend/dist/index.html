@@ -5,398 +5,1044 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Extension Guard</title>
 <style>
+  /* ------------------------------------------------------------------------
+     Tokens.
+
+     Four surface steps rather than two. A console needs the rail to sit behind
+     the content, the content behind its panels, and a panel's rows behind the
+     panel - two greys cannot express that, and everything reads as one flat
+     sheet, which is what made the old window look like a settings page.
+
+     One hue per meaning, and no meaning shares a hue: emerald is protection
+     holding, amber is a gap the user should look at, rose is protection off or
+     an action that removes it, indigo is nothing but interaction - selection,
+     focus, the thing you are about to press. A badge's colour is therefore
+     readable without its text.
+     --------------------------------------------------------------------- */
   :root {
-    --bg: #0e0e11; --surface: #17171c; --surface2: #1f1f26; --border: #2a2a33;
-    --text: #e8e8ec; --muted: #9a9aa6; --faint: #6e6e78;
-    --accent: #6366f1; --accent-dim: #534ab7;
-    --ok: #34d399; --ok-bg: rgba(52,211,153,0.12);
-    --warn: #f59e0b; --warn-bg: rgba(245,158,11,0.12);
-    --danger: #b91c1c; --danger-hi: #dc2626;
+    --bg:        #0b0d12;
+    --rail:      #080a0e;
+    --panel:     #12151b;
+    --panel-2:   #171b23;
+    --panel-3:   #1e232c;
+    --line:      #222835;
+    --line-soft: #1a1e26;
+
+    /* Unselected controls that sit directly on a panel - day chips, lock
+       lengths, the add-a-rule buttons. They need to be lighter than the panel
+       and not darker: a control the same colour as the sheet behind it reads as
+       a label, and people do not press labels. */
+    --ctl:      #1c212a;
+    --ctl-line: #2b3240;
+
+    --text:   #e9ecf1;
+    --text-2: #99a2b1;
+    --text-3: #69707f;
+
+    --accent:      #6b6ff7;
+    --accent-hi:   #8285ff;
+    --accent-bg:   rgba(107,111,247,0.14);
+    --accent-line: rgba(107,111,247,0.38);
+
+    --ok:      #34d399;
+    --ok-bg:   rgba(52,211,153,0.11);
+    --ok-line: rgba(52,211,153,0.28);
+
+    --warn:      #f0a52e;
+    --warn-bg:   rgba(240,165,46,0.11);
+    --warn-line: rgba(240,165,46,0.30);
+
+    --bad:      #fb7185;
+    --bad-bg:   rgba(251,113,133,0.11);
+    --bad-line: rgba(251,113,133,0.30);
+
+    --danger:    #a81b2a;
+    --danger-hi: #c72232;
+
+    --r-lg:   14px;
+    --r:      10px;
+    --r-sm:   8px;
+    --r-pill: 999px;
+
+    --shadow: 0 1px 2px rgba(0,0,0,.5), 0 12px 28px -16px rgba(0,0,0,.75);
+
+    /* One place to change the two numbers the whole shell is built on. */
+    --rail-w:  238px;
+    --inner-w: 1560px;
   }
+
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; }
   body {
     background: var(--bg); color: var(--text);
-    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
-    font-size: 14px; line-height: 1.5; -webkit-user-select: none; user-select: none;
+    font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+    font-size: 13.5px; line-height: 1.5; overflow: hidden;
+    -webkit-user-select: none; user-select: none;
+    -webkit-font-smoothing: antialiased;
   }
-  .wrap { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
-  .topbar { display: flex; align-items: center; gap: 10px; }
-  .topbar .name { font-weight: 600; font-size: 14px; }
-  .pill { margin-left: auto; font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 999px; }
-  .pill.active { color: var(--ok); background: var(--ok-bg); }
-  .pill.inactive { color: var(--faint); background: var(--surface2); }
-  .pill.paused { color: var(--warn); background: var(--warn-bg); }
-  .hero { display: flex; align-items: center; gap: 14px; }
-  .hero .ring {
-    width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-    background: var(--ok-bg); color: var(--ok); flex-shrink: 0;
+  /* Numbers are compared down a column, so they get fixed-width digits
+     everywhere - a stat that reflows its own width as it ticks reads as a
+     glitch. */
+  .tval, .ringnum, .usenum, .udnum, .card .val, .navbadge { font-variant-numeric: tabular-nums; }
+
+  /* A path or a rule value is something people copy out. It is the only text in
+     the window worth selecting, so it is the only text that can be. */
+  .actpath, .anote, .dname, .aname { -webkit-user-select: text; user-select: text; }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #262c38; border-radius: 999px; border: 3px solid transparent; background-clip: content-box; }
+  ::-webkit-scrollbar-thumb:hover { background: #333b4a; background-clip: content-box; }
+
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ------------------------------------------------------------------------
+     Shell: a fixed rail, and one scrolling column beside it. The window opens
+     maximised, so the content is capped and centred - rows stretched to 2500px
+     to hold a domain name and a badge is not density, it is waste.
+     --------------------------------------------------------------------- */
+  .app { display: grid; grid-template-columns: var(--rail-w) minmax(0, 1fr); height: 100vh; }
+
+  .rail {
+    background: var(--rail); border-right: 1px solid var(--line-soft);
+    display: flex; flex-direction: column; padding: 18px 12px 12px; min-width: 0;
   }
-  .hero.off .ring { background: var(--surface2); color: var(--faint); }
-  .hero.paused .ring { background: var(--warn-bg); color: var(--warn); }
-  .hero h1 { font-size: 17px; font-weight: 600; margin: 0; }
-  .hero p { margin: 0; color: var(--muted); font-size: 13px; }
-  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
-  .card .lbl { font-size: 12px; color: var(--muted); }
-  .card .val { font-size: 20px; font-weight: 600; margin-top: 2px; }
-  .section-title { font-size: 12px; color: var(--faint); text-transform: uppercase; letter-spacing: .04em; }
-  .rows { display: flex; flex-direction: column; gap: 6px; }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 0 8px 18px; }
+  .brand img { border-radius: 6px; }
+  .brand .bt { min-width: 0; }
+  .brand .bn { font-size: 13.5px; font-weight: 650; letter-spacing: -0.01em; }
+  .brand .bv { font-size: 11px; color: var(--text-3); margin-top: -2px; }
+
+  .nav { display: flex; flex-direction: column; gap: 2px; }
+  .navitem {
+    position: relative; display: flex; align-items: center; gap: 11px;
+    padding: 9px 10px; border-radius: var(--r-sm); background: transparent;
+    border: none; color: var(--text-2); font-size: 13px; font-weight: 550;
+    cursor: pointer; text-align: left; width: 100%;
+  }
+  .navitem svg { width: 18px; height: 18px; flex: none; opacity: .85; }
+  .navitem:hover { background: #101218; color: var(--text); }
+  .navitem.is-on { background: var(--accent-bg); color: #cfd1ff; }
+  .navitem.is-on svg { opacity: 1; color: var(--accent-hi); }
+  /* The selected item carries a bar on the rail edge as well as a fill. The
+     fill alone disappears the moment a warning dot lands next to it. */
+  .navitem.is-on::before {
+    content: ''; position: absolute; left: -12px; top: 50%; transform: translateY(-50%);
+    width: 3px; height: 18px; border-radius: 0 3px 3px 0; background: var(--accent-hi);
+  }
+  .navlabel { flex: 1; min-width: 0; }
+  .navbadge {
+    font-size: 11px; font-weight: 650; color: var(--text-3);
+    background: #14171e; border: 1px solid var(--line-soft);
+    padding: 0 6px; border-radius: var(--r-pill); min-width: 22px; text-align: center;
+  }
+  .navitem.is-on .navbadge { color: #b9bcff; background: rgba(107,111,247,0.16); border-color: var(--accent-line); }
+  /* A dot, not a number: it says "something here wants you", and the count is
+     on the page itself. */
+  .navdot { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); flex: none; }
+  .navdot.bad { background: var(--bad); }
+
+  .railfoot { margin-top: auto; padding: 12px 8px 0; border-top: 1px solid var(--line-soft); }
+  .railfoot .foot { display: flex; flex-direction: column; align-items: stretch; gap: 6px; color: var(--text-3); font-size: 11px; }
+  .railfoot .foot #ver { padding-bottom: 4px; }
+  .railfoot .foot button {
+    margin-left: 0; width: 100%;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .railfoot .foot button svg { width: 14px; height: 14px; flex: none; }
+
+  .main { display: flex; flex-direction: column; min-width: 0; }
+  .topbar {
+    flex: none; display: flex; align-items: center; gap: 14px;
+    padding: 16px 28px; border-bottom: 1px solid var(--line-soft);
+    background: linear-gradient(180deg, #0d1016, var(--bg));
+  }
+  .topbar .ptitle { font-size: 19px; font-weight: 650; letter-spacing: -0.015em; }
+  .topbar .psub { font-size: 12.5px; color: var(--text-2); margin-top: 1px; }
+  .topbar .right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
+  .iconbtn {
+    background: var(--panel); border: 1px solid var(--line); color: var(--text-2);
+    width: 32px; height: 32px; border-radius: var(--r-sm); padding: 0;
+    display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+  .iconbtn svg { width: 15px; height: 15px; }
+  .iconbtn:hover { background: var(--panel-3); color: var(--text); border-color: #2c3341; }
+  .iconbtn.spin svg { animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .content { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 22px 28px 44px; }
+  .inner { max-width: var(--inner-w); margin: 0 auto; }
+  .pane { display: none; }
+  .pane.is-active { display: block; }
+
+  /* ------------------------------------------------------------------------
+     Panels. The one container everything sits in.
+     --------------------------------------------------------------------- */
+  .panel {
+    background: var(--panel); border: 1px solid var(--line-soft); border-radius: var(--r-lg);
+    padding: 16px 18px 18px; box-shadow: var(--shadow);
+    /* A hairline of light on the top edge. It is what separates a panel from a
+       painted rectangle at this contrast. */
+    background-image: linear-gradient(180deg, rgba(255,255,255,0.022), rgba(255,255,255,0) 70px);
+  }
+  .grid { display: grid; gap: 16px; }
+  .stack { display: flex; flex-direction: column; gap: 16px; }
+  .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+  .sechead { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .sechead .grow { flex: 1; }
+  .section-title { font-size: 11px; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: .07em; }
+  .section-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .section-head .section-title { flex: 1; }
+
+  /* The old window explained every section in one to three sentences, always
+     visible. The wording was worth keeping and the vertical space was not, so
+     it moved behind this: same sentences, one click away, and the section keeps
+     its density. */
+  .help {
+    width: 16px; height: 16px; padding: 0; flex: none; border-radius: 50%;
+    background: #181c24; border: 1px solid var(--ctl-line); color: var(--text-2);
+    font-size: 10px; font-weight: 700; line-height: 1; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .help:hover, .help.open { background: var(--accent-bg); border-color: var(--accent-line); color: #b9bcff; }
+  .helpbubble {
+    position: fixed; z-index: 80; width: 330px; max-width: calc(100vw - 24px);
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--r);
+    padding: 12px 14px; box-shadow: 0 16px 40px -12px rgba(0,0,0,.85);
+  }
+  .helpbubble p { margin: 0; font-size: 12.5px; color: var(--text-2); line-height: 1.55; }
+  .helpbubble p + p { margin-top: 8px; }
+
+  .exthint { font-size: 12px; color: var(--text-2); margin: 8px 0 0; }
+  .emptyhint { font-size: 12px; color: var(--text-2); margin: 8px 0 0; }
+  .actpath { font-size: 11px; color: var(--text-3); word-break: break-all; margin: 10px 0 0; }
+
+  /* ------------------------------------------------------------------------
+     Overview: the protection panel, four stats, an attention list, and the
+     activity feed as a right-hand rail.
+     --------------------------------------------------------------------- */
+  .ov { display: grid; grid-template-columns: minmax(0, 1fr) 348px; gap: 16px; align-items: start; }
+  .ov-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+  .hero-panel { padding: 22px 24px; position: relative; overflow: hidden; }
+  /* State bleeds into the panel behind the ring rather than being announced by a
+     coloured border. At 4% it is barely a colour and entirely a mood. */
+  .hero-panel::after {
+    content: ''; position: absolute; left: -80px; top: -140px; width: 420px; height: 420px;
+    border-radius: 50%; pointer-events: none; opacity: .5;
+    background: radial-gradient(circle, rgba(52,211,153,0.10), rgba(52,211,153,0) 68%);
+  }
+  .hero-panel.s-off::after { background: radial-gradient(circle, rgba(251,113,133,0.09), rgba(251,113,133,0) 68%); }
+  .hero-panel.s-paused::after { background: radial-gradient(circle, rgba(240,165,46,0.10), rgba(240,165,46,0) 68%); }
+
+  .hero { display: flex; align-items: center; gap: 26px; position: relative; }
+  .hero .ring { width: 132px; height: 132px; flex: none; position: relative; }
+  .ringsvg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .ringtrack { fill: none; stroke: #1d222b; stroke-width: 9; }
+  .ringarc {
+    fill: none; stroke: var(--ok); stroke-width: 9; stroke-linecap: round;
+    transition: stroke-dashoffset .5s cubic-bezier(.4,0,.2,1);
+  }
+  .hero.off .ringarc { stroke: var(--bad); }
+  .hero.paused .ringarc { stroke: var(--warn); }
+  .ringinner { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .ringnum { font-size: 34px; font-weight: 680; letter-spacing: -0.03em; line-height: 1; }
+  .ringden { font-size: 10.5px; color: var(--text-3); margin-top: 5px; text-align: center; letter-spacing: .02em; }
+
+  .herobody { min-width: 0; flex: 1; }
+  .hero h1 { font-size: 24px; font-weight: 650; margin: 0; letter-spacing: -0.02em; }
+  .hero p { margin: 5px 0 0; color: var(--text-2); font-size: 13px; max-width: 62ch; }
+  .herometa { font-size: 12px; color: var(--text-3); margin-top: 12px; display: flex; align-items: center; gap: 7px; }
+  .herometa b { color: var(--text-2); font-weight: 600; }
+  .herometa .sep { color: #2a3040; }
+
+  /* Every safeguard as one segment: a meter, not a percentage. It answers "how
+     much of it is on" and "how many are there" in the same glance, which a bar
+     filled to 78% does not. */
+  .segs { display: flex; gap: 3px; margin-top: 16px; flex-wrap: wrap; }
+  .segs i { width: 26px; height: 5px; border-radius: 2px; background: #232936; display: block; }
+  .segs i.on { background: var(--ok); }
+  .hero-panel.s-paused .segs i.on { background: var(--warn); }
+  .hero-panel.s-off .segs i.on { background: #4c5260; }
+
+  .heroactions { margin-top: 18px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+  .tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  .tile {
+    position: relative; background: var(--panel); border: 1px solid var(--line-soft);
+    border-radius: var(--r-lg); padding: 14px 16px 15px; box-shadow: var(--shadow);
+    background-image: linear-gradient(180deg, rgba(255,255,255,0.022), rgba(255,255,255,0) 50px);
+    /* A column, so the one tile with a chart in it can push the chart to the
+       bottom edge and the other three keep their numbers at the same height. */
+    display: flex; flex-direction: column; min-height: 132px;
+  }
+  .tile .tlabel { font-size: 10.5px; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: .07em; }
+  .tile .tval { font-size: 29px; font-weight: 650; letter-spacing: -0.03em; line-height: 1.15; margin-top: 8px; }
+  .tile .tsub { font-size: 11.5px; color: var(--text-2); margin-top: 3px; min-height: 17px; }
+  .tile .tico { position: absolute; top: 13px; right: 14px; color: #2b3140; }
+  .tile .tico svg { width: 16px; height: 16px; }
+  .tile.warn .tval { color: var(--warn); }
+  .spark { display: block; width: 100%; height: 22px; margin-top: auto; padding-top: 8px; overflow: visible; }
+  .spark path.line { fill: none; stroke: var(--accent-hi); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+  .spark path.area { fill: rgba(107,111,247,0.16); stroke: none; }
+  .spark circle { fill: var(--accent-hi); }
+
+  /* Attention rows. Not the same shape as a rule row: these are read once and
+     acted on, so the text leads and the button is the only other thing. */
+  .attrow { display: flex; align-items: flex-start; gap: 11px; padding: 11px 2px; border-top: 1px solid var(--line-soft); }
+  .attrow:first-child { border-top: none; padding-top: 2px; }
+  .attrow .adot { width: 7px; height: 7px; border-radius: 50%; margin-top: 6px; flex: none; background: var(--warn); }
+  .attrow.bad .adot { background: var(--bad); }
+  .attrow .abody { flex: 1; min-width: 0; }
+  .attrow .atext { font-size: 13px; font-weight: 550; }
+  .attrow.bad .atext { color: #ffd9de; }
+  .attrow .asub { font-size: 12px; color: var(--text-2); margin-top: 2px; }
+  .attrow button { flex: none; }
+  .attcount {
+    font-size: 11px; font-weight: 700; color: var(--warn); background: var(--warn-bg);
+    border: 1px solid var(--warn-line); padding: 1px 8px; border-radius: var(--r-pill);
+  }
+  .allclear { display: flex; align-items: center; gap: 10px; color: var(--ok); font-size: 13px; padding: 2px 0; }
+  .allclear svg { width: 17px; height: 17px; }
+
+  /* ------------------------------------------------------------------------
+     Rows: the shape most of the app is made of. Restyled here rather than in
+     the renderers - the JS builds .row and the container it lands in decides
+     whether that is a list line or a card.
+     --------------------------------------------------------------------- */
+  .rows { display: flex; flex-direction: column; gap: 4px; }
   .row {
-    display: flex; align-items: center; gap: 10px; background: var(--surface);
-    border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px;
+    display: flex; align-items: center; gap: 12px;
+    background: var(--panel-2); border: 1px solid transparent; border-radius: var(--r);
+    padding: 9px 12px; min-height: 42px;
   }
+  .row:hover { background: var(--panel-3); }
   .row .bname { font-size: 13px; text-transform: capitalize; }
-  .row .badge { margin-left: auto; font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 999px; }
-  .badge.locked { color: var(--ok); background: var(--ok-bg); }
-  .badge.unlocked { color: var(--faint); background: var(--surface2); }
-  .row.absent { opacity: .45; }
-  .row .toggle { margin-left: auto; padding: 3px 12px; font-size: 11px; font-weight: 600; border-radius: 999px; }
-  .row .toggle.on, .row .toggle.on:hover { background: var(--ok-bg); color: var(--ok); }
-  .row .toggle.off, .row .toggle.off:hover { background: var(--surface2); color: var(--muted); }
-  .row .toggle:hover { filter: brightness(1.2); }
-  .exthint { font-size: 12px; color: var(--muted); margin: -6px 0 0; }
-  /* An empty-state line sits below a (possibly empty) list rather than under a
-     heading, so it must not carry .exthint's negative top margin - with nothing in
-     the list it would ride up onto the section's own hint and read as one mangled
-     paragraph. */
-  .emptyhint { font-size: 12px; color: var(--muted); margin: 8px 0 0; }
   .row .extname { text-transform: none; }
-  input[type=password], input[type=text] {
-    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
-    color: var(--text); padding: 8px 10px; font-size: 13px; outline: none;
+  .row.absent { opacity: .4; }
+  .row .ainfo { min-width: 0; flex: 1; }
+  .row .aname { font-size: 13px; word-break: break-word; }
+  .row .anote { font-size: 11.5px; color: var(--text-3); word-break: break-word; margin-top: 1px; }
+  .row .dname { font-size: 13px; text-transform: none; word-break: break-all; flex: 1; }
+
+  /* Browsers are the one list that is genuinely a set of objects rather than a
+     set of rules, so they are laid out as a set of objects. */
+  #rows { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 10px; }
+  #rows .row { flex-direction: column; align-items: flex-start; gap: 10px; padding: 14px; min-height: 92px; }
+  #rows .row .bname { font-size: 14px; font-weight: 600; }
+  #rows .row .badge { margin-left: 0; }
+
+  .badge {
+    margin-left: auto; font-size: 11px; font-weight: 650; padding: 2px 9px;
+    border-radius: var(--r-pill); border: 1px solid transparent; white-space: nowrap;
   }
-  input[type=password]:focus, input[type=text]:focus { border-color: var(--accent); }
+  .badge.locked   { color: var(--ok);      background: var(--ok-bg);     border-color: var(--ok-line); }
+  .badge.unlocked { color: var(--text-3);  background: #14171e;          border-color: var(--line-soft); }
+  .badge.idle     { color: var(--text-3);  background: #14171e;          border-color: var(--line-soft); }
+  .badge.idlewin,
+  .badge.reachable,
+  .badge.budget   { color: var(--warn);    background: var(--warn-bg);   border-color: var(--warn-line); }
+  .badge.lockbadge{ color: #b9bcff;        background: var(--accent-bg); border-color: var(--accent-line); }
+
   .schedtag {
-    margin-left: 8px; font-size: 10px; color: var(--faint); background: var(--surface2);
-    padding: 1px 7px; border-radius: 999px; vertical-align: middle; text-transform: none;
+    margin-left: 8px; font-size: 10px; color: var(--text-3); background: #14171e;
+    border: 1px solid var(--line-soft); padding: 0 7px; border-radius: var(--r-pill);
+    vertical-align: middle; text-transform: none; font-weight: 600;
   }
+
+  /* On/off is the most-pressed control in the window, so it is a real switch
+     shape - a lozenge with a travelling knob - rather than a word in a pill. It
+     reads as "this can be flipped" without being read. */
+  .row .toggle {
+    margin-left: auto; flex: none; position: relative; width: 62px; padding: 3px 0;
+    font-size: 10.5px; font-weight: 700; letter-spacing: .04em; border-radius: var(--r-pill);
+    border: 1px solid transparent; text-transform: uppercase;
+  }
+  .row .toggle.on  { background: var(--ok-bg);  color: var(--ok);     border-color: var(--ok-line); text-align: right; padding-right: 10px; }
+  .row .toggle.off { background: #0f1218;       color: var(--text-3); border-color: var(--ctl-line); text-align: left;  padding-left: 10px; }
+  .row .toggle::before {
+    content: ''; position: absolute; top: 50%; transform: translateY(-50%);
+    width: 12px; height: 12px; border-radius: 50%; transition: left .16s ease, right .16s ease;
+  }
+  .row .toggle.on::before  { left: 4px;  background: var(--ok); }
+  .row .toggle.off::before { right: 4px; background: #4a5162; }
+  .row .toggle:hover { filter: brightness(1.25); }
+
+  .grouphead {
+    font-size: 10.5px; font-weight: 700; color: var(--text-3); text-transform: uppercase;
+    letter-spacing: .07em; margin: 14px 0 4px 2px;
+  }
+  .grouphead:first-child { margin-top: 2px; }
+
+  /* ------------------------------------------------------------------------
+     Buttons and inputs.
+     --------------------------------------------------------------------- */
   button {
-    background: var(--accent-dim); color: #fff; border: none; border-radius: 8px;
-    padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
+    background: var(--accent); color: #fff; border: 1px solid transparent; border-radius: var(--r-sm);
+    padding: 7px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer;
+    font-family: inherit; line-height: 1.35;
   }
-  button:hover { background: var(--accent); }
-  button.ghost { background: transparent; border: 1px solid var(--border); color: var(--muted); }
-  button.ghost:hover { background: var(--surface2); color: var(--text); }
+  button:hover { background: var(--accent-hi); }
+  button.ghost { background: var(--ctl); border-color: var(--ctl-line); color: var(--text-2); }
+  button.ghost:hover { background: var(--panel-3); color: var(--text); border-color: #2c3341; }
   button.danger { background: var(--danger); }
   button.danger:hover { background: var(--danger-hi); }
-  button:disabled { opacity: .55; cursor: default; }
-  /* Prominent single control for overall protection. */
-  .bigbtn { width: 100%; padding: 12px; font-size: 14px; border-radius: 10px; }
+  button:disabled { opacity: .45; cursor: default; }
+  button:disabled:hover { background: var(--panel-2); }
+  button.small { padding: 4px 11px; font-size: 11.5px; }
+
+  /* The one control for overall protection. Sized as the largest thing on the
+     page it sits on, because it is the only thing on that page that changes
+     whether any of this is happening. */
+  .bigbtn { padding: 11px 22px; font-size: 13.5px; border-radius: var(--r-sm); }
+
+  input[type=password], input[type=text] {
+    background: #0e1116; border: 1px solid var(--line); border-radius: var(--r-sm);
+    color: var(--text); padding: 8px 11px; font-size: 12.5px; outline: none; font-family: inherit;
+  }
+  input::placeholder { color: #565e6e; }
+  input[type=password]:focus, input[type=text]:focus { border-color: var(--accent); background: #0f1319; }
+
+  .addrow { display: flex; gap: 8px; margin-bottom: 10px; }
+  .addrow input[type=text] { flex: 1; min-width: 0; }
+  .btnrow { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .btnrow button { padding: 6px 11px; font-size: 12px; background: var(--ctl); border-color: var(--ctl-line); color: var(--text-2); }
+  .btnrow button:hover { background: var(--accent); border-color: transparent; color: #fff; }
+
+  .pill { font-size: 11.5px; font-weight: 650; padding: 4px 11px 4px 9px; border-radius: var(--r-pill); border: 1px solid transparent; display: inline-flex; align-items: center; gap: 7px; }
+  .pill::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .pill.active   { color: var(--ok);     background: var(--ok-bg);   border-color: var(--ok-line); }
+  .pill.inactive { color: var(--bad);    background: var(--bad-bg);  border-color: var(--bad-line); }
+  .pill.paused   { color: var(--warn);   background: var(--warn-bg); border-color: var(--warn-line); }
+  /* Live, and saying so. The only animation in the window that runs on its own,
+     which is why it is allowed to be here and nowhere else. */
+  .pill.active::before { animation: pulse 2.4s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+
+  /* ------------------------------------------------------------------------
+     Messages. #msg is the one line every action reports into, and actions now
+     happen on five different pages - so it floats instead of living on one of
+     them. .msg elsewhere is still an inline line inside a modal.
+     --------------------------------------------------------------------- */
   .msg { font-size: 12px; min-height: 16px; }
-  .msg.ok { color: var(--ok); } .msg.err { color: #f87171; }
-  .foot { display: flex; align-items: center; gap: 10px; color: var(--faint); font-size: 11px; }
-  .foot button { margin-left: auto; }
-  .foot button + button { margin-left: 0; }
-  /* Remote announcement banner - a dismissible promo/notice fetched from GitHub. */
+  .msg.ok { color: var(--ok); } .msg.err { color: var(--bad); }
+  #msg {
+    position: fixed; z-index: 90; right: 24px; bottom: 24px; max-width: 420px; min-height: 0;
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--r);
+    padding: 11px 15px 11px 14px; box-shadow: 0 18px 44px -14px rgba(0,0,0,.9);
+    font-size: 12.5px; border-left: 3px solid var(--text-3);
+    opacity: 0; transform: translateY(8px); pointer-events: none;
+    transition: opacity .18s ease, transform .18s ease;
+  }
+  #msg:not(:empty) { opacity: 1; transform: none; }
+  #msg.ok  { border-left-color: var(--ok); }
+  #msg.err { border-left-color: var(--bad); }
+
+  /* ------------------------------------------------------------------------
+     Notice cards: the remote announcement, the update banner, and the warning
+     boxes. .card is what the renderers reach for, so it stays.
+     --------------------------------------------------------------------- */
+  .card { background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--r); padding: 13px 15px; }
+  .card .lbl { font-size: 12.5px; color: var(--text-2); }
+  .card .val { font-size: 20px; font-weight: 650; margin-top: 2px; }
+
+  .warnbox { border-color: var(--warn-line); background: var(--warn-bg); }
+  .warnbox .lbl { color: var(--warn); font-weight: 650; }
+  .warnbox .announce-msg { color: #d8c39a; }
+
   .announce { position: relative; }
-  .announce.info { border-color: var(--accent-dim); }
-  .announce.warn { border-color: var(--warn); }
-  .announce.danger { border-color: var(--danger-hi); }
-  .announce-title { font-weight: 600; font-size: 13px; color: var(--text); padding-right: 22px; }
-  .announce-msg { color: var(--muted); font-size: 12px; margin-top: 4px; }
-  .announce-link { margin-top: 10px; padding: 6px 12px; font-size: 12px; }
+  .announce.info   { border-color: var(--accent-line); background: var(--accent-bg); }
+  .announce.warn   { border-color: var(--warn-line);   background: var(--warn-bg); }
+  .announce.danger { border-color: var(--bad-line);    background: var(--bad-bg); }
+  .announce-title { font-weight: 650; font-size: 13px; color: var(--text); padding-right: 24px; }
+  .announce-msg { color: var(--text-2); font-size: 12.5px; margin-top: 5px; line-height: 1.55; }
+  .announce-link { margin-top: 11px; padding: 6px 12px; font-size: 12px; }
   .announce-x {
-    position: absolute; top: 8px; right: 10px; background: transparent; color: var(--faint);
+    position: absolute; top: 7px; right: 9px; background: transparent; color: var(--text-3);
     border: none; font-size: 18px; line-height: 1; padding: 0 4px; cursor: pointer; font-weight: 400;
   }
   .announce-x:hover { color: var(--text); background: transparent; }
-  /* Site block list. */
-  .addrow { display: flex; gap: 8px; margin-bottom: 6px; }
-  .addrow input[type=text] { flex: 1; min-width: 0; }
-  .badge.idlewin { color: var(--warn); background: var(--warn-bg); }
-  /* A browser the guard can neither filter nor block. Amber, like everything else
-     here that means protection is not applying. */
-  .badge.reachable { color: var(--warn); background: var(--warn-bg); }
-  .row .dname { font-size: 13px; text-transform: none; word-break: break-all; }
-  /* Application block list. Four ways in, because "the app I want gone" is a
-     file, a folder, a Store app, or just a window. */
-  .btnrow { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
-  .btnrow button { padding: 6px 12px; font-size: 12px; background: var(--surface2); color: var(--muted); }
-  .btnrow button:hover { background: var(--accent-dim); color: #fff; }
-  .row .ainfo { min-width: 0; }
-  .row .aname { font-size: 13px; word-break: break-all; }
-  .row .anote { font-size: 11px; color: var(--faint); word-break: break-all; }
-  /* Category cards. A category is one decision covering thirty rules, so it is
-     offered as a card with its own button rather than as another list row. */
-  .catrow { display: flex; align-items: flex-start; gap: 10px; }
-  .catrow .ainfo { flex: 1; }
-  .catrow .aname { font-size: 13px; font-weight: 600; }
-  .catrow button { flex-shrink: 0; padding: 6px 12px; font-size: 12px; }
-  .catnote { font-size: 11px; color: var(--faint); margin-top: 6px; line-height: 1.45; }
-  /* The contents list. Shown on demand rather than always: a category is worth
-     offering as one line, but agreeing to it is agreeing to every entry, so the
-     list has to be one click away and not buried in a separate window. */
-  .catmore {
-    background: none; border: none; color: var(--accent); padding: 4px 0 0;
-    font-size: 11px; font-weight: 600; cursor: pointer;
-  }
-  .catmore:hover { background: none; color: var(--accent); text-decoration: underline; }
-  .catlist {
-    margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 3px 10px;
-  }
-  .catlist .item { font-size: 11px; color: var(--muted); display: flex; align-items: baseline; gap: 5px; }
-  /* An entry already in the block list is dimmed and ticked, so a top-up of
-     three reads as three rather than as the whole list over again. */
-  .catlist .item.have { color: var(--faint); }
-  .catlist .item .tick { color: var(--ok); font-size: 10px; }
-  .catlist .item .kind { color: var(--faint); font-size: 10px; margin-left: auto; }
-  .catlisthead { font-size: 11px; color: var(--faint); margin: 8px 0 0; }
-  /* Heading above the run of rules one category contributed. Indented rather
-     than styled as a section title: it sits inside the blocked-apps list, and
-     reading as a peer of "Blocked apps" would suggest it is a separate list. */
-  .grouphead {
-    font-size: 11px; color: var(--faint); text-transform: uppercase; letter-spacing: .04em;
-    margin: 8px 0 2px 2px;
-  }
-  .picker { max-height: 230px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
-  .picker button {
-    width: 100%; text-align: left; background: var(--surface2); color: var(--text);
-    font-weight: 400; font-size: 12px; padding: 7px 10px;
-  }
-  .picker button:hover { background: var(--accent-dim); color: #fff; }
-  .picker .none { font-size: 12px; color: var(--muted); padding: 6px 2px; }
-  .modal.wide { width: 420px; }
-  /* Scheduled blocks - a group of extensions enforced on a timetable. */
-  .blockrow {
-    display: flex; align-items: flex-start; gap: 10px; background: var(--surface);
-    border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px;
-  }
-  .blockrow.islocked { border-color: var(--accent-dim); }
-  .blockrow .binfo { min-width: 0; }
-  .blockrow .btitle { font-size: 13px; }
-  .blockrow .bmeta { font-size: 12px; color: var(--muted); margin-top: 2px; }
-  .blockrow .bright {
-    margin-left: auto; display: flex; flex-direction: column; align-items: flex-end;
-    gap: 6px; flex-shrink: 0;
-  }
-  .badge.idle { color: var(--faint); background: var(--surface2); }
-  /* A block with time left today: on, in window, and enforcing nothing yet. It
-     gets the "warning" colour rather than the idle grey because it is a countdown,
-     not a resting state. */
-  .badge.budget { color: var(--warn); background: var(--warn-bg); }
-  .badge.lockbadge { color: var(--accent); background: rgba(99,102,241,0.14); }
-  .lockbtn {
-    padding: 3px 12px; font-size: 11px; font-weight: 600; border-radius: 999px;
-    background: var(--surface2); color: var(--muted);
-  }
-  .lockbtn:hover { background: var(--accent-dim); color: #fff; }
-  /* Section heading with an action on the right ("Scheduled blocks" + New block). */
-  .section-head { display: flex; align-items: center; gap: 10px; }
-  button.small { padding: 4px 11px; font-size: 11px; }
-  /* New-block form: day chips, a scope choice, and the item picker. */
-  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-  .chips button {
-    padding: 4px 10px; font-size: 11px; font-weight: 600; border-radius: 999px;
-    background: var(--surface2); color: var(--muted);
-  }
-  .chips button.sel, .chips button:hover { background: var(--accent-dim); color: #fff; }
-  .nb-row { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
-  .nb-row .nb-lbl { font-size: 12px; color: var(--muted); }
-  .nb-row input[type=text] { width: 88px; }
-  .nb-sub { font-size: 12px; color: var(--faint); margin: 6px 0 0; }
-  .nb-check { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); }
-  .nb-check input { accent-color: var(--accent); }
-  .picker .item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; background: var(--surface2); }
-  .picker .item .kind { margin-left: auto; font-size: 10px; color: var(--faint); }
-  .picker .item label { font-size: 12px; display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
-  .picker .item span.nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .usebar { height: 4px; border-radius: 999px; background: var(--surface2); margin-top: 5px; overflow: hidden; }
-  .usebar > span { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
-  .row .usenum { font-size: 12px; color: var(--muted); margin-left: auto; white-space: nowrap; text-align: right; }
-  .row .usenum b { color: var(--text); font-weight: 600; }
-  .useday { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 12px; color: var(--muted); }
-  .useday .udlabel { width: 82px; flex: none; }
-  .useday .udbar { flex: 1; height: 6px; border-radius: 999px; background: var(--surface2); overflow: hidden; }
-  .useday .udbar > span { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
-  .useday .udnum { width: 54px; flex: none; text-align: right; }
-  .warnbox { border-color: var(--warn); }
-  .warnbox .lbl { color: var(--warn); font-weight: 600; }
-  .lock-choices { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
-  .lock-choices button { padding: 5px 12px; font-size: 12px; background: var(--surface2); color: var(--muted); }
-  .lock-choices button.sel, .lock-choices button:hover { background: var(--accent-dim); color: #fff; }
-  .modal-note { font-size: 12px; color: var(--muted); margin: 0 0 12px; }
-  .modal input[type=text] { width: 100%; }
-  /* Password prompt modal - shown only for actions that weaken protection. */
-  .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; z-index: 50; }
-  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; width: 340px; max-width: 90%; }
-  .modal .modal-title { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
-  .modal input[type=password] { width: 100%; }
-  .modal .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
 
-  /* Recent activity. A row is a coloured dot, what happened, and when - the dot
-     is what makes "protection held" and "protection was weakened" separable at a
-     glance, which is what the list is scanned for. */
-  .act {
-    display: flex; align-items: flex-start; gap: 10px; background: var(--surface);
-    border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px;
+  /* ------------------------------------------------------------------------
+     Categories. One decision covering thirty rules, so it is a card with its
+     own button rather than another list line.
+     --------------------------------------------------------------------- */
+  #cat-rows { gap: 8px; }
+  .row.catrow {
+    display: flex; align-items: flex-start; gap: 12px; padding: 13px 14px;
+    background: var(--panel-2); border: 1px solid var(--line-soft);
   }
-  .act .dot { width: 6px; height: 6px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; background: var(--faint); }
+  .catrow .ainfo { flex: 1; }
+  .catrow .aname { font-size: 13.5px; font-weight: 600; }
+  .catrow .anote { color: var(--text-3); }
+  .catrow button { flex-shrink: 0; padding: 6px 12px; font-size: 12px; }
+  .catrow .badge { margin-left: 0; }
+  .catnote { font-size: 11.5px; color: var(--text-3); margin-top: 7px; line-height: 1.5; max-width: 68ch; }
+  .catmore {
+    background: none; border: none; color: var(--accent-hi); padding: 6px 0 0;
+    font-size: 11.5px; font-weight: 650; cursor: pointer;
+  }
+  .catmore:hover { background: none; color: #a5a7ff; text-decoration: underline; }
+  .catlist {
+    margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line);
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 3px 14px;
+  }
+  .catlist .item { font-size: 11.5px; color: var(--text-2); display: flex; align-items: baseline; gap: 5px; background: none; padding: 1px 0; }
+  .catlist .item.have { color: var(--text-3); }
+  .catlist .item .tick { color: var(--ok); font-size: 10px; }
+  .catlist .item .kind { color: #4d5462; font-size: 10px; margin-left: auto; }
+  .catlisthead { font-size: 11.5px; color: var(--text-2); margin: 2px 0 6px; }
+
+  /* ------------------------------------------------------------------------
+     Scheduled blocks.
+     --------------------------------------------------------------------- */
+  /* A block is an object with a name, a timetable and a state - the same kind of
+     thing as a browser, not the same kind of thing as a rule - so it is laid out
+     as a card. As a full-width row its two badges ended up a thousand pixels
+     from the name they belonged to. */
+  #block-rows { display: grid; grid-template-columns: repeat(auto-fill, minmax(304px, 1fr)); gap: 10px; }
+  #block-rows .blockrow { flex-direction: column; align-items: stretch; gap: 14px; min-height: 124px; }
+  #block-rows .blockrow .bright { margin-left: 0; margin-top: auto; justify-content: flex-start; }
+  .blockrow {
+    display: flex; align-items: flex-start; gap: 14px; background: var(--panel-2);
+    border: 1px solid var(--line-soft); border-radius: var(--r); padding: 14px 16px;
+  }
+  .blockrow:hover { background: var(--panel-3); }
+  /* A locked block cannot be undone until its deadline. That is the strongest
+     promise the app makes, so it is the one row allowed a coloured edge. */
+  .blockrow.islocked { border-color: var(--accent-line); box-shadow: inset 3px 0 0 var(--accent); }
+  .blockrow .binfo { min-width: 0; flex: 1; }
+  .blockrow .btitle { font-size: 14px; font-weight: 600; }
+  .blockrow .bmeta { font-size: 12px; color: var(--text-2); margin-top: 3px; }
+  .blockrow .bright { margin-left: auto; display: flex; align-items: center; gap: 7px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+  .blockrow .badge { margin-left: 0; }
+  .lockbtn {
+    padding: 3px 11px; font-size: 11px; font-weight: 650; border-radius: var(--r-pill);
+    background: var(--ctl); border: 1px solid var(--ctl-line); color: var(--text-2);
+  }
+  .lockbtn:hover { background: var(--accent); border-color: transparent; color: #fff; }
+
+  /* ------------------------------------------------------------------------
+     Usage.
+     --------------------------------------------------------------------- */
+  #usage-rows .row { align-items: flex-start; padding: 11px 13px; }
+  .usebar { height: 4px; border-radius: 999px; background: #232936; margin-top: 8px; overflow: hidden; max-width: 420px; }
+  .usebar > span { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
+  .row .usenum { font-size: 12px; color: var(--text-3); margin-left: auto; white-space: nowrap; text-align: right; line-height: 1.45; }
+  .row .usenum b { color: var(--text); font-weight: 650; font-size: 15px; }
+  .useday { display: flex; align-items: center; gap: 10px; padding: 5px 0; font-size: 12px; color: var(--text-2); }
+  .useday + .useday { border-top: 1px solid var(--line-soft); }
+  .useday .udlabel { width: 96px; flex: none; }
+  .useday .udbar { flex: 1; height: 6px; border-radius: 999px; background: #232936; overflow: hidden; }
+  .useday .udbar > span { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
+  .useday .udnum { width: 58px; flex: none; text-align: right; color: var(--text); font-weight: 550; }
+  /* The first .useday is the total with any of them open - a different number
+     from the rows under it, so it is set apart from them. */
+  #usage-days .useday:first-child { border-bottom: 1px solid var(--line); padding-bottom: 9px; margin-bottom: 5px; color: var(--text); font-weight: 550; }
+
+  /* ------------------------------------------------------------------------
+     Activity. A feed, threaded on one line, so "held" and "was weakened" are
+     separable without reading either.
+     --------------------------------------------------------------------- */
+  .feed #act-rows { position: relative; gap: 0; padding-left: 2px; max-height: calc(100vh - 300px); overflow-y: auto; }
+  .feed #act-rows::before {
+    content: ''; position: absolute; left: 5px; top: 12px; bottom: 12px; width: 1px; background: var(--line);
+  }
+  .act {
+    display: flex; align-items: flex-start; gap: 12px; background: none;
+    border: none; border-radius: 0; padding: 9px 4px 9px 0; position: relative;
+  }
+  .act + .act { border-top: 1px solid var(--line-soft); }
+  .act .dot {
+    width: 9px; height: 9px; border-radius: 50%; margin-top: 5px; flex-shrink: 0;
+    background: #3a4150; box-shadow: 0 0 0 3px var(--panel); z-index: 1;
+  }
   .act.enforced .dot { background: var(--ok); }
   .act.weakened .dot { background: var(--warn); }
   .act .body { flex: 1; min-width: 0; }
-  .act .text { font-size: 13px; }
-  .act .sub { font-size: 11px; color: var(--muted); margin-top: 1px; }
-  .act .when { font-size: 11px; color: var(--faint); white-space: nowrap; margin-top: 2px; }
-  .actpath { font-size: 11px; color: var(--faint); word-break: break-all; margin: -4px 0 0; }
+  .act .text { font-size: 12.5px; line-height: 1.45; }
+  .act .sub { font-size: 11px; color: var(--text-3); margin-top: 2px; word-break: break-word; }
+  .act .when { font-size: 10.5px; color: var(--text-3); white-space: nowrap; margin-top: 4px; }
+
+  /* ------------------------------------------------------------------------
+     Modals.
+     --------------------------------------------------------------------- */
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(4,5,8,.72); display: flex;
+    align-items: center; justify-content: center; z-index: 100;
+    backdrop-filter: blur(3px);
+  }
+  .modal {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-lg);
+    padding: 20px; width: 360px; max-width: 92vw; max-height: 88vh; overflow-y: auto;
+    box-shadow: 0 30px 70px -20px rgba(0,0,0,.95);
+  }
+  .modal.wide { width: 460px; }
+  .modal .modal-title { font-size: 15px; font-weight: 650; margin-bottom: 14px; letter-spacing: -0.01em; }
+  .modal input[type=password], .modal input[type=text] { width: 100%; }
+  .modal .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+  .modal-note { font-size: 12.5px; color: var(--text-2); margin: 0 0 14px; line-height: 1.55; }
+
+  .picker { max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
+  .picker button {
+    width: 100%; text-align: left; background: var(--panel-2); border-color: var(--line-soft);
+    color: var(--text); font-weight: 400; font-size: 12px; padding: 7px 10px;
+  }
+  .picker button:hover { background: var(--accent); border-color: transparent; color: #fff; }
+  .picker .none { font-size: 12px; color: var(--text-2); padding: 6px 2px; }
+  .picker .item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--r-sm); background: var(--panel-2); }
+  .picker .item .kind { margin-left: auto; font-size: 10px; color: var(--text-3); }
+  .picker .item label { font-size: 12px; display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; cursor: pointer; }
+  .picker .item span.nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .picker .item input { accent-color: var(--accent); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips button {
+    padding: 4px 11px; font-size: 11.5px; font-weight: 650; border-radius: var(--r-pill);
+    background: var(--ctl); border: 1px solid var(--ctl-line); color: var(--text-2);
+  }
+  .chips button.sel, .chips button:hover { background: var(--accent); border-color: transparent; color: #fff; }
+  .nb-row { display: flex; align-items: center; gap: 9px; margin: 12px 0; flex-wrap: wrap; }
+  .nb-row .nb-lbl { font-size: 12px; color: var(--text-2); }
+  .nb-row input[type=text] { width: 96px; }
+  .nb-row input#nb-limit { width: 220px; }
+  .nb-sub { font-size: 11.5px; color: var(--text-3); margin: 7px 0 0; line-height: 1.5; }
+  .nb-check { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); cursor: pointer; }
+  .nb-check input { accent-color: var(--accent); }
+  .lock-choices { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .lock-choices button {
+    padding: 5px 12px; font-size: 12px; background: var(--ctl);
+    border: 1px solid var(--ctl-line); color: var(--text-2);
+  }
+  .lock-choices button.sel, .lock-choices button:hover { background: var(--accent); border-color: transparent; color: #fff; }
+
+  /* ------------------------------------------------------------------------
+     The window opens maximised, but "maximised" on a 1366x768 laptop is not the
+     same room as on a 27in monitor. Three steps down, and the right-hand feed
+     is the first thing to give up its column.
+     --------------------------------------------------------------------- */
+  /* A maximised 1366-wide laptop is the commonest window this app will ever
+     have, and it is exactly wide enough for the feed to keep its column if the
+     column gives up some width first. The feed only drops below the fold on
+     something genuinely narrow. */
+  @media (max-width: 1500px) {
+    .ov { grid-template-columns: minmax(0, 1fr) 306px; }
+  }
+  @media (max-width: 1240px) {
+    .ov { grid-template-columns: minmax(0, 1fr); }
+    .feed #act-rows { max-height: 420px; }
+  }
+  @media (max-width: 1120px) {
+    .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .g2 { grid-template-columns: minmax(0, 1fr); }
+    .hero { flex-direction: column; align-items: flex-start; gap: 18px; }
+  }
+  @media (max-width: 940px) {
+    :root { --rail-w: 62px; }
+    .navlabel, .navbadge, .brand .bt, .railfoot .foot #ver { display: none; }
+    .navitem { justify-content: center; padding: 10px 0; }
+    .navitem.is-on::before { left: -12px; }
+    .brand { justify-content: center; padding: 0 0 18px; }
+    /* The rail's own side padding would leave a 14px icon in a 21px button, so
+       the footer gives its padding up and the icon gets a real hit target. */
+    .railfoot { padding-left: 0; padding-right: 0; }
+    .railfoot .foot button { padding: 8px 0; }
+    .content, .topbar { padding-left: 18px; padding-right: 18px; }
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
 
-  <div class="topbar">
-    <img src="logo.png" width="20" height="20" alt="" />
-    <span class="name">Extension Guard</span>
-    <span id="pill" class="pill inactive">…</span>
-  </div>
+<!-- Icons, defined once. Every glyph in the window is drawn on the same 24px
+     grid at the same stroke weight - a set that mixes weights is the fastest way
+     to make a considered layout look assembled from clip art. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <g id="g-shield"><path d="M12 21.6s7.2-3.7 7.2-9.3V5.1L12 2.4 4.8 5.1v7.2c0 5.6 7.2 9.3 7.2 9.3z"/><path d="M9.2 12.1l2 2 3.6-3.7"/></g>
+    <g id="g-browser"><rect x="3" y="4.2" width="18" height="15.6" rx="2.2"/><path d="M3 9.1h18"/><path d="M6.4 6.6h.01M9 6.6h.01"/></g>
+    <g id="g-block"><circle cx="12" cy="12" r="8.8"/><path d="M5.8 5.8l12.4 12.4"/></g>
+    <g id="g-calendar"><rect x="3.2" y="5" width="17.6" height="15.8" rx="2.2"/><path d="M8 2.8v4.4M16 2.8v4.4M3.2 10.6h17.6"/><path d="M12 13.6v3l2.2 1.3"/></g>
+    <g id="g-chart"><path d="M3.4 20.6h17.2"/><path d="M6.6 20.6v-6.2M11.4 20.6V6.4M16.2 20.6v-9.4"/></g>
+    <g id="g-refresh"><path d="M20.4 12a8.4 8.4 0 1 1-2.5-6"/><path d="M20.6 4.2v4.6h-4.6"/></g>
+    <g id="g-check"><circle cx="12" cy="12" r="8.8"/><path d="M8.3 12.2l2.6 2.6 4.8-5.2"/></g>
+    <g id="g-globe"><circle cx="12" cy="12" r="8.8"/><path d="M3.2 12h17.6"/><path d="M12 3.2c2.4 2.4 3.6 5.4 3.6 8.8s-1.2 6.4-3.6 8.8c-2.4-2.4-3.6-5.4-3.6-8.8S9.6 5.6 12 3.2z"/></g>
+    <g id="g-app"><rect x="3.2" y="4.4" width="17.6" height="15.2" rx="2.2"/><path d="M3.2 8.6h17.6"/><path d="M9.6 13h4.8"/></g>
+    <g id="g-update"><circle cx="12" cy="12" r="8.8"/><path d="M12 7.4v6.8"/><path d="M9 11.4l3 3 3-3"/></g>
+    <g id="g-lock"><rect x="4.6" y="10.4" width="14.8" height="10.4" rx="2.2"/><path d="M8.2 10.4V7.6a3.8 3.8 0 0 1 7.6 0v2.8"/></g>
+  </defs>
+  <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#g-shield"/></symbol>
+  <symbol id="i-browser" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#g-browser"/></symbol>
+  <symbol id="i-block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#g-block"/></symbol>
+  <symbol id="i-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#g-calendar"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#g-chart"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#g-refresh"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#g-check"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#g-globe"/></symbol>
+  <symbol id="i-app" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#g-app"/></symbol>
+  <symbol id="i-update" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#g-update"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#g-lock"/></symbol>
+</svg>
 
-  <div id="hero" class="hero off">
-    <div class="ring">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+<div class="app">
+
+  <!-- Rail. The twelve sections of the old window regrouped into the five
+       questions someone actually opens this app to ask. -->
+  <nav class="rail">
+    <div class="brand">
+      <img src="logo.png" width="26" height="26" alt="" />
+      <div class="bt">
+        <div class="bn">Extension Guard</div>
+        <div class="bv">Protection console</div>
+      </div>
     </div>
-    <div>
-      <h1 id="hero-title">Checking…</h1>
-      <p id="hero-sub">Reading protection status</p>
+
+    <div class="nav" id="nav">
+      <button class="navitem is-on" data-pane="overview"
+              data-title="Overview" data-sub="What is protected right now, and what is not.">
+        <svg><use href="#i-shield"/></svg><span class="navlabel">Overview</span>
+        <span class="navdot" id="nav-dot-overview" style="display:none;"></span>
+      </button>
+      <button class="navitem" data-pane="browsers"
+              data-title="Browsers" data-sub="Where the filters are enforced, and the settings that keep them there.">
+        <svg><use href="#i-browser"/></svg><span class="navlabel">Browsers</span>
+        <span class="navbadge" id="nav-badge-browsers">—</span>
+        <span class="navdot" id="nav-dot-browsers" style="display:none;"></span>
+      </button>
+      <button class="navitem" data-pane="blocking"
+              data-title="Blocking" data-sub="Sites and applications that do not open.">
+        <svg><use href="#i-block"/></svg><span class="navlabel">Blocking</span>
+        <span class="navbadge" id="nav-badge-blocking">—</span>
+        <span class="navdot" id="nav-dot-blocking" style="display:none;"></span>
+      </button>
+      <button class="navitem" data-pane="schedule"
+              data-title="Schedule" data-sub="Blocks that apply on a timetable, or once a daily limit is spent.">
+        <svg><use href="#i-calendar"/></svg><span class="navlabel">Schedule</span>
+        <span class="navbadge" id="nav-badge-schedule">—</span>
+        <span class="navdot" id="nav-dot-schedule" style="display:none;"></span>
+      </button>
+      <button class="navitem" data-pane="time"
+              data-title="Screen time" data-sub="How long the blocked applications actually ran.">
+        <svg><use href="#i-chart"/></svg><span class="navlabel">Screen time</span>
+        <span class="navdot" id="nav-dot-time" style="display:none;"></span>
+      </button>
+    </div>
+
+    <div class="railfoot">
+      <div class="foot">
+        <span id="ver">Extension Guard</span>
+        <button class="ghost small" id="check-updates" title="Check for updates">
+          <svg><use href="#i-update"/></svg><span class="navlabel">Check for updates</span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="main">
+    <header class="topbar">
+      <div>
+        <div class="ptitle" id="page-title">Overview</div>
+        <div class="psub" id="page-sub">What is protected right now, and what is not.</div>
+      </div>
+      <div class="right">
+        <span id="pill" class="pill inactive">…</span>
+        <button class="iconbtn" id="refresh" title="Refresh" aria-label="Refresh"><svg><use href="#i-refresh"/></svg></button>
+      </div>
+    </header>
+
+    <div class="content" id="content">
+      <div class="inner">
+
+      <!-- ================= OVERVIEW ================= -->
+      <div class="pane is-active" id="pane-overview">
+        <div class="ov">
+          <div class="ov-main">
+
+            <div id="update-banner" class="card" style="display:none; border-color: var(--accent-line); background: var(--accent-bg);">
+              <div class="lbl" id="update-text" style="color: var(--text);">An update is available.</div>
+              <div style="display:flex; gap:10px; align-items:center; margin-top:11px;">
+                <button id="update-btn">Update now</button>
+                <span id="update-msg" class="msg"></span>
+              </div>
+            </div>
+
+            <div id="announce-banner" class="card announce" style="display:none;">
+              <button id="announce-close" class="announce-x" title="Dismiss" aria-label="Dismiss">&times;</button>
+              <div class="announce-title" id="announce-title"></div>
+              <div class="announce-msg" id="announce-msg"></div>
+              <button id="announce-link" class="announce-link" style="display:none;"></button>
+            </div>
+
+            <section class="panel hero-panel" id="hero-panel">
+              <div id="hero" class="hero off">
+                <div class="ring">
+                  <svg class="ringsvg" viewBox="0 0 120 120" aria-hidden="true">
+                    <circle class="ringtrack" cx="60" cy="60" r="52"/>
+                    <circle class="ringarc" id="ring-arc" cx="60" cy="60" r="52"
+                            stroke-dasharray="326.7" stroke-dashoffset="326.7"/>
+                  </svg>
+                  <div class="ringinner">
+                    <div class="ringnum" id="cov-num">—</div>
+                    <div class="ringden" id="cov-den">safeguards</div>
+                  </div>
+                </div>
+                <div class="herobody">
+                  <h1 id="hero-title">Checking…</h1>
+                  <p id="hero-sub">Reading protection status</p>
+                  <div class="segs" id="cov-segs"></div>
+                  <div class="heroactions">
+                    <button id="protection-btn" class="bigbtn">…</button>
+                    <button class="help" data-help="The ring counts the safeguards this window can see: the guard service itself, every protected extension, every pinned browser setting, whether a password is set, and whether any browser on this machine is left neither filtered nor blocked.|It is a count of what is on, not a score. Each bar under the state is one of those safeguards - hover a bar to see which." aria-label="About the safeguard count">?</button>
+                  </div>
+                  <div class="herometa">
+                    <span>Service <b id="svc-val">—</b></span>
+                    <span class="sep">•</span>
+                    <span id="pw-state">—</span>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <div class="tiles">
+              <div class="tile">
+                <div class="tico"><svg><use href="#i-lock"/></svg></div>
+                <div class="tlabel">Browsers locked</div>
+                <div class="tval" id="locked-val">—</div>
+                <div class="tsub" id="tile-browsers-sub"></div>
+              </div>
+              <div class="tile">
+                <div class="tico"><svg><use href="#i-globe"/></svg></div>
+                <div class="tlabel">Sites blocked</div>
+                <div class="tval" id="tile-sites">—</div>
+                <div class="tsub" id="tile-sites-sub"></div>
+              </div>
+              <div class="tile">
+                <div class="tico"><svg><use href="#i-app"/></svg></div>
+                <div class="tlabel">Apps blocked</div>
+                <div class="tval" id="tile-apps">—</div>
+                <div class="tsub" id="tile-apps-sub"></div>
+              </div>
+              <div class="tile">
+                <div class="tico"><svg><use href="#i-chart"/></svg></div>
+                <div class="tlabel">Screen time today</div>
+                <div class="tval" id="tile-time">—</div>
+                <div class="tsub" id="tile-time-sub"></div>
+                <svg class="spark" id="tile-spark" viewBox="0 0 100 22" preserveAspectRatio="none" aria-hidden="true"></svg>
+              </div>
+            </div>
+
+            <section class="panel">
+              <div class="sechead">
+                <div class="section-title">Needs attention</div>
+                <button class="help" data-help="Every gap this window can currently see, worst first. A gap is something that stops protection applying - a browser nothing reaches, a private window, a schedule that will not load - not a setting you have chosen to leave off.|Each one links to the page that closes it. An empty list means the things the guard covers are all holding." aria-label="About this section">?</button>
+                <div class="grow"></div>
+                <span class="attcount" id="att-count" style="display:none;"></span>
+              </div>
+              <div id="att-rows"></div>
+              <div class="allclear" id="att-clear" style="display:none;">
+                <svg><use href="#i-check"/></svg>
+                <span>Nothing needs attention — everything the guard covers is holding.</span>
+              </div>
+            </section>
+
+          </div>
+
+          <aside class="ov-side">
+            <section class="panel feed">
+              <div class="sechead">
+                <div class="section-title">Recent activity</div>
+                <button class="help" data-help="What the guard did, and what was done to it. Kept on this PC only — nothing is sent anywhere." aria-label="About this section">?</button>
+                <div class="grow"></div>
+                <button id="act-more" class="ghost small" style="display:none;">Show more</button>
+              </div>
+              <div class="rows" id="act-rows"></div>
+              <p class="exthint" id="act-empty" style="display:none;">Nothing recorded yet.</p>
+              <p class="actpath" id="act-path"></p>
+            </section>
+          </aside>
+        </div>
+      </div>
+
+      <!-- ================= BROWSERS ================= -->
+      <div class="pane" id="pane-browsers">
+        <div class="stack">
+
+          <section class="panel">
+            <div class="sechead">
+              <div class="section-title">Browsers</div>
+              <button class="help" data-help="The browsers the guard writes policy for. &ldquo;Locked&rdquo; means the protected extensions are force-installed there and cannot be removed from inside the browser.|A browser that is not installed is shown dimmed rather than hidden, so the list is the same on every machine." aria-label="About this section">?</button>
+            </div>
+            <div class="rows" id="rows"></div>
+          </section>
+
+          <div class="grid g2">
+            <section class="panel">
+              <div class="sechead">
+                <div class="section-title">Protected extensions</div>
+                <button class="help" data-help="Extensions the guard force-installs and pins. Turning one on adds protection, so it is free; turning one off removes protection, so it needs the password.|While protection is paused the direction reverses — the line under this heading always says which way round it currently is." aria-label="About this section">?</button>
+              </div>
+              <p class="exthint" id="exthint">Turning one on adds protection (free). Turning one off needs the password.</p>
+              <div class="rows" id="ext-rows" style="margin-top:10px;"></div>
+            </section>
+
+            <section class="panel">
+              <div class="sechead">
+                <div class="section-title">Browser settings</div>
+                <button class="help" data-help="Settings the guard pins so the extension locks hold. Pinning one is free; handing one back needs the password.|One of them has two strengths rather than an on and an off — moving up a strength is free, moving down needs the password, because it is a request to filter less." aria-label="About this section">?</button>
+              </div>
+              <div id="harden-warning" class="card warnbox" style="display:none; margin-bottom:10px;">
+                <div class="lbl">A private window carries none of the locked extensions</div>
+                <div class="announce-msg">An extension cannot be force-installed into an Incognito, private or guest window &mdash; so while private browsing is available, every filter above can be sidestepped with Ctrl+Shift+N.</div>
+                <div class="announce-msg">Pin <b>Private browsing and guest profiles</b> below to close it.</div>
+              </div>
+              <div class="rows" id="harden-rows"></div>
+            </section>
+          </div>
+
+          <div id="unmanaged-section">
+            <section class="panel">
+              <div class="sechead">
+                <div class="section-title">Other browsers on this machine</div>
+                <button class="help" data-help="The guard filters inside the browsers it manages by writing policy they read. A browser that reads none of it carries none of the locked extensions and none of the blocked sites — so it has to be blocked instead of filtered.|Blocked browsers stay on this list rather than disappearing once they are handled, so it is also the only place a newly installed one shows up." aria-label="About this section">?</button>
+              </div>
+              <div id="unmanaged-warning" class="card warnbox" style="display:none; margin-bottom:10px;">
+                <div class="lbl">Protection does not reach every browser here</div>
+                <div class="announce-msg" id="unmanaged-warning-msg"></div>
+                <div class="announce-msg">Block the ones the guard knows by name from &ldquo;Unmanaged browsers&rdquo; under <b>Block a category</b> on the Blocking page. For anything that list misses, use <b>Add .exe file</b> under Blocked apps and pick the executable shown here.</div>
+              </div>
+              <div class="rows" id="unmanaged-rows"></div>
+              <p class="exthint" id="unmanaged-empty" style="display:none;">Nothing else is installed &mdash; every browser here is one the guard filters.</p>
+            </section>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ================= BLOCKING ================= -->
+      <div class="pane" id="pane-blocking">
+        <div class="grid g2">
+
+          <div class="stack">
+            <section class="panel">
+              <div class="sechead">
+                <div class="section-title">Blocked sites</div>
+                <button class="help" data-help="Blocking a site covers every subdomain, in all supported browsers. Adding one is free; removing one needs the password.|A site can be switched on and still not blocking right now, if a schedule has it out of window. That is shown as &ldquo;Waiting&rdquo;." aria-label="About this section">?</button>
+              </div>
+              <div class="addrow">
+                <input id="domain-input" type="text" placeholder="reddit.com" autocomplete="off" spellcheck="false" />
+                <button id="domain-add">Block</button>
+              </div>
+              <div class="rows" id="domain-rows"></div>
+              <p class="exthint" id="domain-empty" style="display:none;">Nothing blocked yet.</p>
+            </section>
+
+            <div id="allow-section">
+              <section class="panel">
+                <div class="sechead">
+                  <div class="section-title">Allowed sites only</div>
+                  <button class="help" data-help="Blocks every site except the ones below. Turning it on is free; turning it off — and letting a site through — needs the password, because that is the direction that opens things." aria-label="About this section">?</button>
+                  <div class="grow"></div>
+                  <button id="allow-toggle" class="ghost small">Turn on</button>
+                </div>
+                <div id="allow-shut" class="card warnbox" style="display:none; margin-bottom:10px;">
+                  <div class="lbl">Every site is blocked</div>
+                  <div class="announce-msg">The allowlist is empty and the mode is on, so no page loads in Chrome, Edge, Brave, Firefox or Zen. That is what this mode means &mdash; add the sites you need below if it was not what you wanted.</div>
+                </div>
+                <div class="addrow">
+                  <input id="allow-input" type="text" placeholder="wikipedia.org" autocomplete="off" spellcheck="false" />
+                  <button id="allow-add">Allow</button>
+                </div>
+                <div class="rows" id="allow-rows"></div>
+                <p class="exthint" id="allow-empty" style="display:none;">Nothing allowed yet.</p>
+              </section>
+            </div>
+          </div>
+
+          <div class="stack">
+            <section class="panel">
+              <div class="sechead">
+                <div class="section-title">Block a category</div>
+                <button class="help" data-help="A category blocks a whole set at once — its apps and its sites — around the clock. Adding one is free; taking it off again needs the password.|Agreeing to a category is agreeing to every entry in it, so each card can list exactly what it will add before you press the button. A category that has gained entries since you blocked it offers a top-up.|One category blocks nothing at all: Adult content turns on filtered DNS and SafeSearch instead, because what counts as adult content is a list nobody can ship and keep current. Lift that one from Browser settings, not from here." aria-label="About this section">?</button>
+              </div>
+              <div class="rows" id="cat-rows"></div>
+            </section>
+
+            <section class="panel">
+              <div class="sechead">
+                <div class="section-title">Blocked apps</div>
+                <button class="help" data-help="A blocked application does not start, and is closed if it is already running. Adding one is free; removing one needs the password.|There are four ways in, because &ldquo;the app I want gone&rdquo; is a file, a folder, a Store app, or just a window title. Rules added by a category are grouped under its name." aria-label="About this section">?</button>
+              </div>
+              <div class="btnrow">
+                <button id="app-add-exe">Add .exe file</button>
+                <button id="app-add-folder">Add folder</button>
+                <button id="app-add-store">Add Store app</button>
+                <button id="app-add-title">Add window title</button>
+              </div>
+              <div class="rows" id="app-rows"></div>
+              <p class="exthint" id="app-empty" style="display:none;">Nothing blocked yet.</p>
+            </section>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ================= SCHEDULE ================= -->
+      <div class="pane" id="pane-schedule">
+        <div id="block-section">
+          <section class="panel">
+            <div class="sechead">
+              <div class="section-title">Scheduled blocks</div>
+              <button class="help" data-help="A block enforces what it governs only during its windows, or — with a daily limit — once that much time has been used. Locking one means it cannot be released early.|A block outside its window is &ldquo;Idle&rdquo;, one inside it is &ldquo;Enforcing&rdquo;, and one with a limit still counts down as &ldquo;n left today&rdquo;. Nothing here weakens the protection you have turned on elsewhere until a window opens." aria-label="About this section">?</button>
+              <div class="grow"></div>
+              <button id="block-new" class="ghost small">New block</button>
+            </div>
+            <div id="schedule-warning" class="card warnbox" style="display:none; margin-bottom:10px;">
+              <div class="lbl">This schedule is not being used</div>
+              <div class="announce-msg" id="schedule-warning-msg"></div>
+              <div class="announce-msg">Everything stays protected around the clock until it is fixed.</div>
+            </div>
+            <div class="rows" id="block-rows"></div>
+            <p class="exthint" id="block-empty" style="display:none;">No blocks yet &mdash; everything you have turned on is enforced around the clock.</p>
+          </section>
+        </div>
+      </div>
+
+      <!-- ================= SCREEN TIME ================= -->
+      <div class="pane" id="pane-time">
+        <div id="usage-section">
+          <div class="grid g2">
+            <section class="panel">
+              <div class="sechead">
+                <div class="section-title">Time used</div>
+                <button class="help" data-help="How long each blocked application actually ran — counted while it is running, not only while you are looking at it. Kept on this PC only.|Sites and extensions cannot be measured: the guard hands the browser a policy and gets nothing back. An application that has since been unblocked keeps the time it was used." aria-label="About this section">?</button>
+              </div>
+              <div id="usage-warning" class="card warnbox" style="display:none; margin-bottom:10px;">
+                <div class="lbl">Today&rsquo;s usage could not be read</div>
+                <div class="announce-msg" id="usage-warning-msg"></div>
+              </div>
+              <div class="rows" id="usage-rows"></div>
+              <p class="emptyhint" id="usage-empty" style="display:none;"></p>
+            </section>
+
+            <section class="panel">
+              <div class="sechead">
+                <div class="section-title">By day</div>
+                <button class="help" data-help="The span with any blocked application open, per day. It is not the sum of the rows beside it — an hour with two applications running is two hours of rules and one hour of the afternoon, and people mean the second one." aria-label="About this section">?</button>
+              </div>
+              <div id="usage-days"></div>
+              <p class="emptyhint" id="usage-days-empty" style="display:none;">No history to chart yet. A day appears here once a blocked application has run.</p>
+            </section>
+          </div>
+        </div>
+      </div>
+
+      </div>
     </div>
   </div>
-
-  <button id="protection-btn" class="bigbtn">…</button>
-  <div id="msg" class="msg"></div>
-
-  <div class="cards">
-    <div class="card"><div class="lbl">Service</div><div class="val" id="svc-val">—</div></div>
-    <div class="card"><div class="lbl">Browsers locked</div><div class="val" id="locked-val">—</div></div>
-  </div>
-
-  <div id="update-banner" class="card" style="display:none; border-color: var(--accent-dim);">
-    <div class="lbl" id="update-text" style="color: var(--text);">An update is available.</div>
-    <div style="display:flex; gap:8px; align-items:center; margin-top:10px;">
-      <button id="update-btn">Update now</button>
-      <span id="update-msg" class="msg"></span>
-    </div>
-  </div>
-
-  <div id="announce-banner" class="card announce" style="display:none;">
-    <button id="announce-close" class="announce-x" title="Dismiss" aria-label="Dismiss">&times;</button>
-    <div class="announce-title" id="announce-title"></div>
-    <div class="announce-msg" id="announce-msg"></div>
-    <button id="announce-link" class="announce-link" style="display:none;"></button>
-  </div>
-
-  <div class="section-head">
-    <div class="section-title">Recent activity</div>
-    <button id="act-more" class="ghost small" style="display:none;">Show more</button>
-  </div>
-  <p class="exthint">What the guard did, and what was done to it. Kept on this PC only &mdash; nothing is sent anywhere.</p>
-  <div class="rows" id="act-rows"></div>
-  <p class="exthint" id="act-empty" style="display:none;">Nothing recorded yet.</p>
-  <p class="actpath" id="act-path"></p>
-
-  <div class="section-title">Browsers</div>
-  <div class="rows" id="rows"></div>
-
-  <div id="unmanaged-section">
-    <div class="section-title">Other browsers on this machine</div>
-    <p class="exthint">The guard filters inside the browsers above by writing policy they read. A browser that reads none of it carries none of the locked extensions and none of the blocked sites &mdash; so it has to be blocked instead of filtered.</p>
-    <div id="unmanaged-warning" class="card warnbox" style="display:none; margin-bottom:6px;">
-      <div class="lbl">Protection does not reach every browser here</div>
-      <div class="announce-msg" id="unmanaged-warning-msg"></div>
-      <div class="announce-msg">Block the ones the guard knows by name from &ldquo;Unmanaged browsers&rdquo; under <b>Block a category</b>. For anything that list misses, use <b>Add .exe file</b> under Blocked apps and pick the executable shown here.</div>
-    </div>
-    <div class="rows" id="unmanaged-rows"></div>
-    <p class="exthint" id="unmanaged-empty" style="display:none;">Nothing else is installed &mdash; every browser here is one the guard filters.</p>
-  </div>
-
-  <div class="section-title">Protected extensions</div>
-  <p class="exthint" id="exthint">Turning one on adds protection (free). Turning one off needs the password.</p>
-  <div class="rows" id="ext-rows"></div>
-
-  <div class="section-title">Browser settings</div>
-  <p class="exthint">Settings the guard pins so the locks above hold. Pinning one is free; handing one back needs the password.</p>
-  <div id="harden-warning" class="card warnbox" style="display:none; margin-bottom:6px;">
-    <div class="lbl">A private window carries none of the locked extensions</div>
-    <div class="announce-msg">An extension cannot be force-installed into an Incognito, private or guest window &mdash; so while private browsing is available, every filter above can be sidestepped with Ctrl+Shift+N.</div>
-    <div class="announce-msg">Pin <b>Private browsing and guest profiles</b> below to close it.</div>
-  </div>
-  <div class="rows" id="harden-rows"></div>
-
-  <div class="section-title">Blocked sites</div>
-  <p class="exthint">Blocking a site covers every subdomain, in all supported browsers. Adding one is free; removing one needs the password.</p>
-  <div class="addrow">
-    <input id="domain-input" type="text" placeholder="reddit.com" autocomplete="off" spellcheck="false" />
-    <button id="domain-add">Block</button>
-  </div>
-  <div class="rows" id="domain-rows"></div>
-  <p class="exthint" id="domain-empty" style="display:none;">Nothing blocked yet.</p>
-
-  <div id="allow-section">
-    <div class="section-head">
-      <div class="section-title">Allowed sites only</div>
-      <button id="allow-toggle" class="ghost small">Turn on</button>
-    </div>
-    <p class="exthint">Blocks every site except the ones below. Turning it on is free; turning it off &mdash; and letting a site through &mdash; needs the password, because that is the direction that opens things.</p>
-    <div id="allow-shut" class="card warnbox" style="display:none; margin-bottom:6px;">
-      <div class="lbl">Every site is blocked</div>
-      <div class="announce-msg">The allowlist is empty and the mode is on, so no page loads in Chrome, Edge, Brave, Firefox or Zen. That is what this mode means &mdash; add the sites you need below if it was not what you wanted.</div>
-    </div>
-    <div class="addrow">
-      <input id="allow-input" type="text" placeholder="wikipedia.org" autocomplete="off" spellcheck="false" />
-      <button id="allow-add">Allow</button>
-    </div>
-    <div class="rows" id="allow-rows"></div>
-    <p class="exthint" id="allow-empty" style="display:none;">Nothing allowed yet.</p>
-  </div>
-
-  <div class="section-title">Block a category</div>
-  <p class="exthint">A category blocks a whole set at once &mdash; its apps and its sites &mdash; around the clock. Adding one is free; taking it off again needs the password.</p>
-  <div class="rows" id="cat-rows"></div>
-
-  <div id="usage-section">
-    <div class="section-title">Time used</div>
-    <p class="exthint">How long each blocked application actually ran &mdash; counted while it is running, not only while you are looking at it. Kept on this PC only.</p>
-    <div class="rows" id="usage-rows"></div>
-    <p class="emptyhint" id="usage-empty" style="display:none;"></p>
-    <div id="usage-days"></div>
-  </div>
-
-  <div class="section-title">Blocked apps</div>
-  <p class="exthint">A blocked application does not start, and is closed if it is already running. Adding one is free; removing one needs the password.</p>
-  <div class="btnrow">
-    <button id="app-add-exe">Add .exe file</button>
-    <button id="app-add-folder">Add folder</button>
-    <button id="app-add-store">Add Store app</button>
-    <button id="app-add-title">Add window title</button>
-  </div>
-  <div class="rows" id="app-rows"></div>
-  <p class="exthint" id="app-empty" style="display:none;">Nothing blocked yet.</p>
-
-  <div id="block-section">
-    <div class="section-head">
-      <div class="section-title">Scheduled blocks</div>
-      <button id="block-new" class="ghost small">New block</button>
-    </div>
-    <p class="exthint">A block enforces what it governs only during its windows, or &mdash; with a daily limit &mdash; once that much time has been used. Locking one means it cannot be released early.</p>
-    <div id="schedule-warning" class="card warnbox" style="display:none; margin-bottom:6px;">
-      <div class="lbl">This schedule is not being used</div>
-      <div class="announce-msg" id="schedule-warning-msg"></div>
-      <div class="announce-msg">Everything stays protected around the clock until it is fixed.</div>
-    </div>
-    <div id="usage-warning" class="card warnbox" style="display:none; margin-bottom:6px;">
-      <div class="lbl">Today&rsquo;s usage could not be read</div>
-      <div class="announce-msg" id="usage-warning-msg"></div>
-    </div>
-    <div class="rows" id="block-rows"></div>
-    <p class="exthint" id="block-empty" style="display:none;">No blocks yet &mdash; everything you have turned on is enforced around the clock.</p>
-  </div>
-
-  <div class="foot">
-    <span id="ver">Extension Guard</span>
-    <button class="ghost" id="check-updates">Check for updates</button>
-    <button class="ghost" id="refresh">Refresh</button>
-  </div>
-
 </div>
+
+<div id="msg" class="msg"></div>
 
 <!-- Password prompt, shown only when an action weakens protection. -->
 <div id="pw-modal" class="modal-backdrop" style="display:none;">
@@ -520,15 +1166,28 @@
   </div>
 </div>
 
+
 <script>
   function bound() { return window.go && window.go.main && window.go.main.App; }
 
   let current = { serviceRunning: false, disabled: false };
 
+  // #msg is the one line every action reports into, and those actions now happen
+  // on five different pages - so it floats over all of them rather than sitting
+  // on one, and it clears itself afterwards. A success message that stays until
+  // the next action reads, ten minutes later, as the state of the app.
+  let msgTimer = 0;
   function setMsg(text, kind) {
     const m = document.getElementById('msg');
     m.className = 'msg' + (kind ? ' ' + kind : '');
     m.textContent = text || '';
+    if (msgTimer) { window.clearTimeout(msgTimer); msgTimer = 0; }
+    if (text) {
+      msgTimer = window.setTimeout(function () {
+        m.textContent = '';
+        m.className = 'msg';
+      }, 7000);
+    }
   }
 
   // askPassword shows the modal and resolves with the typed password, or null if
@@ -946,6 +1605,9 @@
     renderCategories(s);
     renderApps(s);
     renderBlocks(s);
+    // Last, because it reads the state classes the lines above have just set
+    // rather than working the state out for itself.
+    renderShell(s);
   }
 
   // renderUnmanaged lists the browsers installed here that the guard writes no
@@ -1450,6 +2112,21 @@
     await refresh();
   }
 
+  // covers says how much a category holds, in the words the CLI uses for the
+  // same line, so the window and `guard categories` cannot disagree about it.
+  // Three halves, not two: a category may name apps, sites, browser settings, or
+  // - as Adult content does - only the last of those.
+  function covers(apps, sites, settings) {
+    const parts = [];
+    if (apps) { parts.push(apps + (apps === 1 ? ' app' : ' apps')); }
+    if (sites) { parts.push(sites + (sites === 1 ? ' site' : ' sites')); }
+    if (settings) { parts.push(settings + (settings === 1 ? ' browser setting' : ' browser settings')); }
+    if (!parts.length) { return 'nothing'; }
+    if (parts.length === 1) { return parts[0]; }
+    // "a and b and c" is not a sentence.
+    return parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1];
+  }
+
   // renderCategories offers each built-in set as one card. The button says what
   // pressing it would actually do: a category already holding every one of its
   // entries would change nothing, and a button that claims otherwise teaches the
@@ -1469,7 +2146,10 @@
       name.textContent = c.label;
       const note = document.createElement('div');
       note.className = 'anote';
-      note.textContent = c.apps + ' apps, ' + c.domains + ' sites';
+      // A half that is zero is dropped rather than shown: a category with no
+      // applications to name is a shape somebody chose, and "0 apps, 38 sites"
+      // reads like a count that failed.
+      note.textContent = covers(c.apps, c.domains, c.settings);
       info.appendChild(name);
       info.appendChild(note);
       row.appendChild(info);
@@ -1477,7 +2157,10 @@
       if (c.blocked) {
         const badge = document.createElement('span');
         badge.className = 'badge locked';
-        badge.textContent = 'Blocked';
+        // A category that names no rules is on, not blocked. Nothing is on a
+        // block list for it, and saying otherwise sends the user to Blocked apps
+        // looking for a row that was never going to be there.
+        badge.textContent = c.blocks ? 'Blocked' : 'On';
         badge.style.marginLeft = '0';
         row.appendChild(badge);
       }
@@ -1486,7 +2169,7 @@
       if (c.missing === 0) {
         // Nothing to add. Left visible but inert, so the card still says what
         // state it is in rather than the button quietly disappearing.
-        btn.textContent = c.blocked ? 'All blocked' : 'Nothing to add';
+        btn.textContent = c.blocked ? (c.blocks ? 'All blocked' : 'All on') : 'Nothing to add';
         btn.className = 'ghost';
         btn.disabled = true;
       } else if (c.blocked) {
@@ -1494,7 +2177,9 @@
         btn.title = 'This category has gained ' + c.missing + ' entries since it was blocked';
         btn.addEventListener('click', function () { blockCategory(c); });
       } else {
-        btn.textContent = 'Block';
+        // A category that names no rules is turned on, not blocked. Saying
+        // "Block" would promise a block list that does not exist.
+        btn.textContent = c.blocks ? 'Block' : 'Turn on';
         btn.addEventListener('click', function () { blockCategory(c); });
       }
       row.appendChild(btn);
@@ -1546,7 +2231,7 @@
         const already = items.filter(function (it) { return it.present; }).length;
         const more = document.createElement('button');
         more.className = 'catmore';
-        const shut = 'Show what it blocks (' + items.length + ')';
+        const shut = (c.blocks ? 'Show what it blocks (' : 'Show what it changes (') + items.length + ')';
         more.textContent = shut;
         more.addEventListener('click', function () {
           const open = list.style.display === 'none';
@@ -1561,7 +2246,7 @@
           const head = document.createElement('div');
           head.className = 'catlisthead';
           head.style.gridColumn = '1 / -1';
-          head.textContent = already + ' of these are already blocked; ' + (items.length - already) + ' would be new.';
+          head.textContent = already + ' of these are already ' + (c.blocks ? 'blocked' : 'on') + '; ' + (items.length - already) + ' would be new.';
           list.insertBefore(head, list.firstChild);
         }
         info.appendChild(list);
@@ -2214,6 +2899,383 @@
     loadVersion();
     checkUpdates(false);
     loadAnnouncement();
+  });
+
+  /* ======================================================================
+     The console shell.
+
+     Everything below is about the window as a whole rather than about one
+     list: the safeguard ring, the four stats, the attention list, the rail,
+     and the pages. It is all derived from the same Status the renderers above
+     already read - nothing here asks the backend for anything new, and nothing
+     here can assert something the pages below do not also show.
+     ==================================================================== */
+
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  const NAV = Array.prototype.slice.call(document.querySelectorAll('.navitem'));
+  const PANES = ['overview', 'browsers', 'blocking', 'schedule', 'time'];
+
+  // showPane swaps the visible page. Every section stays in the document either
+  // way - the renderers above write into all of them on every refresh, and a
+  // page that had to be visited before its list existed would be a window that
+  // lies until you click it.
+  function showPane(name) {
+    let hit = null;
+    NAV.forEach(function (b) {
+      const on = b.getAttribute('data-pane') === name;
+      b.classList.toggle('is-on', on);
+      if (on) { hit = b; }
+    });
+    if (!hit) { return; }
+    document.getElementById('page-title').textContent = hit.getAttribute('data-title');
+    document.getElementById('page-sub').textContent = hit.getAttribute('data-sub');
+    Array.prototype.forEach.call(document.querySelectorAll('.pane'), function (p) {
+      p.classList.toggle('is-active', p.id === 'pane-' + name);
+    });
+    // A new page is a new subject, so it starts at the top. Landing halfway down
+    // something you have not read is disorienting.
+    document.getElementById('content').scrollTop = 0;
+  }
+
+  NAV.forEach(function (b) {
+    b.addEventListener('click', function () { showPane(b.getAttribute('data-pane')); });
+  });
+
+  /* ---- help ------------------------------------------------------------
+     The old window explained every section in one to three sentences, always
+     on screen. The sentences were worth keeping and the vertical space was
+     not, so they moved in here: same wording, one click away, and a section
+     that is understood costs nothing to look at.
+     -------------------------------------------------------------------- */
+  (function () {
+    const bubble = document.createElement('div');
+    bubble.className = 'helpbubble';
+    bubble.style.display = 'none';
+    document.body.appendChild(bubble);
+    let open = null;
+
+    function hide() {
+      bubble.style.display = 'none';
+      if (open) { open.classList.remove('open'); }
+      open = null;
+    }
+
+    document.addEventListener('click', function (e) {
+      const btn = e.target.closest ? e.target.closest('.help') : null;
+      if (!btn) {
+        if (!(e.target.closest && e.target.closest('.helpbubble'))) { hide(); }
+        return;
+      }
+      if (open === btn) { hide(); return; }
+      hide();
+      open = btn;
+      btn.classList.add('open');
+      bubble.innerHTML = '';
+      (btn.getAttribute('data-help') || '').split('|').forEach(function (part) {
+        const p = document.createElement('p');
+        p.textContent = part.trim();
+        bubble.appendChild(p);
+      });
+      bubble.style.display = 'block';
+
+      // Placed under the button, nudged back on screen at either edge, and
+      // flipped above it when there is no room below. The rail is narrow and
+      // the window is maximised, so both cases happen in practice.
+      const r = btn.getBoundingClientRect();
+      const w = bubble.offsetWidth;
+      const h = bubble.offsetHeight;
+      let left = r.left + r.width / 2 - w / 2;
+      left = Math.max(12, Math.min(left, window.innerWidth - w - 12));
+      let top = r.bottom + 8;
+      if (top + h > window.innerHeight - 12) { top = Math.max(12, r.top - h - 8); }
+      bubble.style.left = left + 'px';
+      bubble.style.top = top + 'px';
+    });
+
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { hide(); } });
+    document.getElementById('content').addEventListener('scroll', hide);
+  })();
+
+  /* ---- safeguards ----------------------------------------------------- */
+
+  // safeguards flattens every protection this window can see the state of into
+  // one set of on/off checks.
+  //
+  // It is deliberately a count and not a score. A weighted "82% protected"
+  // would be this window inventing a number nothing in the app can back up,
+  // where "11 of 14 on" only restates what the pages below already show, and
+  // stays true when a future release adds a fifteenth safeguard.
+  function safeguards(s) {
+    const out = [];
+    out.push({ on: !!s.serviceRunning && !s.disabled, label: 'Guard service enforcing' });
+
+    (s.extensions || []).forEach(function (e) {
+      out.push({ on: !!e.enabled, label: (e.label || e.name) + ' locked into the browsers' });
+    });
+    (s.hardening || []).forEach(function (h) {
+      out.push({ on: !!h.on, label: h.label + ' pinned' });
+    });
+
+    // Claimed only where a scan actually ran. On a machine the guard never
+    // looked at, "no browser is unreachable" would be reassurance the window
+    // made up - the same reason renderUnmanaged hides its whole section.
+    if (s.unmanagedScanned) {
+      const loose = (s.unmanaged || []).filter(function (b) { return !b.listed && !b.missing; }).length;
+      out.push({
+        on: loose === 0,
+        label: loose
+          ? loose + ' other browser' + (loose === 1 ? ' is' : 's are') + ' neither filtered nor blocked'
+          : 'Every browser here is filtered or blocked'
+      });
+    }
+
+    out.push({ on: !!s.hasPassword, label: 'Password set on the guard' });
+    return out;
+  }
+
+  // attention is the overview's one editorial judgement: which of the states
+  // the pages below can be in are worth interrupting someone for.
+  //
+  // The rule is that a gap is something stopping protection from applying - a
+  // browser nothing reaches, a private window, a schedule that will not load.
+  // A protection deliberately left off is not a gap, and listing it here would
+  // teach the reader to ignore this panel, including on the day it matters.
+  function attention(s) {
+    const out = [];
+    function push(sev, text, sub, pane) { out.push({ sev: sev, text: text, sub: sub, pane: pane }); }
+
+    if (!s.serviceRunning) {
+      push('bad', 'The guard service is not running',
+        'Nothing on any of these pages is being enforced until it starts.', null);
+    }
+    if (s.disabled) {
+      push('bad', 'Protection is turned off', s.pausedUntil
+        ? 'It turns itself back on at ' + s.pausedUntil + '.'
+        : 'It stays off until you turn it back on.', null);
+    }
+    if (!s.hasPassword) {
+      push('warn', 'No password is set',
+        'Every action that weakens protection can be taken without one.', null);
+    }
+    if (s.privateBrowsingOpen) {
+      push('warn', 'Private browsing is open',
+        'A private window carries none of the locked extensions, so the filters can be sidestepped with Ctrl+Shift+N.', 'browsers');
+    }
+    if (s.unmanagedScanned) {
+      const loose = (s.unmanaged || []).filter(function (b) { return !b.listed && !b.missing; });
+      if (loose.length) {
+        const one = loose.length === 1;
+        push('warn', loose.length + (one ? ' browser is' : ' browsers are') + ' neither filtered nor blocked',
+          loose.map(function (b) { return b.label; }).join(', ') +
+          ' — every blocked site is reachable through ' + (one ? 'it' : 'them') + '.', 'browsers');
+      }
+    }
+    if ((s.allowlist || {}).shut) {
+      push('warn', 'Every site is blocked',
+        'Allowed-sites-only is on and the list is empty, so no page loads in any supported browser.', 'blocking');
+    }
+    const topups = (s.categories || []).filter(function (c) { return c.blocked && c.missing > 0; });
+    if (topups.length) {
+      const n = topups.reduce(function (a, c) { return a + c.missing; }, 0);
+      push('warn', n + ' new ' + (n === 1 ? 'entry' : 'entries') + ' in categories you blocked',
+        topups.map(function (c) { return c.label; }).join(', ') +
+        ' — blocked earlier, and grown since. Top up to cover the rest.', 'blocking');
+    }
+    if (s.scheduleError) {
+      push('bad', 'A schedule could not be loaded', s.scheduleError, 'schedule');
+    }
+    if (s.usageError) {
+      push('warn', 'Today’s usage could not be read', s.usageError, 'time');
+    }
+    const ext = s.extensions || [];
+    if (ext.length && !ext.filter(function (e) { return e.enabled; }).length) {
+      push('warn', 'No protected extensions are on',
+        'The browsers are locked to a list with nothing in it, so nothing is being filtered inside them.', 'browsers');
+    }
+    return out;
+  }
+
+  /* ---- the shell ------------------------------------------------------ */
+
+  const RING_R = 52;
+  const RING_LEN = 2 * Math.PI * RING_R;
+
+  // sparkline draws the week of "any blocked application open" into the screen
+  // time tile. Days arrive newest first, which is the right order for the list
+  // on the Screen time page and the wrong one for a chart, so they are
+  // reversed - a sparkline is read left to right as time passing.
+  function sparkline(days) {
+    const el = document.getElementById('tile-spark');
+    el.innerHTML = '';
+    if (days.length < 2) { return; }
+
+    const back = days.slice().reverse();
+    const pts = back.map(function (d, i) {
+      const pct = Math.max(0, Math.min(100, d.percent || 0));
+      return [(i / (back.length - 1)) * 100, 20 - (pct / 100) * 18];
+    });
+    const line = pts.map(function (p, i) {
+      return (i ? 'L' : 'M') + p[0].toFixed(2) + ' ' + p[1].toFixed(2);
+    }).join(' ');
+
+    const area = document.createElementNS(SVGNS, 'path');
+    area.setAttribute('class', 'area');
+    area.setAttribute('d', line + ' L100 22 L0 22 Z');
+    el.appendChild(area);
+
+    const path = document.createElementNS(SVGNS, 'path');
+    path.setAttribute('class', 'line');
+    path.setAttribute('d', line);
+    // The tile is a flexible width, so the viewBox is stretched to fill it. The
+    // stroke has to opt out of that or it thins out as the window widens.
+    path.setAttribute('vector-effect', 'non-scaling-stroke');
+    el.appendChild(path);
+  }
+
+  // renderShell paints everything that is about the whole window. Called at the
+  // end of render(), so the hero's own state class is already set and this can
+  // read it rather than working the state out a second time.
+  function renderShell(s) {
+    const checks = safeguards(s);
+    const on = checks.filter(function (c) { return c.on; }).length;
+
+    document.getElementById('cov-num').textContent = on;
+    document.getElementById('cov-den').textContent = 'of ' + checks.length + ' safeguards';
+    const arc = document.getElementById('ring-arc');
+    arc.setAttribute('stroke-dasharray', RING_LEN.toFixed(1));
+    arc.setAttribute('stroke-dashoffset',
+      (RING_LEN * (1 - (checks.length ? on / checks.length : 0))).toFixed(1));
+
+    const segs = document.getElementById('cov-segs');
+    segs.innerHTML = '';
+    checks.forEach(function (c) {
+      const seg = document.createElement('i');
+      seg.className = c.on ? 'on' : '';
+      seg.title = (c.on ? 'On — ' : 'Off — ') + c.label;
+      segs.appendChild(seg);
+    });
+
+    // One source of truth for what colour the window is: the hero's state class,
+    // set by render() just above, copied onto the panel that tints behind it.
+    const hero = document.getElementById('hero');
+    document.getElementById('hero-panel').className = 'panel hero-panel' +
+      (hero.classList.contains('off') ? ' s-off'
+        : (hero.classList.contains('paused') ? ' s-paused' : ''));
+
+    document.getElementById('pw-state').textContent =
+      s.hasPassword ? 'Password set' : 'No password set';
+
+    // --- stats. Each one is a count of rows on a page below it, so the two can
+    // never disagree.
+    const browsers = s.browsers || [];
+    const installed = browsers.filter(function (b) { return b.installed; }).length;
+    document.getElementById('tile-browsers-sub').textContent = installed
+      ? 'of ' + installed + ' installed here'
+      : 'no supported browser installed';
+
+    const doms = s.domains || [];
+    const domOn = doms.filter(function (d) { return d.enabled; }).length;
+    const allow = s.allowlist || {};
+    const allowed = (allow.sites || []).length;
+    document.getElementById('tile-sites').textContent = domOn;
+    document.getElementById('tile-sites-sub').textContent = allow.on
+      ? 'and everything but ' + allowed + ' allowed site' + (allowed === 1 ? '' : 's')
+      : (doms.length > domOn ? (doms.length - domOn) + ' switched off'
+        : (doms.length ? 'every subdomain, all browsers' : 'nothing blocked yet'));
+
+    const apps = s.apps || [];
+    const appOn = apps.filter(function (a) { return a.enabled; }).length;
+    const waiting = apps.filter(function (a) { return a.enabled && a.scheduled && !a.blocked; }).length;
+    document.getElementById('tile-apps').textContent = appOn;
+    document.getElementById('tile-apps-sub').textContent = waiting
+      ? waiting + ' waiting on a schedule'
+      : (apps.length > appOn ? (apps.length - appOn) + ' switched off'
+        : (apps.length ? 'closed on sight' : 'nothing blocked yet'));
+
+    const u = s.usage || {};
+    const timeTile = document.getElementById('tile-time');
+    timeTile.textContent = u.measured ? (u.today || '0m') : '—';
+    document.getElementById('tile-time-sub').textContent = u.measured
+      ? (u.total ? u.total + ' over ' + u.span + ' days' : '')
+      : 'nothing blocked to measure';
+    sparkline(u.days || []);
+    const charted = u.measured && !u.unreadable && (u.rows || []).length && (u.days || []).length;
+    document.getElementById('usage-days-empty').style.display = charted ? 'none' : '';
+
+    // --- attention
+    const list = attention(s);
+    // Worst first; past that, the order they were pushed in, which is roughly
+    // how much of the app each one stops working.
+    list.sort(function (a, b) { return (a.sev === 'bad' ? 0 : 1) - (b.sev === 'bad' ? 0 : 1); });
+
+    const attRows = document.getElementById('att-rows');
+    const attCount = document.getElementById('att-count');
+    attRows.innerHTML = '';
+    document.getElementById('att-clear').style.display = list.length ? 'none' : '';
+    attCount.style.display = list.length ? '' : 'none';
+    attCount.textContent = list.length;
+
+    list.forEach(function (a) {
+      const row = document.createElement('div');
+      row.className = 'attrow' + (a.sev === 'bad' ? ' bad' : '');
+      const dot = document.createElement('span');
+      dot.className = 'adot';
+      const body = document.createElement('div');
+      body.className = 'abody';
+      const text = document.createElement('div');
+      text.className = 'atext';
+      text.textContent = a.text;
+      body.appendChild(text);
+      if (a.sub) {
+        const sub = document.createElement('div');
+        sub.className = 'asub';
+        sub.textContent = a.sub;
+        body.appendChild(sub);
+      }
+      row.appendChild(dot);
+      row.appendChild(body);
+      // Only where there is somewhere to go. The service not running and the
+      // password not being set are both fixed outside this window.
+      if (a.pane) {
+        const go = document.createElement('button');
+        go.className = 'ghost small';
+        go.textContent = 'Open';
+        go.addEventListener('click', function () { showPane(a.pane); });
+        row.appendChild(go);
+      }
+      attRows.appendChild(row);
+    });
+
+    // --- the rail. Counts so the shape of the configuration is legible without
+    // opening each page, and a dot on any page with a gap on it.
+    document.getElementById('nav-badge-browsers').textContent = s.lockedCount;
+    document.getElementById('nav-badge-blocking').textContent = domOn + appOn;
+    document.getElementById('nav-badge-schedule').textContent = (s.blocks || []).length;
+
+    const worst = {};
+    list.forEach(function (a) {
+      if (!a.pane) { return; }
+      if (a.sev === 'bad' || !worst[a.pane]) { worst[a.pane] = a.sev; }
+    });
+    PANES.forEach(function (p) {
+      const dot = document.getElementById('nav-dot-' + p);
+      if (!dot) { return; }
+      // The overview is where the whole list lives, so its dot answers for all
+      // of them - including the entries no page can fix.
+      const sev = p === 'overview'
+        ? (list.filter(function (a) { return a.sev === 'bad'; }).length ? 'bad' : (list.length ? 'warn' : null))
+        : (worst[p] || null);
+      dot.style.display = sev ? '' : 'none';
+      dot.className = 'navdot' + (sev === 'bad' ? ' bad' : '');
+    });
+  }
+
+  // A refresh that changes nothing looks like a button that does nothing, so the
+  // icon turns for as long as it plausibly took.
+  document.getElementById('refresh').addEventListener('click', function () {
+    const btn = this;
+    btn.classList.add('spin');
+    window.setTimeout(function () { btn.classList.remove('spin'); }, 700);
   });
 </script>
 </body>

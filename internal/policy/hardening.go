@@ -53,6 +53,12 @@ type Hardening struct {
 	// SafeSearch is "", "off", "moderate" or "strict". Empty and "off" both mean
 	// the guard does not manage it.
 	SafeSearch string `json:"safeSearch,omitempty"`
+	// DNSFilter names the filtering resolver the browsers are pinned to, or "" /
+	// "off" for not managed. It holds a resolver id rather than a URL on purpose:
+	// the id is what the person bound by this can read and recognize, and the URI
+	// template it expands to is one fact about that resolver kept in one place,
+	// the same way a SafeSearch level expands into three policy values.
+	DNSFilter string `json:"dnsFilter,omitempty"`
 }
 
 // SafeSearch levels.
@@ -62,10 +68,65 @@ const (
 	SafeSearchStrict   = "strict"
 )
 
+// DNSFilterOff is the value that means the guard does not manage the resolver.
+const DNSFilterOff = "off"
+
+// Resolver ids, as they are written in the config.
+const (
+	// ResolverCloudflareFamily is Cloudflare's family endpoint: malware and adult
+	// content, returning 0.0.0.0 for anything it filters.
+	ResolverCloudflareFamily = "cloudflare-family"
+)
+
+// Resolver is one DNS-over-HTTPS resolver the browsers can be pinned to.
+//
+// Why a table of two fields and not a free-text URL: the whole value of this knob
+// is that somebody else maintains the classification, continuously, and a
+// hand-typed URL is a way to point the machine's entire DNS at a host nobody
+// vetted - including one that filters nothing. A resolver reaches this table by
+// being checked once, here, where the check can be read.
+type Resolver struct {
+	ID    string
+	Label string
+	// Short is what the state column shows. It has to fit a narrow column and
+	// still name who is doing the filtering, because that is the fact a reader
+	// cannot guess from "on".
+	Short string
+	// Template is the DoH URI template written into DnsOverHttpsTemplates and
+	// Mozilla's ProviderURL.
+	Template string
+	// Covers says what the operator claims to filter, in their terms rather than
+	// ours - the guard does not classify anything here and must not imply it does.
+	Covers string
+}
+
+// Resolvers is every resolver the guard will pin to.
+var Resolvers = []Resolver{
+	{
+		ID:       ResolverCloudflareFamily,
+		Label:    "Cloudflare for Families",
+		Short:    "cloudflare",
+		Template: "https://family.cloudflare-dns.com/dns-query",
+		Covers:   "malware and adult content",
+	},
+}
+
+// LookupResolver resolves a resolver id.
+func LookupResolver(id string) (Resolver, bool) {
+	id = strings.ToLower(strings.TrimSpace(id))
+	for _, r := range Resolvers {
+		if r.ID == id {
+			return r, true
+		}
+	}
+	return Resolver{}, false
+}
+
 // Hardening knob ids, as the CLI and the status window name them.
 const (
 	KnobPrivateBrowsing = "private-browsing"
 	KnobSafeSearch      = "safe-search"
+	KnobDNSFilter       = "dns-filter"
 )
 
 // Knob is one hardening switch: what it is called, and what it does and does not
@@ -101,6 +162,27 @@ var Knobs = []Knob{
 			"filters search results and YouTube; it is not a substitute for the block list, and a " +
 			"site reached directly is unaffected.",
 	},
+	{
+		ID:    KnobDNSFilter,
+		Label: "Filtered DNS",
+		Note: "Pins every supported browser's DNS to Cloudflare for Families, which filters malware " +
+			"and adult content. This is the only setting here that does not ship a list: the guard " +
+			"classifies nothing, and what counts as adult is Cloudflare's continuously maintained " +
+			"answer rather than a few dozen hostnames compiled into this binary - which is why it " +
+			"covers what a block list cannot. It is pinned closed: if the resolver cannot be " +
+			"reached, names do not resolve and pages do not load, so the filter cannot be switched " +
+			"off by breaking it. The costs of that are real and worth knowing before you turn it " +
+			"on - captive-portal wifi (hotels, airports, some campuses) will not come up, a VPN or " +
+			"corporate network with its own internal names will not resolve them in the browser, " +
+			"and a resolver outage is an outage. What it does not cover: any non-browser " +
+			"application, since those use the machine's own resolver and not the browser's; a " +
+			"browser the guard writes no policy for - run `guard browsers` for those; and one page " +
+			"of a site, because DNS answers for whole hostnames, which is why this does not replace " +
+			"the block list, SafeSearch or the extensions. One version note: only Firefox 124 and " +
+			"newer can be told not to fall back, so an older Firefox applies the rest and still " +
+			"reverts to the machine's resolver if Cloudflare cannot be reached - weaker than the " +
+			"Chromium half, and worth knowing if Firefox is the browser that matters here.",
+	},
 }
 
 // knobSupport records which browsers can be made to honour each knob. It is a
@@ -114,9 +196,20 @@ var Knobs = []Knob{
 // either: SafeSearch is not a Firefox preference, it is something Google and Bing
 // decide from the request. Naming the gap here is what lets `guard hardening` say
 // "not available" instead of showing a row that looks enforced.
+// dns-filter is the one knob with no gap. Chromium has taken DnsOverHttpsMode
+// and DnsOverHttpsTemplates since Chrome 78 and Edge 83, and Mozilla's policy
+// engine has DNSOverHTTPS since Firefox 63 - so unlike safe-search, the Gecko
+// half is not a hole to be reported but a policy that is actually written. The
+// one version-dependent piece is Mozilla's Fallback, which arrived in Firefox
+// 124: on an older build the other three values still apply and Firefox falls
+// back to the system resolver on error, which is a weaker promise than the
+// Chromium half makes. That is a fact about old Firefox and not something the
+// guard can close, so the knob's own note says it rather than knobSupport
+// pretending the browser is unsupported.
 var knobSupport = map[string][]Kind{
 	KnobPrivateBrowsing: {Chrome, Edge, Brave, Firefox, Zen},
 	KnobSafeSearch:      {Chrome, Edge, Brave},
+	KnobDNSFilter:       {Chrome, Edge, Brave, Firefox, Zen},
 }
 
 // KnobSupported reports whether a knob can be enforced in a browser at all.
@@ -242,6 +335,28 @@ func NormalizeSafeSearch(s string) (string, error) {
 	}
 }
 
+// NormalizeDNSFilter reduces what a person would type to a resolver id, or "" for
+// off. An unknown resolver is an error rather than a silent fallback, for the
+// reason NormalizeSafeSearch refuses an unknown level - and with more at stake
+// here, because a resolver the guard quietly ignored would leave the browsers
+// resolving through whatever they used before while the config claimed otherwise.
+func NormalizeDNSFilter(s string) (string, error) {
+	switch v := strings.ToLower(strings.TrimSpace(s)); v {
+	case "", DNSFilterOff:
+		return "", nil
+	case "on", "true", "yes", "cloudflare", "family":
+		// A bare "on" resolves to the one resolver there is. When a second one is
+		// added this has to keep meaning what it means today, or an upgrade would
+		// silently repoint a machine's DNS at a different operator.
+		return ResolverCloudflareFamily, nil
+	default:
+		if _, ok := LookupResolver(v); ok {
+			return v, nil
+		}
+		return "", fmt.Errorf("unknown DNS resolver %q; use %s or off", s, ResolverCloudflareFamily)
+	}
+}
+
 // Hardened returns the hardening the config asks for, with a nil pointer and an
 // unrecognized level both reading as "not managed". Every caller wants a value it
 // can ask questions of, so the nil check lives here once.
@@ -251,7 +366,17 @@ func (c Config) Hardened() Hardening {
 	}
 	h := *c.Hardening
 	h.SafeSearch, _ = NormalizeSafeSearch(h.SafeSearch)
+	h.DNSFilter, _ = NormalizeDNSFilter(h.DNSFilter)
 	return h
+}
+
+// DNSFilterOn reports whether the resolver is pinned, and to which resolver.
+func (h Hardening) DNSFilterOn() (Resolver, bool) {
+	id, err := NormalizeDNSFilter(h.DNSFilter)
+	if err != nil || id == "" {
+		return Resolver{}, false
+	}
+	return LookupResolver(id)
 }
 
 // SafeSearchOn reports whether SafeSearch is managed, and at which level.
@@ -265,7 +390,8 @@ func (h Hardening) SafeSearchOn() (string, bool) {
 // completely untouched.
 func (h Hardening) Any() bool {
 	_, safe := h.SafeSearchOn()
-	return h.PrivateBrowsing || safe
+	_, dns := h.DNSFilterOn()
+	return h.PrivateBrowsing || safe || dns
 }
 
 // On reports whether one knob is on, by id.
@@ -275,6 +401,9 @@ func (h Hardening) On(id string) bool {
 		return h.PrivateBrowsing
 	case KnobSafeSearch:
 		_, on := h.SafeSearchOn()
+		return on
+	case KnobDNSFilter:
+		_, on := h.DNSFilterOn()
 		return on
 	}
 	return false
@@ -292,6 +421,13 @@ func (h Hardening) Describe(id string) string {
 	case KnobSafeSearch:
 		if level, on := h.SafeSearchOn(); on {
 			return level
+		}
+	case KnobDNSFilter:
+		// The resolver's short name rather than "on", for the reason SafeSearch
+		// shows its level: who is doing the filtering is the part a reader cannot
+		// guess, and it is the whole substance of this setting.
+		if r, on := h.DNSFilterOn(); on {
+			return r.Short
 		}
 	}
 	return "off"
@@ -386,6 +522,22 @@ func (c *Config) SetKnob(id string, on bool, level string) (bool, error) {
 			norm = SafeSearchStrict
 		}
 		want.SafeSearch = norm
+	case KnobDNSFilter:
+		if !on {
+			if strings.TrimSpace(level) != "" {
+				return false, fmt.Errorf("a resolver makes no sense when turning %s off", knob.ID)
+			}
+			want.DNSFilter = ""
+			break
+		}
+		norm, err := NormalizeDNSFilter(level)
+		if err != nil {
+			return false, err
+		}
+		if norm == "" {
+			norm = ResolverCloudflareFamily
+		}
+		want.DNSFilter = norm
 	}
 
 	before := c.Hardened()
@@ -397,10 +549,12 @@ func (c *Config) SetKnob(id string, on bool, level string) (bool, error) {
 	// reconcile works on. The alternative is that Validate keeps refusing an
 	// unrelated strengthening until the file is hand-fixed.
 	wantLevel, _ := NormalizeSafeSearch(want.SafeSearch)
-	if want.PrivateBrowsing == before.PrivateBrowsing && wantLevel == before.SafeSearch {
+	wantDNS, _ := NormalizeDNSFilter(want.DNSFilter)
+	if want.PrivateBrowsing == before.PrivateBrowsing && wantLevel == before.SafeSearch && wantDNS == before.DNSFilter {
 		return false, nil
 	}
 	want.SafeSearch = wantLevel
+	want.DNSFilter = wantDNS
 	if !want.Any() {
 		c.Hardening = nil
 		return true, nil
@@ -417,6 +571,12 @@ func (c Config) validateHardening() error {
 		return nil
 	}
 	if _, err := NormalizeSafeSearch(c.Hardening.SafeSearch); err != nil {
+		return fmt.Errorf("hardening: %w", err)
+	}
+	// A resolver the guard does not know is refused rather than ignored. Hardened()
+	// reads it as off, so accepting it would leave a config that names a resolver
+	// and browsers that are pinned to nothing.
+	if _, err := NormalizeDNSFilter(c.Hardening.DNSFilter); err != nil {
 		return fmt.Errorf("hardening: %w", err)
 	}
 	return nil

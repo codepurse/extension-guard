@@ -43,6 +43,26 @@ type Category struct {
 	Note    string
 	Apps    []App
 	Domains []string
+	// Settings are the browser settings the category turns on, on top of - or
+	// instead of - any rules it names. It exists because one whole category is
+	// not a list at all: see "adult" below, where the honest answer is a
+	// filtering resolver somebody else maintains, not hostnames compiled into
+	// this binary.
+	//
+	// A setting is applied exactly as `guard harden` would apply it, and never
+	// in the weakening direction - ApplyCategory skips one that would filter
+	// less than what is already in force. Applying a category costs no
+	// password, so it must not become the way protection is lowered.
+	Settings []CategorySetting
+}
+
+// CategorySetting is one hardening knob a category turns on, with the level it
+// asks for. Level carries a SafeSearch level or a resolver id, and is empty for
+// a knob that takes neither - the same values `guard harden -level` accepts,
+// since Config.SetKnob is what applies it.
+type CategorySetting struct {
+	Knob  string
+	Level string
 }
 
 // SourcePrefix marks a config entry as belonging to a category. See App.Source.
@@ -71,6 +91,47 @@ func (c Category) Source() string { return SourcePrefix + c.ID }
 // below the drive, so C:\Program Files\Rockstar Games\Launcher is fine and
 // C:\Games is not.
 var Catalog = map[string]Category{
+	// The one category that is not a list, and the reason Category has a
+	// Settings field at all.
+	//
+	// What counts as adult content is a question with millions of answers that
+	// change daily. A few dozen hostnames compiled into this binary would be a
+	// promise the program cannot keep: the block would look like it worked
+	// while the next site along loaded fine, which is worse than not offering
+	// the category, because the user stops looking. So this ships no domains.
+	// It turns on the two settings that put the classification somewhere it is
+	// actually maintained.
+	//
+	// No application rules either, and that is not an omission. This content is
+	// reached through a browser; naming executables here would be guessing at
+	// software nobody has verified, and a shipped rule is applied by somebody
+	// who has not looked at it - the same reason window-title rules are refused.
+	//
+	// private-browsing is deliberately not one of the settings. It is the right
+	// knob for a locked extension, which cannot load in an Incognito window -
+	// but both settings here are browser policy, and browser policy applies to
+	// Incognito too. Adding it would take away a feature this category does not
+	// need, under a switch that costs no password.
+	"adult": {
+		ID:    "adult",
+		Label: "Adult content",
+		Note: "This category ships no list of sites, on purpose. It turns on filtered DNS and " +
+			"SafeSearch instead, so what counts as adult content is answered by a service that " +
+			"maintains that answer continuously, rather than by a few hostnames compiled into " +
+			"this program that would be out of date the week it shipped. Read both settings' " +
+			"own notes before turning it on, because each has a real cost: filtered DNS is " +
+			"pinned closed, which is what makes it hard to bypass and also what breaks " +
+			"captive-portal wifi and a company network's internal names, and SafeSearch is not " +
+			"enforced in Firefox or Zen at all because Mozilla ships no policy for it. Neither " +
+			"setting reaches a non-browser application, or a browser the guard writes no policy " +
+			"for - run `guard browsers` for those. There is no block to schedule or lock here; " +
+			"these are settings, and they are on until somebody turns them off with the password.",
+		Settings: []CategorySetting{
+			{Knob: KnobDNSFilter, Level: ResolverCloudflareFamily},
+			{Knob: KnobSafeSearch, Level: SafeSearchStrict},
+		},
+	},
+
 	"social": {
 		ID:    "social",
 		Label: "Social media",
@@ -305,8 +366,11 @@ func validateCategory(id string, cat Category) error {
 	if strings.TrimSpace(cat.Label) == "" {
 		return fmt.Errorf("category %q has no label", id)
 	}
-	if len(cat.Apps) == 0 && len(cat.Domains) == 0 {
+	if len(cat.Apps) == 0 && len(cat.Domains) == 0 && len(cat.Settings) == 0 {
 		return fmt.Errorf("category %q covers nothing", id)
+	}
+	if err := validateCategorySettings(id, cat); err != nil {
+		return err
 	}
 	seen := make(map[string]bool, len(cat.Apps))
 	for _, a := range cat.Apps {
@@ -361,6 +425,43 @@ func validateCategory(id string, cat Category) error {
 	return nil
 }
 
+// validateCategorySettings holds a category's browser settings to the same bar
+// its rules are held to: the knob has to exist, and the level has to be one that
+// knob accepts.
+//
+// It checks by applying the setting to a throwaway config rather than by
+// repeating SetKnob's switch here. A knob that grows a new level, or a resolver
+// that leaves the table, would otherwise leave a stale copy of the rules in this
+// file quietly passing something SetKnob refuses - and the failure would surface
+// on a user's machine, halfway through applying a category, rather than in the
+// test that holds the catalog.
+func validateCategorySettings(id string, cat Category) error {
+	seen := make(map[string]bool, len(cat.Settings))
+	for _, st := range cat.Settings {
+		knob := strings.ToLower(strings.TrimSpace(st.Knob))
+		if _, ok := LookupKnob(knob); !ok {
+			return fmt.Errorf("category %q: %q is not a browser setting", id, st.Knob)
+		}
+		if seen[knob] {
+			return fmt.Errorf("category %q sets %q twice", id, knob)
+		}
+		seen[knob] = true
+		var probe Config
+		if _, err := probe.SetKnob(knob, true, st.Level); err != nil {
+			return fmt.Errorf("category %q: %s cannot be set to %q: %w", id, knob, st.Level, err)
+		}
+	}
+	return nil
+}
+
+// BlocksAnything reports whether the category names rules at all, as opposed to
+// being settings only. It decides the words used about it - a category with no
+// rules is turned "on" rather than "blocked" - and it decides the real thing
+// underneath that wording: there is no block to put on a schedule or to lock.
+func (c Category) BlocksAnything() bool {
+	return len(c.Apps) > 0 || len(c.Domains) > 0
+}
+
 // folderDepth counts the directory levels a path names below its drive, so
 // C:\Program Files\Google\Play Games is three and C:\Games is one.
 func folderDepth(p string) int {
@@ -400,8 +501,12 @@ func LookupCategory(id string) (Category, bool) {
 type CategoryResult struct {
 	Apps    []string // rules newly blocked
 	Domains []string // domains newly blocked
-	Skipped []string // entries already covered some other way, with the reason
-	Block   Block    // the block governing the category, as it now stands
+	// Settings are the browser settings this call turned on, named as the
+	// Browser settings section names them. A setting already in force is not
+	// listed here, for the same reason an app already blocked is not.
+	Settings []string
+	Skipped  []string // entries already covered some other way, with the reason
+	Block    Block    // the block governing the category, as it now stands
 	// NewBlock is false when the category was already present and this call only
 	// topped it up.
 	NewBlock bool
@@ -409,7 +514,7 @@ type CategoryResult struct {
 
 // Changed reports whether applying the category altered the config at all.
 func (r CategoryResult) Changed() bool {
-	return len(r.Apps) > 0 || len(r.Domains) > 0 || r.NewBlock
+	return len(r.Apps) > 0 || len(r.Domains) > 0 || len(r.Settings) > 0 || r.NewBlock
 }
 
 // ApplyCategory expands a category into the config: every app and domain it
@@ -472,6 +577,35 @@ func (c *Config) ApplyCategory(cat Category) (CategoryResult, error) {
 		}
 	}
 
+	// Settings go through SetKnob, the same path `guard harden` takes, so a
+	// category cannot put the config into a state the CLI could not.
+	for _, st := range cat.Settings {
+		// Already in force is left exactly as it is, and a weakening is refused
+		// outright. Applying a category costs no password; if it could lower a
+		// SafeSearch level, it would be the way around the gate HardenWeakens
+		// exists to hold. hasSetting is what makes "already in force" mean at
+		// least as strong, so neither case can quietly downgrade the machine.
+		if c.hasSetting(st) || c.HardenWeakens(st.Knob, st.Level) {
+			continue
+		}
+		changed, err := c.SetKnob(st.Knob, true, st.Level)
+		if err != nil {
+			res.Skipped = append(res.Skipped, fmt.Sprintf("%s (%v)", settingLabel(st), err))
+			continue
+		}
+		if changed {
+			res.Settings = append(res.Settings, settingLabel(st))
+		}
+	}
+
+	// A category that names no rules has no block to create: there is nothing
+	// for a block to govern, and its settings are already applied by the time we
+	// reach here. This is the "adult" shape - browser settings and no list - and
+	// without this line it would fail as "nothing could be added" having just
+	// changed the machine.
+	if !cat.BlocksAnything() {
+		return res, nil
+	}
 	if len(appValues) == 0 && len(domainValues) == 0 {
 		return res, fmt.Errorf("nothing in the %s category could be added", cat.ID)
 	}
@@ -504,6 +638,10 @@ func (c *Config) ApplyCategory(cat Category) (CategoryResult, error) {
 const (
 	EntryApp  = "app"
 	EntrySite = "site"
+	// EntrySetting is a browser setting rather than a thing being blocked. It is
+	// a distinct kind because the state word differs - a setting is "on", not
+	// "blocked" - and the window and the CLI both key that wording off it.
+	EntrySetting = "setting"
 )
 
 // CategoryEntry is one thing a category covers, resolved against a config so the
@@ -529,15 +667,27 @@ type CategoryEntry struct {
 	Present bool // already in the config, in whatever state
 }
 
-// CategoryEntries lists everything a category covers, apps first and then sites,
-// in catalog order. Each entry says whether the config already holds it.
+// CategoryEntries lists everything a category covers - settings first, then
+// apps, then sites, in catalog order. Each entry says whether the config already holds it.
 //
 // An entry that cannot normalize is still listed, marked absent, rather than
 // dropped: a catalog line the guard would refuse is a bug worth seeing in the
 // one place that shows the catalog, not one worth hiding from the person who
 // would have to explain why the count did not add up.
 func (c Config) CategoryEntries(cat Category) []CategoryEntry {
-	out := make([]CategoryEntry, 0, len(cat.Apps)+len(cat.Domains))
+	out := make([]CategoryEntry, 0, len(cat.Settings)+len(cat.Apps)+len(cat.Domains))
+	// Settings first. A category holding both is turning something on before it
+	// blocks anything, and read in that order the rules underneath make sense as
+	// the narrower half of one decision.
+	for _, st := range cat.Settings {
+		out = append(out, CategoryEntry{
+			Kind:    EntrySetting,
+			Label:   settingLabel(st),
+			Value:   strings.ToLower(strings.TrimSpace(st.Knob)),
+			Detail:  settingDetail(st),
+			Present: c.hasSetting(st),
+		})
+	}
 	for _, a := range cat.Apps {
 		label, value, detail := strings.TrimSpace(a.Label), a.Value, ""
 		if n, err := NormalizeApp(a.Kind, a.Value, a.Label); err == nil {
@@ -594,6 +744,11 @@ func (c Config) CategoryMissing(cat Category) int {
 			n++
 		}
 	}
+	for _, st := range cat.Settings {
+		if !c.hasSetting(st) {
+			n++
+		}
+	}
 	return n
 }
 
@@ -607,6 +762,99 @@ func (c Config) hasApp(kind, value string) bool {
 	}
 	_, ok := c.findApp(n.Kind, n.Value)
 	return ok
+}
+
+// hasSetting reports whether a category's browser setting is already in force,
+// at least as strongly as the category asks for. It is the settings half of
+// hasApp and hasDomain, and it decides both what CategoryMissing counts and what
+// ApplyCategory leaves alone.
+//
+// "At least as strongly" rather than "exactly" is what stops a category undoing
+// a choice the user already made. A machine already on strict SafeSearch is not
+// topped up by a category asking for strict. The case that really matters is the
+// resolver: a machine pinned to some other filtering resolver is left on it,
+// because the user picked that one, and swapping it for whichever this program
+// happens to name first would be a lateral move dressed up as protection - taken
+// without a password, on a switch that is meant only ever to add.
+func (c Config) hasSetting(st CategorySetting) bool {
+	h := c.Hardened()
+	switch strings.ToLower(strings.TrimSpace(st.Knob)) {
+	case KnobPrivateBrowsing:
+		return h.PrivateBrowsing
+	case KnobSafeSearch:
+		cur, on := h.SafeSearchOn()
+		if !on {
+			return false
+		}
+		want, err := NormalizeSafeSearch(st.Level)
+		if err != nil || want == "" {
+			want = SafeSearchStrict
+		}
+		return safeSearchRank(cur) >= safeSearchRank(want)
+	case KnobDNSFilter:
+		_, on := h.DNSFilterOn()
+		return on
+	}
+	return false
+}
+
+// settingLabel names a setting the way the Browser settings section names it, so
+// the two places cannot end up calling one switch by two names.
+func settingLabel(st CategorySetting) string {
+	if k, ok := LookupKnob(st.Knob); ok {
+		return k.Label
+	}
+	return st.Knob
+}
+
+// settingDetail says what the setting will actually be set to, for the Detail
+// column. For a resolver that means naming who does the filtering and what they
+// claim to filter, in their words: the guard classifies nothing here, and who is
+// answering is the whole substance of the setting and the one fact a reader
+// cannot guess from the knob's name.
+func settingDetail(st CategorySetting) string {
+	switch strings.ToLower(strings.TrimSpace(st.Knob)) {
+	case KnobSafeSearch:
+		level, err := NormalizeSafeSearch(st.Level)
+		if err != nil || level == "" {
+			level = SafeSearchStrict
+		}
+		return level
+	case KnobDNSFilter:
+		id, err := NormalizeDNSFilter(st.Level)
+		if err != nil || id == "" {
+			id = ResolverCloudflareFamily
+		}
+		if r, ok := LookupResolver(id); ok {
+			return r.Label + " - " + r.Covers
+		}
+		return id
+	}
+	return ""
+}
+
+// CategoryApplied reports whether a category is in force, which is not the same
+// question as whether its block exists.
+//
+// A category that names rules is in force when its block is there: that block is
+// what enforces them, and it is what remove-block lifts. A category that names
+// only settings has no block at all, so the only thing "applied" can mean for it
+// is that every setting it asks for is on. Without the distinction the adult
+// category would read "available" forever, having been applied.
+func (c Config) CategoryApplied(cat Category) bool {
+	if cat.BlocksAnything() {
+		_, ok := c.Block(cat.ID)
+		return ok
+	}
+	if len(cat.Settings) == 0 {
+		return false
+	}
+	for _, st := range cat.Settings {
+		if !c.hasSetting(st) {
+			return false
+		}
+	}
+	return true
 }
 
 // hasDomain reports whether a domain is already listed, in whatever state.

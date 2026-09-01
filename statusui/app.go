@@ -212,22 +212,29 @@ type AppRow struct {
 	Category string `json:"category"`
 }
 
-// CategoryRow is one built-in category as the window offers it. Apps and Domains
-// are what the category covers in total; Missing is how much of that the config
-// does not hold yet, which is the difference between a button that would block
-// nineteen new sites and one that would do nothing at all.
+// CategoryRow is one built-in category as the window offers it. Apps, Domains and
+// Settings are what the category covers in total; Missing is how much of that the
+// config does not hold yet, which is the difference between a button that would
+// block nineteen new sites and one that would do nothing at all.
 //
-// Blocked means the category's own block exists. The two are independent: a
-// category can be blocked and still have entries missing, which is exactly the
+// Blocked means the category is in force - its block exists, or, for a category
+// that names no rules, every setting it asks for is on. The two are independent:
+// a category can be in force and still have entries missing, which is exactly the
 // state a user is in after the catalog gains an app in an update.
 type CategoryRow struct {
-	ID      string `json:"id"`
-	Label   string `json:"label"`
-	Note    string `json:"note"`
-	Apps    int    `json:"apps"`
-	Domains int    `json:"domains"`
-	Blocked bool   `json:"blocked"`
-	Missing int    `json:"missing"`
+	ID       string `json:"id"`
+	Label    string `json:"label"`
+	Note     string `json:"note"`
+	Apps     int    `json:"apps"`
+	Domains  int    `json:"domains"`
+	Settings int    `json:"settings"`
+	// Blocks is false for a category that names no rules and only turns browser
+	// settings on. The window says "On" rather than "Blocked" for one of those,
+	// and offers neither a schedule nor a lock, because there is no block to put
+	// on one - see policy.Category.BlocksAnything.
+	Blocks  bool `json:"blocks"`
+	Blocked bool `json:"blocked"`
+	Missing int  `json:"missing"`
 	// Items is everything the category covers, so the window can show the list
 	// before the user agrees to it. A category is accepted all at once and comes
 	// off again only with the password, so a count is not something a person can
@@ -239,7 +246,7 @@ type CategoryRow struct {
 // what the config already holds, which is what stops a top-up of three entries
 // reading as twenty-eight new restrictions.
 type CategoryItem struct {
-	Kind  string `json:"kind"` // "app" or "site"
+	Kind  string `json:"kind"` // "app", "site" or "setting"
 	Label string `json:"label"`
 	// Detail is what the entry covers, in policy's own words. It carries the one
 	// distinction a list of friendly names loses: "Google Play Games" blocks a
@@ -479,21 +486,25 @@ func (a *App) GetStatus() Status {
 		if !ok {
 			continue
 		}
-		_, blocked := a.cfg.Block(cat.ID)
+		// CategoryApplied rather than Block: a settings-only category has no
+		// block to find, and would otherwise read "available" forever.
+		applied := a.cfg.CategoryApplied(cat)
 		entries := a.cfg.CategoryEntries(cat)
 		items := make([]CategoryItem, 0, len(entries))
 		for _, e := range entries {
 			items = append(items, CategoryItem{Kind: e.Kind, Label: e.Label, Detail: e.Detail, Present: e.Present})
 		}
 		cats = append(cats, CategoryRow{
-			ID:      cat.ID,
-			Label:   cat.Label,
-			Note:    cat.Note,
-			Apps:    len(cat.Apps),
-			Domains: len(cat.Domains),
-			Blocked: blocked,
-			Missing: a.cfg.CategoryMissing(cat),
-			Items:   items,
+			ID:       cat.ID,
+			Label:    cat.Label,
+			Note:     cat.Note,
+			Apps:     len(cat.Apps),
+			Domains:  len(cat.Domains),
+			Settings: len(cat.Settings),
+			Blocks:   cat.BlocksAnything(),
+			Blocked:  applied,
+			Missing:  a.cfg.CategoryMissing(cat),
+			Items:    items,
 		})
 	}
 
@@ -732,13 +743,21 @@ func (a *App) BlockCategory(id string) ActionResult {
 	}
 	// Answered here rather than by spending a UAC prompt to be told nothing
 	// changed. This is the state a user lands in by pressing the button twice.
-	if a.cfg.CategoryMissing(cat) == 0 {
-		if _, blocked := a.cfg.Block(cat.ID); blocked {
+	if a.cfg.CategoryMissing(cat) == 0 && a.cfg.CategoryApplied(cat) {
+		if cat.BlocksAnything() {
 			return ActionResult{OK: true, Message: cat.Label + " is already blocked in full."}
 		}
+		return ActionResult{OK: true, Message: "Every setting " + cat.Label + " asks for is already on."}
 	}
 	args := []string{"-config", a.cfgPath, "block-category", cat.ID}
-	return a.execGuard(args, cat.Label+" is blocked, around the clock.")
+	// A category that blocks nothing is turned on, not blocked. The message is
+	// what the user reads back when something still opens, so it has to say which
+	// of the two actually happened.
+	done := cat.Label + " is blocked, around the clock."
+	if !cat.BlocksAnything() {
+		done = cat.Label + " is on."
+	}
+	return a.execGuard(args, done)
 }
 
 // usageWindowDays is the span the window shows. A week is the unit people think

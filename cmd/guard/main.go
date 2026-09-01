@@ -47,7 +47,7 @@ func main() {
 	pauseFor := flag.String("for", "", "how long 'disable' pauses protection: 30m, 2h, 1d, or a time. Omit to pause until you turn it back on")
 	kind := flag.String("kind", "", "what a block-app/unblock-app argument is: exe (default), folder, store, or title")
 	label := flag.String("label", "", "friendly name shown in the status window (used by 'block-app' and 'add-block')")
-	level := flag.String("level", "", "how strict a hardened setting is: moderate or strict (used by 'harden safe-search'; default strict)")
+	level := flag.String("level", "", "how a hardened setting is set: moderate or strict for 'harden safe-search' (default strict), or a resolver id for 'harden dns-filter' (default cloudflare-family)")
 	count := flag.Int("n", defaultActivityCount, "how many entries 'activity' shows")
 	flag.Usage = printUsage
 	flag.Parse()
@@ -714,6 +714,11 @@ browser setting commands:
                                   safe-search       SafeSearch + YouTube
                                                     restricted mode; -level takes
                                                     moderate or strict (default)
+                                  dns-filter        resolve DNS through Cloudflare
+                                                    for Families, which filters
+                                                    malware and adult content.
+                                                    Pinned closed: if it cannot be
+                                                    reached, pages do not load
   unharden           <setting>  hand a setting back (password, unless paused)
 
 domain commands:
