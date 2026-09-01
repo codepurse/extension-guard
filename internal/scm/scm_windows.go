@@ -10,9 +10,13 @@ package scm
 import (
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 	"unsafe"
+
+	"github.com/codepurse/extension-guard/internal/friction"
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
@@ -25,6 +29,7 @@ const (
 	disabledValue = "GuardDisabled"
 	updatingValue = "GuardUpdating"
 	passwordValue = "PasswordHash"
+	frictionValue = "FrictionChars"
 	pausedValue   = "GuardPausedUntil"
 	trustedValue  = "TrustedConfig"
 	resetPeriod   = uint32(24 * 60 * 60) // recovery failure-count reset window (seconds)
@@ -223,6 +228,44 @@ func GetPasswordHash() (string, bool) { return getStringIn(registry.LOCAL_MACHIN
 
 // ClearPasswordHash removes the stored hash (called after a verified uninstall).
 func ClearPasswordHash() error { return deleteValueIn(registry.LOCAL_MACHINE, passwordValue) }
+
+// The typing challenge lives next to the password hash rather than in the config
+// file, and that placement is the feature. A challenge length sitting in
+// extension-ids.json would be editable by anybody who can open Notepad, and the
+// one thing this gate must not be is adjustable by the person it is there to slow
+// down. The config is reconciled continuously and would restore it - but "wrong
+// for a second" is enough when the action being gated takes a second.
+//
+// Absent means off. Every machine that installed the guard before this existed
+// reads as off, which is the only safe default: a challenge nobody was told about
+// appearing in front of an uninstall is a support call, not protection.
+
+// SetFrictionChars stores how long the typing challenge is.
+func SetFrictionChars(n int) error {
+	return setStringIn(registry.LOCAL_MACHINE, frictionValue, strconv.Itoa(n))
+}
+
+// GetFrictionChars returns the stored challenge length and whether one is set.
+// A value that does not parse, or that is out of range, reads as not set: the
+// guard would otherwise have to guess a length, and guessing either side of this
+// is wrong - too short is a gate that does nothing, too long is a machine nobody
+// can get back.
+func GetFrictionChars() (int, bool) {
+	raw, ok := getStringIn(registry.LOCAL_MACHINE, frictionValue)
+	if !ok {
+		return 0, false
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || friction.ValidChars(n) != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+// ClearFrictionChars removes the stored length, turning the challenge off.
+func ClearFrictionChars() error {
+	return deleteValueIn(registry.LOCAL_MACHINE, frictionValue)
+}
 
 // SetTrustedConfig stores the config the guard considers authoritative. Only
 // authorized mutations (the installer's component pick, the password-gated

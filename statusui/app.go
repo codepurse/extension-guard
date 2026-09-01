@@ -1368,7 +1368,24 @@ func (a *App) execGuard(args []string, okMsg string) ActionResult {
 	if err != nil {
 		return ActionResult{Message: err.Error()}
 	}
-	code, err := runElevatedAndWait(guardExe, args)
+	// A console, but only when there is a typing challenge to answer in it.
+	//
+	// Everything the window does goes through an elevated guard launched with no
+	// window at all, which is right until the guard needs to ask something. The
+	// challenge cannot be answered down a hidden pipe, so with one configured the
+	// guard gets a real console and asks there. -hold-console is what stops that
+	// console closing on a failure before anybody has read why.
+	//
+	// The test is whether a challenge exists, not whether this particular action
+	// would hit it: a strengthening action opens a console that closes again at
+	// once, which is a flicker, and the alternative is every call site here having
+	// to know whether it weakens - a fact that already lives in policy and would
+	// then be duplicated by hand in a second place.
+	_, challenge := scm.GetFrictionChars()
+	if challenge {
+		args = append([]string{"-hold-console"}, args...)
+	}
+	code, err := runElevatedAndWait(guardExe, args, challenge)
 	if err != nil {
 		if errors.Is(err, errElevationCancelled) {
 			return ActionResult{Message: "Cancelled at the Windows permission prompt."}
@@ -1420,7 +1437,9 @@ func (a *App) ApplyUpdate() ActionResult {
 	if err != nil {
 		return ActionResult{Message: err.Error()}
 	}
-	code, err := runElevatedAndWait(guardExe, []string{"-config", a.cfgPath, "update"})
+	// An update only strengthens, so it never meets the challenge and needs no
+	// console of its own.
+	code, err := runElevatedAndWait(guardExe, []string{"-config", a.cfgPath, "update"}, false)
 	if err != nil {
 		if errors.Is(err, errElevationCancelled) {
 			return ActionResult{Message: "Cancelled at the Windows permission prompt."}

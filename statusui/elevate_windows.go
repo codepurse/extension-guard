@@ -23,6 +23,11 @@ var (
 const (
 	seeMaskNoCloseProcess = 0x00000040 // keep hProcess open so we can wait on it
 	swHide                = 0          // run the elevated guard with no window
+	// swShowNormal gives the elevated guard a console of its own. guard.exe is a
+	// console-subsystem binary, so a shown window means a real console with a real
+	// stdin - which is the only place the typing challenge can be answered when the
+	// window is the one asking. See App.execGuard.
+	swShowNormal = 1
 )
 
 // shellExecuteInfo mirrors the Win32 SHELLEXECUTEINFOW struct. Field order and
@@ -48,7 +53,7 @@ type shellExecuteInfo struct {
 // runElevatedAndWait launches exe with args via a UAC ("runas") prompt, waits
 // for the elevated process to finish, and returns its exit code. It returns
 // errElevationCancelled if the user declines the prompt.
-func runElevatedAndWait(exe string, args []string) (int, error) {
+func runElevatedAndWait(exe string, args []string, showConsole bool) (int, error) {
 	verb, _ := syscall.UTF16PtrFromString("runas")
 	file, err := syscall.UTF16PtrFromString(exe)
 	if err != nil {
@@ -59,12 +64,17 @@ func runElevatedAndWait(exe string, args []string) (int, error) {
 		return 0, err
 	}
 
+	show := int32(swHide)
+	if showConsole {
+		show = int32(swShowNormal)
+	}
+
 	info := shellExecuteInfo{
 		fMask:        seeMaskNoCloseProcess,
 		lpVerb:       verb,
 		lpFile:       file,
 		lpParameters: params,
-		nShow:        swHide,
+		nShow:        show,
 	}
 	info.cbSize = uint32(unsafe.Sizeof(info))
 

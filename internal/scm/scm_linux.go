@@ -11,8 +11,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
+
+	"github.com/codepurse/extension-guard/internal/friction"
 )
 
 const (
@@ -27,7 +30,9 @@ type state struct {
 	// GuardPausedUntil is the raw pause value; see pause.go for what it means.
 	GuardPausedUntil string `json:"guardPausedUntil,omitempty"`
 	PasswordHash     string `json:"passwordHash"`
-	TrustedConfig    string `json:"trustedConfig,omitempty"`
+	// FrictionChars is the typing-challenge length, empty for off.
+	FrictionChars string `json:"frictionChars,omitempty"`
+	TrustedConfig string `json:"trustedConfig,omitempty"`
 }
 
 func statePath() string { return filepath.Join(stateDir, stateFile) }
@@ -135,6 +140,46 @@ func GetPasswordHash() (string, bool) {
 func ClearPasswordHash() error {
 	s := loadState()
 	s.PasswordHash = ""
+	return saveState(s)
+}
+
+// The typing challenge lives next to the password hash rather than in the config
+// file, and that placement is the feature. A challenge length sitting in
+// extension-ids.json would be editable by anybody who can open Notepad, and the
+// one thing this gate must not be is adjustable by the person it is there to slow
+// down. The config is reconciled continuously and would restore it - but "wrong
+// for a second" is enough when the action being gated takes a second.
+//
+// Absent means off. Every machine that installed the guard before this existed
+// reads as off, which is the only safe default: a challenge nobody was told about
+// appearing in front of an uninstall is a support call, not protection.
+
+// SetFrictionChars stores how long the typing challenge is.
+func SetFrictionChars(n int) error {
+	s := loadState()
+	s.FrictionChars = strconv.Itoa(n)
+	return saveState(s)
+}
+
+// GetFrictionChars returns the stored challenge length and whether one is set.
+// A value that does not parse, or is out of range, reads as not set - see the
+// Windows implementation for why guessing is worse than off.
+func GetFrictionChars() (int, bool) {
+	raw := strings.TrimSpace(loadState().FrictionChars)
+	if raw == "" {
+		return 0, false
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || friction.ValidChars(n) != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+// ClearFrictionChars removes the stored length, turning the challenge off.
+func ClearFrictionChars() error {
+	s := loadState()
+	s.FrictionChars = ""
 	return saveState(s)
 }
 

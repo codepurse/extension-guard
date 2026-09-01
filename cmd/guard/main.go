@@ -49,8 +49,11 @@ func main() {
 	label := flag.String("label", "", "friendly name shown in the status window (used by 'block-app' and 'add-block')")
 	level := flag.String("level", "", "how a hardened setting is set: moderate or strict for 'harden safe-search' (default strict), or a resolver id for 'harden dns-filter' (default cloudflare-family)")
 	count := flag.Int("n", defaultActivityCount, "how many entries 'activity' shows")
+	holdConsole := flag.Bool("hold-console", false, "wait for Enter before exiting on error; passed by the status window when it opens a console for the typing challenge")
+	chars := flag.Int("chars", 0, "how long the typing challenge is, in characters (used by 'friction on'; default 256)")
 	flag.Usage = printUsage
 	flag.Parse()
+	holdConsoleOnError = *holdConsole
 
 	// Attribute whatever this process records to whoever is running it. The
 	// service and the session agent are not people, so they are named as
@@ -199,6 +202,8 @@ func main() {
 		toggleExtension(cfg, *cfgPath, flag.Arg(1), false)
 	case "set-password":
 		setPassword(*password)
+	case "friction":
+		frictionCmd(flag.Arg(1), *chars, *password)
 	case "update":
 		updateCmd(cfg, *cfgPath)
 	case "run", "watchdog", "install-service", "uninstall-service", "start", "stop", "disable", "enable":
@@ -332,19 +337,28 @@ func ensurePasswordSet(flagPW string) {
 // get around the gate - and unlike the action itself, an attempt that fails
 // leaves no other trace at all.
 func requirePassword(flagPW, what string) {
-	hash, ok := scm.GetPasswordHash()
-	if !ok {
-		return
+	if hash, ok := scm.GetPasswordHash(); ok {
+		pw := flagPW
+		if pw == "" {
+			pw = prompt("Enter uninstall password: ")
+		}
+		if !auth.Verify(hash, pw) {
+			activity.Record(activity.Event{Kind: activity.PasswordFailed, Target: what})
+			fmt.Fprintln(os.Stderr, "error: incorrect password")
+			holdConsole()
+			os.Exit(1)
+		}
 	}
-	pw := flagPW
-	if pw == "" {
-		pw = prompt("Enter uninstall password: ")
-	}
-	if !auth.Verify(hash, pw) {
-		activity.Record(activity.Event{Kind: activity.PasswordFailed, Target: what})
-		fmt.Fprintln(os.Stderr, "error: incorrect password")
-		os.Exit(1)
-	}
+	// Then the typing challenge, if one is configured. The two gates answer
+	// different questions - the password whether you are allowed to do this, the
+	// challenge whether you still mean to - and they are independent settings, so
+	// a machine may have either, both or neither.
+	//
+	// The password goes first because it is the cheap one. Asking for minutes of
+	// typing and then refusing the password would spend the expensive gate on
+	// somebody who was never going to get through, and a gate that punishes the
+	// wrong person is the one the right person asks to have removed.
+	requireChallenge(what)
 }
 
 // setPassword sets or changes the uninstall password; changing requires the
@@ -806,6 +820,13 @@ service commands (admin):
                      outright while any block is locked
   enable             end a pause (no password; only strengthens)
   set-password       set or change the uninstall password
+  friction           show the typing challenge; 'friction on' turns it on (-chars
+                     sets the length, 256 by default), 'friction off' turns it off.
+                     While it is on, every action that weakens protection asks for
+                     the password and then for a string of random characters typed
+                     out by hand - pasting is refused. Turning it on or lengthening
+                     it is free; shortening or turning it off goes through the
+                     challenge itself, at the length in force
   start              start the service
   stop               stop the service
   run                run in the foreground (also used by the service manager)

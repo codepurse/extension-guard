@@ -9,6 +9,6 @@ import "errors"
 var errElevationCancelled = errors.New("elevation cancelled")
 
 // runElevatedAndWait is a stub where elevation isn't implemented yet.
-func runElevatedAndWait(exe string, args []string) (int, error) {
+func runElevatedAndWait(exe string, args []string, showConsole bool) (int, error) {
 	return 0, errors.New("elevation is not supported on this platform")
 }

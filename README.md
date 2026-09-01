@@ -42,6 +42,7 @@ not two — see the **Linux** section below.
 | 14 | **Hardened browser settings** (no private/guest windows, forced SafeSearch) | ✅ done |
 | 15 | **Usage statistics** (per-application time, today and over 60 days) | ✅ done |
 | 16 | **Allowed sites only** (block every site except a list, on a timetable) | ✅ done |
+| 17 | **Typing challenge** (weakening protection costs minutes of typing, not one keystroke) | ✅ done |
 
 ## Prerequisites — Windows build (via winget)
 
@@ -1553,6 +1554,138 @@ ledger as every budget spent, because the alternative makes "corrupt the file" m
 closed *to*, and refusing to show today because last Tuesday is corrupt would help
 nobody. Both the CLI and the window say the history is missing rather than showing
 zeroes as if they were measurements.
+
+## The typing challenge
+
+The password answers whether you are *allowed* to weaken protection. It does not
+answer whether you still *mean* to — and for a tool somebody installs to bind
+their own future self, that is the question that matters. A password you chose
+yourself is one keystroke away at the exact moment you least want it to be.
+
+So there is a second gate, off by default, that costs minutes instead of
+seconds: a string of random characters, printed on screen, that has to be typed
+out by hand.
+
+```sh
+guard friction                    # is it on, and how long
+guard friction on                 # admin; no password - it only adds protection
+guard -chars 512 friction on      # longer
+guard friction off                # goes through the challenge itself
+```
+
+```
+Pausing protection is gated behind a typing challenge.
+Type these 256 characters exactly. Spaces and line breaks are ignored,
+and it has to be typed - pasting is refused.
+
+  7xfw52ks r9pymzqf zddjxjdy vh69s83f euxz9dva 875bx5r9
+  kxrvsfp6 gn9sv89k vrjxpaeu x5mzg5uv zpxaq6sj 4783j8kb
+  yp99spbk csqh8ard gfcpu3tv jdb8tj45 uyakwk7c at9yfjf2
+  pe8s37ct dwvzdct9 kbma2ngt qdv8hyrb xpamdnpn 6mcgkxaq
+  5b6qt5jc 9gxxedef hb5dqmfj ke774g6f e2payxdx guk3yq8n
+  e5x4qc6m rs3gkzmw
+```
+
+Nothing about the challenge is secret — it is printed in full, and the whole cost
+is the typing. At the two to three characters a second that careful copying of
+random text actually runs at, 256 characters is a few minutes of deliberate work.
+
+**This is friction, not a lock, and the distinction is the design.** Anybody
+willing to spend the minutes gets through, on purpose: the person holding the
+password is the person the tool belongs to, and a gate they could never pass
+would just get the program uninstalled instead. What it buys is that weakening
+protection stops being something that can happen faster than the decision to do
+it.
+
+### Where it applies
+
+Everywhere the password already applies. All twelve of those paths funnel through
+one function, so there is one place this was added and no list to keep in step:
+unblocking a site or an application, turning off a hardened setting, lowering a
+SafeSearch level, taking a site off the allowlist, removing or scheduling a
+block, committing an edited config, turning off an extension lock, pausing
+protection, and uninstalling.
+
+The password is asked for **first**, because it is the cheap one. Asking for
+minutes of typing and then refusing the password would spend the expensive gate
+on somebody who was never getting through, and a gate that punishes the wrong
+person is the one the right person asks to have removed.
+
+The two are independent settings. A machine may have the password, the challenge,
+both, or neither — and a machine that installed the guard before this existed
+reads as *challenge off*, which is the only safe default. A challenge nobody was
+told about appearing in front of an uninstall is a support call, not protection.
+
+### The gate on the gate
+
+Turning the challenge on, or making it longer, only strengthens protection, so it
+costs **admin** and nothing more — the same trade as `block-domain`.
+
+Turning it **off, or making it shorter, goes through the challenge itself**, at
+the length currently in force. This is load-bearing rather than tidy: without it
+the whole feature would be one `guard friction off` away from gone, which is
+exactly the impulse it exists to outlast.
+
+The length lives next to the password hash in `HKLM\SOFTWARE\ExtensionGuard`, not
+in `extension-ids.json`. A number in the config file would be editable by anybody
+who can open Notepad, and the one thing this gate must not be is adjustable by
+the person it is there to slow down. The config is reconciled continuously and
+would put it back — but "wrong for a second" is enough when the action being
+gated takes a second.
+
+### Pasting
+
+A terminal cannot be stopped from pasting; the clipboard belongs to the terminal,
+not to this program. So the guard watches the clock instead: characters that
+arrive faster than fingers can move were not typed, and a sustained run of gaps
+under 20ms fails the attempt and is written to the activity log. One fast pair, or
+a key repeat, is not enough — `friction.PasteWatch` requires a run, so a fast
+typist is never accused.
+
+**The status window comes through the same path.** It normally runs the elevated
+guard with no window at all, which is fine until the guard needs to ask
+something; with a challenge configured it opens a real console instead and the
+guard asks there. So the timing test is the only paste defence in either place.
+
+Blocking the clipboard outright would be stronger, and would mean the window
+collecting the answer itself — which needs somewhere admin-only to keep a pending
+challenge, so that the process verifying an answer is not the process that was
+told what to accept. That is not built. What is claimed here is that **a pasted
+answer is refused**, not that pasting is impossible.
+
+### What it does not cover
+
+- **Uninstalling from Add or Remove Programs.** The installer runs
+  `guard uninstall-service` with a hidden window, so there is no console to type
+  in and the guard refuses rather than waving the gate through. The message says
+  to run the same command from an elevated terminal. Closing this properly means
+  a challenge page in the Inno Setup script, which is not built.
+- **A determined person with the password and a few minutes.** By design; see
+  above. If you want an unlock that cannot simply be waited out, the shape for
+  that is a delay rather than a longer string, and the held-pause machinery
+  already does most of it.
+- **Anything the password did not already gate.** This is a second gate on the
+  same doors, not a new door.
+
+### Details worth knowing
+
+The alphabet is lowercase letters and digits with every ambiguous glyph removed —
+no `i`, `l` or `1`, no `o` or `0` — and case is not mixed. That is a usability
+decision doing security work: a glyph the reader cannot tell from another one
+produces failures that have nothing to do with intent, and teaches them the gate
+is broken rather than that it is serious. Length is where the cost comes from, and
+length is free.
+
+Whitespace is ignored on both sides, so the groups and rows the challenge is
+displayed in are not part of the answer. A failed attempt says which character it
+first diverged at, and leaves the same challenge standing — nothing is given away,
+since the answer is on the screen, and discovering at character 256 that something
+broke at character 12 with no idea which is what makes somebody conclude the
+feature is broken.
+
+Failed attempts are recorded (`challenge.failed`), and a pasted one is recorded as
+pasted. Like a wrong password, it is the one kind of attempt that otherwise leaves
+no trace at all.
 
 ## Pausing protection
 

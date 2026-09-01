@@ -138,6 +138,15 @@ const (
 	PasswordChanged = "password.changed"
 	PasswordFailed  = "password.failed"
 
+	// The typing challenge, and attempts on it. A failed attempt is recorded for
+	// the same reason a wrong password is: it is the one kind of attempt that
+	// leaves no other trace, and a run of them is the clearest signal there is
+	// that somebody is pushing against the gate rather than using it.
+	ChallengeEnabled  = "challenge.enabled"
+	ChallengeDisabled = "challenge.disabled"
+	ChallengeFailed   = "challenge.failed"
+	ChallengeRefused  = "challenge.refused"
+
 	// Housekeeping.
 	UpdateApplied = "update.applied"
 	LogRotated    = "log.rotated"
@@ -371,6 +380,30 @@ func Describe(e Event) string {
 			return "Wrong password entered for " + e.Target
 		}
 		return "Wrong password entered"
+	case ChallengeEnabled:
+		if e.Detail != "" {
+			return "The typing challenge was turned on or lengthened (" + e.Detail + ")"
+		}
+		return "The typing challenge was turned on"
+	case ChallengeDisabled:
+		if e.Detail != "" {
+			return "The typing challenge was shortened or turned off (" + e.Detail + ")"
+		}
+		return "The typing challenge was turned off"
+	case ChallengeFailed:
+		what := "The typing challenge was not completed"
+		if e.Target != "" {
+			what += " for " + e.Target
+		}
+		if e.Detail == "pasted" {
+			return what + " - the answer was pasted rather than typed"
+		}
+		return what
+	case ChallengeRefused:
+		if e.Target != "" {
+			return "The typing challenge could not be asked for, so " + e.Target + " was refused"
+		}
+		return "The typing challenge could not be asked for, so the action was refused"
 	case UpdateApplied:
 		return "Updated to " + or(e.Target, "a new version")
 	case LogRotated:
@@ -387,11 +420,13 @@ func (e Event) Severity() string {
 	case LaunchBlocked, AppClosed, TamperConfig, TamperPolicy,
 		DomainBlocked, AppBlocked, ExtensionEnabled, BlockCreated, BlockLocked,
 		CategoryBlocked, HardeningEnabled, AllowlistOn, SiteUnallowed,
+		ChallengeEnabled, ChallengeRefused,
 		LimitReached, ProtectionInstalled, ProtectionResumed:
 		return SeverityEnforced
 	case DomainUnblocked, AppUnblocked, ExtensionDisabled, BlockRemoved, HardeningDisabled,
 		AllowlistOff, SiteAllowed,
-		ProtectionPaused, ProtectionRemoved, PasswordFailed, UsageReset, PauseRefused:
+		ProtectionPaused, ProtectionRemoved, PasswordFailed, UsageReset, PauseRefused,
+		ChallengeDisabled, ChallengeFailed:
 		return SeverityWeakened
 	}
 	return SeverityNeutral
