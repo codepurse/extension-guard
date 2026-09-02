@@ -6,69 +6,162 @@
 <title>Extension Guard</title>
 <style>
   /* ------------------------------------------------------------------------
-     Tokens.
+     Extension Guard console.
 
-     Four surface steps rather than two. A console needs the rail to sit behind
-     the content, the content behind its panels, and a panel's rows behind the
-     panel - two greys cannot express that, and everything reads as one flat
-     sheet, which is what made the old window look like a settings page.
+     The window is a desktop application, not a page: a navigation rail, a
+     toolbar carrying the actions for whatever is open, a workspace of docked
+     panes that fill the frame, and a status bar. Nothing scrolls except the
+     inside of a pane, so a page is never taller than the window and never
+     leaves a screenful of nothing under it.
 
-     One hue per meaning, and no meaning shares a hue: emerald is protection
-     holding, amber is a gap the user should look at, rose is protection off or
-     an action that removes it, indigo is nothing but interaction - selection,
-     focus, the thing you are about to press. A badge's colour is therefore
-     readable without its text.
+     Colour carries one meaning each and no meaning shares a hue: emerald is
+     protection holding, amber is a gap to look at, rose is protection off or
+     an action that removes it, indigo is interaction alone - selection, focus,
+     the thing you are about to press. A badge is readable without its text.
+
+     Two palettes, one set of names. Nothing below this block names a colour:
+     every rule reads a token, so the light theme is these thirty-odd values
+     again and not a second stylesheet that drifts. The tokens are roles rather
+     than shades - --sunken is "recessed below the pane", which is darker in one
+     theme and lighter in the other - because a light theme built by inverting
+     lightness gets the hierarchy backwards.
      --------------------------------------------------------------------- */
   :root {
-    --bg:        #0b0d12;
-    --rail:      #080a0e;
-    --panel:     #12151b;
-    --panel-2:   #171b23;
-    --panel-3:   #1e232c;
-    --line:      #222835;
-    --line-soft: #1a1e26;
+    color-scheme: dark;
 
-    /* Unselected controls that sit directly on a panel - day chips, lock
-       lengths, the add-a-rule buttons. They need to be lighter than the panel
-       and not darker: a control the same colour as the sheet behind it reads as
-       a label, and people do not press labels. */
-    --ctl:      #1c212a;
-    --ctl-line: #2b3240;
+    --bg:     #0e1014;
+    --rail:   #0a0c10;
+    --pane:   #14171d;
+    --head:   #191d24;
+    --row:    #1e232b;
+    --line:   #262c37;
+    --line-2: #1e232b;
 
-    --text:   #e9ecf1;
-    --text-2: #99a2b1;
-    --text-3: #69707f;
+    --ctl:      #1f242e;
+    --ctl-line: #2d3441;
 
-    --accent:      #6b6ff7;
-    --accent-hi:   #8285ff;
-    --accent-bg:   rgba(107,111,247,0.14);
-    --accent-line: rgba(107,111,247,0.38);
+    --text:   #e8ebf1;
+    --text-2: #a0a9b8;
+    --text-3: #737c8c;
 
-    --ok:      #34d399;
-    --ok-bg:   rgba(52,211,153,0.11);
-    --ok-line: rgba(52,211,153,0.28);
+    --accent:      #5c78f5;
+    --accent-hi:   #7d93ff;
+    --accent-bg:   rgba(92,120,245,0.16);
+    --accent-line: rgba(92,120,245,0.42);
 
-    --warn:      #f0a52e;
-    --warn-bg:   rgba(240,165,46,0.11);
-    --warn-line: rgba(240,165,46,0.30);
+    --ok:      #34c98d;
+    --ok-bg:   rgba(52,201,141,0.12);
+    --ok-line: rgba(52,201,141,0.30);
 
-    --bad:      #fb7185;
-    --bad-bg:   rgba(251,113,133,0.11);
-    --bad-line: rgba(251,113,133,0.30);
+    --warn:      #e3a334;
+    --warn-bg:   rgba(227,163,52,0.12);
+    --warn-line: rgba(227,163,52,0.32);
 
-    --danger:    #a81b2a;
-    --danger-hi: #c72232;
+    --bad:      #f2647c;
+    --bad-bg:   rgba(242,100,124,0.12);
+    --bad-line: rgba(242,100,124,0.32);
 
-    --r-lg:   14px;
-    --r:      10px;
-    --r-sm:   8px;
-    --r-pill: 999px;
+    --danger:    #a4222f;
+    --danger-hi: #c02a38;
+    --on-accent: #ffffff;
 
-    --shadow: 0 1px 2px rgba(0,0,0,.5), 0 12px 28px -16px rgba(0,0,0,.75);
+    /* Roles the two themes disagree about the direction of. */
+    --sunken:       #11141a;
+    --chip:         #14171e;
+    --rail-hover:   #12151b;
+    --switch-off:   #12151b;
+    --knob-off:     #4d5566;
+    --track:        #262c37;
+    --field:        #0d1014;
+    --field-hi:     #0f1319;
+    --text-4:       #5c6474;
+    --icon-off:     #454c5c;
+    --ctl-line-hi:  #333b49;
+    --scroll:       #2b323e;
+    --scroll-hi:    #3a4252;
+    --accent-bg-2:  rgba(92,120,245,0.18);
+    --accent-tx:    #c3caff;
+    --accent-tx-hi: #9fb0ff;
+    --warn-tx:      #f0c887;
+    --warn-tx-2:    #d3bd93;
+    --bad-tx:       #ffd6dd;
+    --backdrop:     rgba(4,5,8,.7);
+    --shadow-pop:   0 18px 44px -14px rgba(0,0,0,.9);
+    --shadow-modal: 0 30px 70px -20px rgba(0,0,0,.95);
 
-    /* One place to change the two numbers the whole shell is built on. */
-    --rail-w:  238px;
-    --inner-w: 1560px;
+    /* One place to change the numbers the whole shell is built on. */
+    --rail-w: 212px;
+    --tb-h:   46px;
+    --sb-h:   28px;
+    --gap:    10px;
+  }
+
+  /* Light. The surfaces are not the dark ones inverted: the rail is still the
+     recessive surface and the pane is still the raised one, so the rail goes
+     grey and the pane goes white rather than the two swapping places. The
+     accents are darkened - #5c78f5 on white is a button nobody can read the
+     label of - and the state hues are pulled toward their text-safe end. */
+  :root[data-theme="light"] {
+    color-scheme: light;
+
+    --bg:     #e6eaf0;
+    --rail:   #dee2ea;
+    --pane:   #ffffff;
+    --head:   #f4f6fa;
+    --row:    #f0f3f8;
+    --line:   #cbd2dc;
+    --line-2: #e2e6ed;
+
+    --ctl:      #f2f5f9;
+    --ctl-line: #c6cdd8;
+
+    --text:   #171a21;
+    --text-2: #515a69;
+    --text-3: #737c8b;
+
+    --accent:      #4359d8;
+    --accent-hi:   #3446c2;
+    --accent-bg:   rgba(67,89,216,0.10);
+    --accent-line: rgba(67,89,216,0.34);
+
+    --ok:      #0f8a5f;
+    --ok-bg:   rgba(15,138,95,0.10);
+    --ok-line: rgba(15,138,95,0.28);
+
+    --warn:      #9a6206;
+    --warn-bg:   rgba(191,124,10,0.13);
+    --warn-line: rgba(191,124,10,0.34);
+
+    --bad:      #c8324c;
+    --bad-bg:   rgba(200,50,76,0.09);
+    --bad-line: rgba(200,50,76,0.28);
+
+    --danger:    #b02231;
+    --danger-hi: #971a27;
+    --on-accent: #ffffff;
+
+    --sunken:       #f3f6fa;
+    --chip:         #ebeff5;
+    --rail-hover:   #e9edf3;
+    --switch-off:   #e8ecf2;
+    --knob-off:     #99a2b1;
+    --track:        #dae0e9;
+    --field:        #ffffff;
+    --field-hi:     #ffffff;
+    --text-4:       #858d9c;
+    --icon-off:     #a2aab8;
+    --ctl-line-hi:  #aeb7c4;
+    --scroll:       #c0c8d3;
+    --scroll-hi:    #a4aeba;
+    --accent-bg-2:  rgba(67,89,216,0.14);
+    --accent-tx:    #2f41c0;
+    --accent-tx-hi: #2434a4;
+    --warn-tx:      #7d4f04;
+    --warn-tx-2:    #6a4404;
+    --bad-tx:       #8e1b31;
+    --backdrop:     rgba(28,33,44,.34);
+    --shadow-pop:   0 14px 34px -12px rgba(22,28,40,.30);
+    --shadow-modal: 0 26px 60px -18px rgba(22,28,40,.38);
   }
 
   * { box-sizing: border-box; }
@@ -76,588 +169,657 @@
   body {
     background: var(--bg); color: var(--text);
     font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
-    font-size: 13.5px; line-height: 1.5; overflow: hidden;
+    /* 14px, not 13.5. This is read across a desk on a 27in monitor, not held
+       in a hand, and every secondary line is sized down from here. */
+    font-size: 14px; line-height: 1.45; overflow: hidden;
     -webkit-user-select: none; user-select: none;
     -webkit-font-smoothing: antialiased;
   }
-  /* Numbers are compared down a column, so they get fixed-width digits
-     everywhere - a stat that reflows its own width as it ticks reads as a
-     glitch. */
-  .tval, .ringnum, .usenum, .udnum, .card .val, .navbadge { font-variant-numeric: tabular-nums; }
+  /* Numbers are compared down a column, so they get fixed-width digits - a
+     figure that reflows its own width as it ticks reads as a glitch. */
+  .mv, .usenum, .udnum, .cnt, .navbadge, .segnum { font-variant-numeric: tabular-nums; }
 
-  /* A path or a rule value is something people copy out. It is the only text in
-     the window worth selecting, so it is the only text that can be. */
-  .actpath, .anote, .dname, .aname { -webkit-user-select: text; user-select: text; }
+  /* A path or a rule value is something people copy out. It is the only text
+     in the window worth selecting, so it is the only text that can be. */
+  .r-note, .r-name, .dname, .aname, .anote, #act-path { -webkit-user-select: text; user-select: text; }
 
-  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar { width: 11px; height: 11px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: #262c38; border-radius: 999px; border: 3px solid transparent; background-clip: content-box; }
-  ::-webkit-scrollbar-thumb:hover { background: #333b4a; background-clip: content-box; }
+  ::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: 999px; border: 3px solid transparent; background-clip: content-box; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--scroll-hi); background-clip: content-box; }
+  :focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 1px; }
 
-  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  /* =======================================================================
+     Shell: rail | (toolbar / workspace / status bar).
+     ==================================================================== */
+  /* Both tracks are minmax(0, …) so a long list inside a pane cannot push the
+     window taller than itself: an auto grid track takes its content's minimum
+     size, and the content here is a list of any length. */
+  .app { display: grid; grid-template-columns: var(--rail-w) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); height: 100vh; }
+  .main { display: grid; grid-template-rows: var(--tb-h) minmax(0, 1fr) var(--sb-h); min-width: 0; min-height: 0; }
 
-  /* ------------------------------------------------------------------------
-     Shell: a fixed rail, and one scrolling column beside it. The window opens
-     maximised, so the content is capped and centred - rows stretched to 2500px
-     to hold a domain name and a badge is not density, it is waste.
-     --------------------------------------------------------------------- */
-  .app { display: grid; grid-template-columns: var(--rail-w) minmax(0, 1fr); height: 100vh; }
-
+  /* ---- rail ---------------------------------------------------------- */
   .rail {
-    background: var(--rail); border-right: 1px solid var(--line-soft);
-    display: flex; flex-direction: column; padding: 18px 12px 12px; min-width: 0;
+    background: var(--rail); border-right: 1px solid var(--line);
+    display: flex; flex-direction: column; padding: 10px 8px 8px; min-width: 0;
   }
-  .brand { display: flex; align-items: center; gap: 10px; padding: 0 8px 18px; }
-  .brand img { border-radius: 6px; }
-  .brand .bt { min-width: 0; }
-  .brand .bn { font-size: 13.5px; font-weight: 650; letter-spacing: -0.01em; }
-  .brand .bv { font-size: 11px; color: var(--text-3); margin-top: -2px; }
+  .brand { display: flex; align-items: center; gap: 9px; padding: 4px 8px 12px; }
+  .brand img { border-radius: 5px; }
+  .brand .bn { font-size: 14px; font-weight: 620; letter-spacing: -0.01em; }
 
-  .nav { display: flex; flex-direction: column; gap: 2px; }
+  .nav { display: flex; flex-direction: column; gap: 1px; }
   .navitem {
-    position: relative; display: flex; align-items: center; gap: 11px;
-    padding: 9px 10px; border-radius: var(--r-sm); background: transparent;
-    border: none; color: var(--text-2); font-size: 13px; font-weight: 550;
-    cursor: pointer; text-align: left; width: 100%;
+    position: relative; display: flex; align-items: center; gap: 10px;
+    padding: 9px 10px; border-radius: 5px; background: transparent;
+    border: none; color: var(--text-2); font-size: 13.5px; font-weight: 550;
+    cursor: pointer; text-align: left; width: 100%; font-family: inherit;
   }
-  .navitem svg { width: 18px; height: 18px; flex: none; opacity: .85; }
-  .navitem:hover { background: #101218; color: var(--text); }
-  .navitem.is-on { background: var(--accent-bg); color: #cfd1ff; }
+  .navitem svg { width: 17px; height: 17px; flex: none; opacity: .8; }
+  .navitem:hover { background: var(--rail-hover); color: var(--text); }
+  .navitem.is-on { background: var(--accent-bg); color: var(--accent-tx); }
   .navitem.is-on svg { opacity: 1; color: var(--accent-hi); }
-  /* The selected item carries a bar on the rail edge as well as a fill. The
-     fill alone disappears the moment a warning dot lands next to it. */
+  /* The selected item carries a bar on the rail edge as well as a fill: the
+     fill alone disappears the moment a warning dot lands beside it. */
   .navitem.is-on::before {
-    content: ''; position: absolute; left: -12px; top: 50%; transform: translateY(-50%);
-    width: 3px; height: 18px; border-radius: 0 3px 3px 0; background: var(--accent-hi);
+    content: ''; position: absolute; left: -8px; top: 50%; transform: translateY(-50%);
+    width: 3px; height: 20px; border-radius: 0 3px 3px 0; background: var(--accent-hi);
   }
-  .navlabel { flex: 1; min-width: 0; }
-  .navbadge {
-    font-size: 11px; font-weight: 650; color: var(--text-3);
-    background: #14171e; border: 1px solid var(--line-soft);
-    padding: 0 6px; border-radius: var(--r-pill); min-width: 22px; text-align: center;
+  .navlabel { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .navitem.is-on .navbadge {
+    font-size: 11.5px; font-weight: 650; color: var(--text-3);
+    background: var(--chip); border: 1px solid var(--line-2);
+    padding: 0 6px; border-radius: 999px; min-width: 22px; text-align: center;
   }
-  .navitem.is-on .navbadge { color: #b9bcff; background: rgba(107,111,247,0.16); border-color: var(--accent-line); }
+  .navitem.is-on .navbadge { color: var(--accent-tx); background: var(--accent-bg-2); border-color: var(--accent-line); }
   /* A dot, not a number: it says "something here wants you", and the count is
      on the page itself. */
   .navdot { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); flex: none; }
   .navdot.bad { background: var(--bad); }
 
-  .railfoot { margin-top: auto; padding: 12px 8px 0; border-top: 1px solid var(--line-soft); }
-  .railfoot .foot { display: flex; flex-direction: column; align-items: stretch; gap: 6px; color: var(--text-3); font-size: 11px; }
-  .railfoot .foot #ver { padding-bottom: 4px; }
-  .railfoot .foot button {
-    margin-left: 0; width: 100%;
-    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  }
-  .railfoot .foot button svg { width: 14px; height: 14px; flex: none; }
+  /* The rail's foot is where the app's own state lives, so it is on screen on
+     every page rather than only on the one that happens to show it. */
+  .railfoot { margin-top: auto; display: flex; flex-direction: column; gap: 8px; padding: 10px 4px 2px; border-top: 1px solid var(--line-2); }
+  .railfoot .ghost { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+  .railfoot .ghost svg { width: 14px; height: 14px; flex: none; }
 
-  .main { display: flex; flex-direction: column; min-width: 0; }
-  .topbar {
-    flex: none; display: flex; align-items: center; gap: 14px;
-    padding: 16px 28px; border-bottom: 1px solid var(--line-soft);
-    background: linear-gradient(180deg, #0d1016, var(--bg));
+  /* ---- toolbar ------------------------------------------------------- */
+  .toolbar {
+    display: flex; align-items: center; gap: 10px; padding: 0 12px 0 14px;
+    border-bottom: 1px solid var(--line); background: var(--rail); min-width: 0;
   }
-  .topbar .ptitle { font-size: 19px; font-weight: 650; letter-spacing: -0.015em; }
-  .topbar .psub { font-size: 12.5px; color: var(--text-2); margin-top: 1px; }
-  .topbar .right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .tb-title { font-size: 15.5px; font-weight: 620; letter-spacing: -0.012em; flex: none; }
+  .tb-sub {
+    font-size: 12.5px; color: var(--text-3); min-width: 0; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap;
+    padding-left: 11px; margin-left: 1px; border-left: 1px solid var(--line);
+  }
+  .tb-right { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: none; }
+  .tbgroup { display: none; align-items: center; gap: 8px; }
+  .tbgroup.is-on { display: flex; }
+
+  .filterbox { position: relative; display: flex; align-items: center; }
+  .filterbox svg { position: absolute; left: 8px; width: 14px; height: 14px; color: var(--text-3); pointer-events: none; }
+  .filterbox input { width: 210px; padding-left: 28px; }
+  .filterbox .fkey {
+    position: absolute; right: 7px; font-size: 11px; color: var(--text-3);
+    border: 1px solid var(--ctl-line); border-radius: 3px; padding: 0 4px; pointer-events: none;
+  }
+  .filterbox input:focus + .fkey, .filterbox input:not(:placeholder-shown) + .fkey { display: none; }
 
   .iconbtn {
-    background: var(--panel); border: 1px solid var(--line); color: var(--text-2);
-    width: 32px; height: 32px; border-radius: var(--r-sm); padding: 0;
+    background: var(--ctl); border: 1px solid var(--ctl-line); color: var(--text-2);
+    width: 30px; height: 30px; border-radius: 5px; padding: 0;
     display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
   }
   .iconbtn svg { width: 15px; height: 15px; }
-  .iconbtn:hover { background: var(--panel-3); color: var(--text); border-color: #2c3341; }
+  .iconbtn:hover { background: var(--row); color: var(--text); border-color: var(--ctl-line-hi); }
   .iconbtn.spin svg { animation: spin .7s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  .content { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 22px 28px 44px; }
-  .inner { max-width: var(--inner-w); margin: 0 auto; }
-  .pane { display: none; }
-  .pane.is-active { display: block; }
-
-  /* ------------------------------------------------------------------------
-     Panels. The one container everything sits in.
-     --------------------------------------------------------------------- */
-  .panel {
-    background: var(--panel); border: 1px solid var(--line-soft); border-radius: var(--r-lg);
-    padding: 16px 18px 18px; box-shadow: var(--shadow);
-    /* A hairline of light on the top edge. It is what separates a panel from a
-       painted rectangle at this contrast. */
-    background-image: linear-gradient(180deg, rgba(255,255,255,0.022), rgba(255,255,255,0) 70px);
+  /* The appearance menu. A menu rather than a two-state switch, because there
+     are three answers and one of them - follow the system - is the default a
+     switch cannot express. */
+  .themepick { position: relative; }
+  .thememenu {
+    position: absolute; right: 0; top: 36px; z-index: 70; min-width: 178px; padding: 4px;
+    background: var(--head); border: 1px solid var(--line); border-radius: 6px; box-shadow: var(--shadow-pop);
   }
-  .grid { display: grid; gap: 16px; }
-  .stack { display: flex; flex-direction: column; gap: 16px; }
-  .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .thememenu button {
+    display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+    background: transparent; border: none; color: var(--text-2);
+    padding: 7px 8px; border-radius: 4px; font-size: 13px; font-weight: 500;
+  }
+  .thememenu button:hover { background: var(--row); color: var(--text); }
+  .thememenu button .mi { width: 15px; height: 15px; flex: none; opacity: .85; }
+  .thememenu button span { flex: 1; }
+  .thememenu button .tk { width: 14px; height: 14px; flex: none; color: var(--accent-hi); visibility: hidden; }
+  .thememenu button.sel { color: var(--text); }
+  .thememenu button.sel .tk { visibility: visible; }
 
-  .sechead { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
-  .sechead .grow { flex: 1; }
-  .section-title { font-size: 11px; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: .07em; }
-  .section-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-  .section-head .section-title { flex: 1; }
+  /* ---- workspace ----------------------------------------------------- */
+  /* Nothing scrolls out here. A page is a grid of panes that fill the frame,
+     and the scrolling happens inside whichever pane has more rows than room. */
+  .content { padding: var(--gap); min-height: 0; overflow: hidden; }
+  .pane { display: none; height: 100%; min-height: 0; gap: var(--gap); }
+  .pane.is-active { display: grid; }
+  .col { display: grid; gap: var(--gap); min-height: 0; min-width: 0; }
 
-  /* The old window explained every section in one to three sentences, always
-     visible. The wording was worth keeping and the vertical space was not, so
-     it moved behind this: same sentences, one click away, and the section keeps
-     its density. */
+  /* =======================================================================
+     Panes. One container, docked: a header strip with the title and whatever
+     acts on it, an optional tool row, and a body that takes the rest.
+     ==================================================================== */
+  .box {
+    display: flex; flex-direction: column; min-height: 0; min-width: 0;
+    background: var(--pane); border: 1px solid var(--line); border-radius: 6px; overflow: hidden;
+  }
+  .bh {
+    display: flex; align-items: center; gap: 8px; flex: none; height: 36px;
+    padding: 0 8px 0 12px; background: var(--head); border-bottom: 1px solid var(--line);
+  }
+  .bh h2 { margin: 0; font-size: 13.5px; font-weight: 620; letter-spacing: -0.008em; white-space: nowrap; }
+  .bh .grow { flex: 1; min-width: 0; }
+  .bh .note { font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cnt {
+    font-size: 11.5px; font-weight: 650; color: var(--text-2); background: var(--pane);
+    border: 1px solid var(--line); padding: 1px 7px; border-radius: 999px;
+  }
+  .cnt.warn { color: var(--warn); background: var(--warn-bg); border-color: var(--warn-line); }
+  .bt { flex: none; display: flex; gap: 7px; padding: 8px 10px; border-bottom: 1px solid var(--line-2); }
+  .bb { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+  .bb.pad { padding: 10px 12px; }
+  .bf { flex: none; padding: 7px 12px; border-top: 1px solid var(--line-2); font-size: 12px; color: var(--text-3); }
+
+  /* The long explanations the old window printed under every heading are all
+     still here, one click away, in the same words. What they cost was a third
+     of the window; what they were worth was being available at all. */
   .help {
-    width: 16px; height: 16px; padding: 0; flex: none; border-radius: 50%;
-    background: #181c24; border: 1px solid var(--ctl-line); color: var(--text-2);
-    font-size: 10px; font-weight: 700; line-height: 1; cursor: pointer;
-    display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px; padding: 0; flex: none; border-radius: 50%;
+    background: var(--ctl); border: 1px solid var(--ctl-line); color: var(--text-2);
+    font-size: 11px; font-weight: 700; line-height: 1; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; font-family: inherit;
   }
-  .help:hover, .help.open { background: var(--accent-bg); border-color: var(--accent-line); color: #b9bcff; }
+  .help:hover, .help.open { background: var(--accent-bg); border-color: var(--accent-line); color: var(--accent-tx); }
   .helpbubble {
     position: fixed; z-index: 80; width: 330px; max-width: calc(100vw - 24px);
-    background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--r);
-    padding: 12px 14px; box-shadow: 0 16px 40px -12px rgba(0,0,0,.85);
+    background: var(--head); border: 1px solid var(--line); border-radius: 6px;
+    padding: 11px 13px; box-shadow: var(--shadow-pop);
   }
-  .helpbubble p { margin: 0; font-size: 12.5px; color: var(--text-2); line-height: 1.55; }
-  .helpbubble p + p { margin-top: 8px; }
+  .helpbubble p { margin: 0; font-size: 13px; color: var(--text-2); line-height: 1.5; }
+  .helpbubble p + p { margin-top: 7px; }
 
-  .exthint { font-size: 12px; color: var(--text-2); margin: 8px 0 0; }
-  .emptyhint { font-size: 12px; color: var(--text-2); margin: 8px 0 0; }
-  .actpath { font-size: 11px; color: var(--text-3); word-break: break-all; margin: 10px 0 0; }
-
-  /* ------------------------------------------------------------------------
-     Overview: the protection panel, four stats, an attention list, and the
-     activity feed as a right-hand rail.
-     --------------------------------------------------------------------- */
-  .ov { display: grid; grid-template-columns: minmax(0, 1fr) 348px; gap: 16px; align-items: start; }
-  .ov-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-
-  .hero-panel { padding: 22px 24px; position: relative; overflow: hidden; }
-  /* State bleeds into the panel behind the ring rather than being announced by a
-     coloured border. At 4% it is barely a colour and entirely a mood. */
-  .hero-panel::after {
-    content: ''; position: absolute; left: -80px; top: -140px; width: 420px; height: 420px;
-    border-radius: 50%; pointer-events: none; opacity: .5;
-    background: radial-gradient(circle, rgba(52,211,153,0.10), rgba(52,211,153,0) 68%);
-  }
-  .hero-panel.s-off::after { background: radial-gradient(circle, rgba(251,113,133,0.09), rgba(251,113,133,0) 68%); }
-  .hero-panel.s-paused::after { background: radial-gradient(circle, rgba(240,165,46,0.10), rgba(240,165,46,0) 68%); }
-
-  .hero { display: flex; align-items: center; gap: 26px; position: relative; }
-  .hero .ring { width: 132px; height: 132px; flex: none; position: relative; }
-  .ringsvg { width: 100%; height: 100%; transform: rotate(-90deg); }
-  .ringtrack { fill: none; stroke: #1d222b; stroke-width: 9; }
-  .ringarc {
-    fill: none; stroke: var(--ok); stroke-width: 9; stroke-linecap: round;
-    transition: stroke-dashoffset .5s cubic-bezier(.4,0,.2,1);
-  }
-  .hero.off .ringarc { stroke: var(--bad); }
-  .hero.paused .ringarc { stroke: var(--warn); }
-  .ringinner { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-  .ringnum { font-size: 34px; font-weight: 680; letter-spacing: -0.03em; line-height: 1; }
-  .ringden { font-size: 10.5px; color: var(--text-3); margin-top: 5px; text-align: center; letter-spacing: .02em; }
-
-  .herobody { min-width: 0; flex: 1; }
-  .hero h1 { font-size: 24px; font-weight: 650; margin: 0; letter-spacing: -0.02em; }
-  .hero p { margin: 5px 0 0; color: var(--text-2); font-size: 13px; max-width: 62ch; }
-  .herometa { font-size: 12px; color: var(--text-3); margin-top: 12px; display: flex; align-items: center; gap: 7px; }
-  .herometa b { color: var(--text-2); font-weight: 600; }
-  .herometa .sep { color: #2a3040; }
-
-  /* Every safeguard as one segment: a meter, not a percentage. It answers "how
-     much of it is on" and "how many are there" in the same glance, which a bar
-     filled to 78% does not. */
-  .segs { display: flex; gap: 3px; margin-top: 16px; flex-wrap: wrap; }
-  .segs i { width: 26px; height: 5px; border-radius: 2px; background: #232936; display: block; }
-  .segs i.on { background: var(--ok); }
-  .hero-panel.s-paused .segs i.on { background: var(--warn); }
-  .hero-panel.s-off .segs i.on { background: #4c5260; }
-
-  .heroactions { margin-top: 18px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-
-  .tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-  .tile {
-    position: relative; background: var(--panel); border: 1px solid var(--line-soft);
-    border-radius: var(--r-lg); padding: 14px 16px 15px; box-shadow: var(--shadow);
-    background-image: linear-gradient(180deg, rgba(255,255,255,0.022), rgba(255,255,255,0) 50px);
-    /* A column, so the one tile with a chart in it can push the chart to the
-       bottom edge and the other three keep their numbers at the same height. */
-    display: flex; flex-direction: column; min-height: 132px;
-  }
-  .tile .tlabel { font-size: 10.5px; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: .07em; }
-  .tile .tval { font-size: 29px; font-weight: 650; letter-spacing: -0.03em; line-height: 1.15; margin-top: 8px; }
-  .tile .tsub { font-size: 11.5px; color: var(--text-2); margin-top: 3px; min-height: 17px; }
-  .tile .tico { position: absolute; top: 13px; right: 14px; color: #2b3140; }
-  .tile .tico svg { width: 16px; height: 16px; }
-  .tile.warn .tval { color: var(--warn); }
-  .spark { display: block; width: 100%; height: 22px; margin-top: auto; padding-top: 8px; overflow: visible; }
-  .spark path.line { fill: none; stroke: var(--accent-hi); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
-  .spark path.area { fill: rgba(107,111,247,0.16); stroke: none; }
-  .spark circle { fill: var(--accent-hi); }
-
-  /* Attention rows. Not the same shape as a rule row: these are read once and
-     acted on, so the text leads and the button is the only other thing. */
-  .attrow { display: flex; align-items: flex-start; gap: 11px; padding: 11px 2px; border-top: 1px solid var(--line-soft); }
-  .attrow:first-child { border-top: none; padding-top: 2px; }
-  .attrow .adot { width: 7px; height: 7px; border-radius: 50%; margin-top: 6px; flex: none; background: var(--warn); }
-  .attrow.bad .adot { background: var(--bad); }
-  .attrow .abody { flex: 1; min-width: 0; }
-  .attrow .atext { font-size: 13px; font-weight: 550; }
-  .attrow.bad .atext { color: #ffd9de; }
-  .attrow .asub { font-size: 12px; color: var(--text-2); margin-top: 2px; }
-  .attrow button { flex: none; }
-  .attcount {
-    font-size: 11px; font-weight: 700; color: var(--warn); background: var(--warn-bg);
-    border: 1px solid var(--warn-line); padding: 1px 8px; border-radius: var(--r-pill);
-  }
-  .allclear { display: flex; align-items: center; gap: 10px; color: var(--ok); font-size: 13px; padding: 2px 0; }
-  .allclear svg { width: 17px; height: 17px; }
-
-  /* ------------------------------------------------------------------------
-     Rows: the shape most of the app is made of. Restyled here rather than in
-     the renderers - the JS builds .row and the container it lands in decides
-     whether that is a list line or a card.
-     --------------------------------------------------------------------- */
-  .rows { display: flex; flex-direction: column; gap: 4px; }
+  /* =======================================================================
+     Rows. The shape most of the app is made of - a divided list, not a stack
+     of floating chips, because a list of forty rules is read down an edge.
+     ==================================================================== */
+  .rows { display: flex; flex-direction: column; }
   .row {
-    display: flex; align-items: center; gap: 12px;
-    background: var(--panel-2); border: 1px solid transparent; border-radius: var(--r);
-    padding: 9px 12px; min-height: 42px;
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px; min-height: 42px; border-bottom: 1px solid var(--line-2);
   }
-  .row:hover { background: var(--panel-3); }
-  .row .bname { font-size: 13px; text-transform: capitalize; }
-  .row .extname { text-transform: none; }
-  .row.absent { opacity: .4; }
-  .row .ainfo { min-width: 0; flex: 1; }
-  .row .aname { font-size: 13px; word-break: break-word; }
-  .row .anote { font-size: 11.5px; color: var(--text-3); word-break: break-word; margin-top: 1px; }
-  .row .dname { font-size: 13px; text-transform: none; word-break: break-all; flex: 1; }
+  .rows > .row:last-child, .rows > .blockrow:last-child { border-bottom: none; }
+  .row:hover { background: var(--row); }
+  .row.absent { opacity: .45; }
+  .row .ainfo, .row .binfo { min-width: 0; flex: 1; }
+  .row .aname, .row .dname, .row .bname { font-size: 14px; word-break: break-word; }
+  .row .bname { text-transform: capitalize; }
+  .row .extname, .row .dname { text-transform: none; }
+  .row .dname { word-break: break-all; }
+  .row .anote { font-size: 12.5px; color: var(--text-3); word-break: break-word; margin-top: 1px; }
 
-  /* Browsers are the one list that is genuinely a set of objects rather than a
-     set of rules, so they are laid out as a set of objects. */
-  #rows { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 10px; }
-  #rows .row { flex-direction: column; align-items: flex-start; gap: 10px; padding: 14px; min-height: 92px; }
-  #rows .row .bname { font-size: 14px; font-weight: 600; }
-  #rows .row .badge { margin-left: 0; }
+  .grouphead {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 11.5px; font-weight: 700; color: var(--text-3); text-transform: uppercase;
+    letter-spacing: .06em; padding: 7px 12px 6px; background: var(--sunken);
+    border-bottom: 1px solid var(--line-2); position: sticky; top: 0; z-index: 1;
+  }
 
   .badge {
-    margin-left: auto; font-size: 11px; font-weight: 650; padding: 2px 9px;
-    border-radius: var(--r-pill); border: 1px solid transparent; white-space: nowrap;
+    margin-left: auto; font-size: 12px; font-weight: 620; padding: 2px 9px;
+    border-radius: 999px; border: 1px solid transparent; white-space: nowrap; flex: none;
   }
-  .badge.locked   { color: var(--ok);      background: var(--ok-bg);     border-color: var(--ok-line); }
-  .badge.unlocked { color: var(--text-3);  background: #14171e;          border-color: var(--line-soft); }
-  .badge.idle     { color: var(--text-3);  background: #14171e;          border-color: var(--line-soft); }
+  .badge.locked    { color: var(--ok);     background: var(--ok-bg);   border-color: var(--ok-line); }
+  .badge.unlocked,
+  .badge.idle      { color: var(--text-3); background: var(--chip);        border-color: var(--line-2); }
   .badge.idlewin,
   .badge.reachable,
-  .badge.budget   { color: var(--warn);    background: var(--warn-bg);   border-color: var(--warn-line); }
-  .badge.lockbadge{ color: #b9bcff;        background: var(--accent-bg); border-color: var(--accent-line); }
+  .badge.budget    { color: var(--warn);   background: var(--warn-bg); border-color: var(--warn-line); }
+  .badge.lockbadge { color: var(--accent-tx);       background: var(--accent-bg); border-color: var(--accent-line); }
 
   .schedtag {
-    margin-left: 8px; font-size: 10px; color: var(--text-3); background: #14171e;
-    border: 1px solid var(--line-soft); padding: 0 7px; border-radius: var(--r-pill);
+    margin-left: 7px; font-size: 11px; color: var(--text-3); background: var(--chip);
+    border: 1px solid var(--line-2); padding: 0 6px; border-radius: 999px;
     vertical-align: middle; text-transform: none; font-weight: 600;
   }
 
-  /* On/off is the most-pressed control in the window, so it is a real switch
-     shape - a lozenge with a travelling knob - rather than a word in a pill. It
-     reads as "this can be flipped" without being read. */
+  /* On/off is the most-pressed control in the window, so it is a switch shape -
+     a lozenge with a travelling knob - rather than a word in a pill. It reads
+     as "this can be flipped" without being read. */
   .row .toggle {
-    margin-left: auto; flex: none; position: relative; width: 62px; padding: 3px 0;
-    font-size: 10.5px; font-weight: 700; letter-spacing: .04em; border-radius: var(--r-pill);
-    border: 1px solid transparent; text-transform: uppercase;
+    margin-left: auto; flex: none; position: relative; width: 60px; height: 25px;
+    font-size: 11.5px; font-weight: 700; letter-spacing: .04em; border-radius: 999px;
+    border: 1px solid transparent; text-transform: uppercase; padding: 0; font-family: inherit;
   }
-  .row .toggle.on  { background: var(--ok-bg);  color: var(--ok);     border-color: var(--ok-line); text-align: right; padding-right: 10px; }
-  .row .toggle.off { background: #0f1218;       color: var(--text-3); border-color: var(--ctl-line); text-align: left;  padding-left: 10px; }
+  .row .toggle.on  { background: var(--ok-bg); color: var(--ok);     border-color: var(--ok-line); text-align: right; padding-right: 10px; }
+  .row .toggle.off { background: var(--switch-off);      color: var(--text-3); border-color: var(--ctl-line); text-align: left;  padding-left: 10px; }
   .row .toggle::before {
     content: ''; position: absolute; top: 50%; transform: translateY(-50%);
-    width: 12px; height: 12px; border-radius: 50%; transition: left .16s ease, right .16s ease;
+    width: 13px; height: 13px; border-radius: 50%; transition: left .16s ease, right .16s ease;
   }
-  .row .toggle.on::before  { left: 4px;  background: var(--ok); }
-  .row .toggle.off::before { right: 4px; background: #4a5162; }
-  .row .toggle:hover { filter: brightness(1.25); }
+  .row .toggle.on::before  { left: 5px;  background: var(--ok); }
+  .row .toggle.off::before { right: 5px; background: var(--knob-off); }
+  .row .toggle:hover { filter: brightness(1.3); }
 
-  .grouphead {
-    font-size: 10.5px; font-weight: 700; color: var(--text-3); text-transform: uppercase;
-    letter-spacing: .07em; margin: 14px 0 4px 2px;
-  }
-  .grouphead:first-child { margin-top: 2px; }
-
-  /* ------------------------------------------------------------------------
+  /* =======================================================================
      Buttons and inputs.
-     --------------------------------------------------------------------- */
+     ==================================================================== */
   button {
-    background: var(--accent); color: #fff; border: 1px solid transparent; border-radius: var(--r-sm);
-    padding: 7px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer;
-    font-family: inherit; line-height: 1.35;
+    background: var(--accent); color: var(--on-accent); border: 1px solid transparent; border-radius: 5px;
+    padding: 6px 13px; font-size: 13px; font-weight: 600; cursor: pointer;
+    font-family: inherit; line-height: 1.4;
   }
   button:hover { background: var(--accent-hi); }
   button.ghost { background: var(--ctl); border-color: var(--ctl-line); color: var(--text-2); }
-  button.ghost:hover { background: var(--panel-3); color: var(--text); border-color: #2c3341; }
+  button.ghost:hover { background: var(--row); color: var(--text); border-color: var(--ctl-line-hi); }
   button.danger { background: var(--danger); }
   button.danger:hover { background: var(--danger-hi); }
   button:disabled { opacity: .45; cursor: default; }
-  button:disabled:hover { background: var(--panel-2); }
-  button.small { padding: 4px 11px; font-size: 11.5px; }
-
-  /* The one control for overall protection. Sized as the largest thing on the
-     page it sits on, because it is the only thing on that page that changes
-     whether any of this is happening. */
-  .bigbtn { padding: 11px 22px; font-size: 13.5px; border-radius: var(--r-sm); }
+  button:disabled:hover { background: var(--ctl); }
+  button.small { padding: 3px 10px; font-size: 12.5px; }
 
   input[type=password], input[type=text] {
-    background: #0e1116; border: 1px solid var(--line); border-radius: var(--r-sm);
-    color: var(--text); padding: 8px 11px; font-size: 12.5px; outline: none; font-family: inherit;
+    background: var(--field); border: 1px solid var(--line); border-radius: 5px;
+    color: var(--text); padding: 6px 10px; font-size: 13.5px; outline: none; font-family: inherit;
   }
-  input::placeholder { color: #565e6e; }
-  input[type=password]:focus, input[type=text]:focus { border-color: var(--accent); background: #0f1319; }
+  input::placeholder { color: var(--text-4); }
+  input[type=password]:focus, input[type=text]:focus { border-color: var(--accent); background: var(--field-hi); }
 
-  .addrow { display: flex; gap: 8px; margin-bottom: 10px; }
+  .addrow { display: flex; gap: 7px; }
   .addrow input[type=text] { flex: 1; min-width: 0; }
-  .btnrow { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
-  .btnrow button { padding: 6px 11px; font-size: 12px; background: var(--ctl); border-color: var(--ctl-line); color: var(--text-2); }
-  .btnrow button:hover { background: var(--accent); border-color: transparent; color: #fff; }
+  .bt.wrap { flex-wrap: wrap; }
+  .bt button.ghost { padding: 5px 10px; font-size: 12.5px; }
 
-  .pill { font-size: 11.5px; font-weight: 650; padding: 4px 11px 4px 9px; border-radius: var(--r-pill); border: 1px solid transparent; display: inline-flex; align-items: center; gap: 7px; }
-  .pill::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-  .pill.active   { color: var(--ok);     background: var(--ok-bg);   border-color: var(--ok-line); }
-  .pill.inactive { color: var(--bad);    background: var(--bad-bg);  border-color: var(--bad-line); }
-  .pill.paused   { color: var(--warn);   background: var(--warn-bg); border-color: var(--warn-line); }
-  /* Live, and saying so. The only animation in the window that runs on its own,
-     which is why it is allowed to be here and nowhere else. */
+  .pill {
+    font-size: 12.5px; font-weight: 620; padding: 5px 11px 5px 9px; border-radius: 5px;
+    border: 1px solid transparent; display: flex; align-items: center; gap: 8px;
+  }
+  .pill::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+  .pill.active   { color: var(--ok);   background: var(--ok-bg);   border-color: var(--ok-line); }
+  .pill.inactive { color: var(--bad);  background: var(--bad-bg);  border-color: var(--bad-line); }
+  .pill.paused   { color: var(--warn); background: var(--warn-bg); border-color: var(--warn-line); }
+  /* Live, and saying so. The only animation that runs on its own, which is why
+     it is allowed here and nowhere else. */
   .pill.active::before { animation: pulse 2.4s ease-in-out infinite; }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
 
-  /* ------------------------------------------------------------------------
-     Messages. #msg is the one line every action reports into, and actions now
-     happen on five different pages - so it floats instead of living on one of
-     them. .msg elsewhere is still an inline line inside a modal.
-     --------------------------------------------------------------------- */
-  .msg { font-size: 12px; min-height: 16px; }
-  .msg.ok { color: var(--ok); } .msg.err { color: var(--bad); }
+  /* ---- status bar ---------------------------------------------------- */
+  /* Everything that used to be a line of small print under one panel or
+     another: the service, the password, where the record is kept, the build. */
+  .statusbar {
+    display: flex; align-items: center; gap: 10px; padding: 0 12px;
+    background: var(--rail); border-top: 1px solid var(--line);
+    font-size: 12px; color: var(--text-3); min-width: 0;
+  }
+  .statusbar b { color: var(--text-2); font-weight: 600; }
+  .statusbar .sep { width: 1px; height: 12px; background: var(--line); flex: none; }
+  .statusbar .grow { flex: 1; }
+  .statusbar .sb { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #act-path { max-width: 46%; }
+
+  /* =======================================================================
+     Overview.
+     ==================================================================== */
+  .ov { grid-template-rows: auto minmax(0, 1fr); }
+  .ov-notices { display: flex; flex-direction: column; gap: var(--gap); }
+  .ov-panes { display: grid; grid-template-columns: minmax(0,1.12fr) minmax(0,0.92fr) minmax(0,1fr); gap: var(--gap); min-height: 0; }
+  /* On a machine with nothing wrong, the attention list is one line. Giving one
+     line a third of the workspace is exactly the emptiness this layout is meant
+     to avoid, so when it is clear it becomes a strip and the other two panes
+     take the room. Specificity, not order, keeps this winning inside the
+     folds below. */
+  .ov-panes.is-clear { grid-template-columns: minmax(0,1fr) minmax(0,1fr); grid-template-rows: auto minmax(0,1fr); }
+  .ov-panes.is-clear > :nth-child(1) { grid-area: 1 / 1 / 2 / 3; }
+  .ov-panes.is-clear > :nth-child(2) { grid-area: 2 / 1; }
+  .ov-panes.is-clear > :nth-child(3) { grid-area: 2 / 2; }
+
+  /* The state strip. One row, because "is it on" is one fact - the old window
+     spent a fifth of the page and a 132px dial saying it. */
+  .status {
+    display: flex; align-items: center; gap: 16px; padding: 11px 14px 11px 16px;
+    background: var(--pane); border: 1px solid var(--line); border-radius: 6px;
+    border-left: 3px solid var(--ok);
+  }
+  .status.s-off    { border-left-color: var(--bad); }
+  .status.s-paused { border-left-color: var(--warn); }
+  .status .sbody { min-width: 0; flex: 1; }
+  .status h1 { margin: 0; font-size: 21px; font-weight: 620; letter-spacing: -0.02em; }
+  .status.s-off h1    { color: var(--bad-tx); }
+  .status.s-paused h1 { color: var(--warn-tx); }
+  .status p { margin: 3px 0 0; font-size: 13.5px; color: var(--text-2); max-width: 88ch; }
+  .status .sact { flex: none; display: flex; align-items: center; gap: 9px; }
+  /* The only control that decides whether any of this is happening, sized to
+     say so. */
+  .bigbtn { padding: 10px 20px; font-size: 14px; }
+
+  /* The figures, as a strip of a console rather than four cards with empty
+     bottoms. Divided, not boxed: they are one reading, taken together. */
+  .metrics {
+    display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
+    background: var(--pane); border: 1px solid var(--line); border-radius: 6px;
+  }
+  .metric { padding: 10px 14px; min-width: 0; border-left: 1px solid var(--line-2); }
+  .metric:first-child { border-left: none; }
+  .mk { font-size: 11.5px; font-weight: 650; color: var(--text-3); text-transform: uppercase; letter-spacing: .06em; }
+  .mv { font-size: 25px; font-weight: 620; letter-spacing: -0.03em; line-height: 1.2; margin-top: 3px; }
+  .mv small { font-size: 15px; font-weight: 600; color: var(--text-3); letter-spacing: 0; }
+  .ms { font-size: 12px; color: var(--text-2); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .metric.warn .mv { color: var(--warn); }
+  .metric.bad .mv  { color: var(--bad); }
+
+  /* Attention rows: read once and acted on, so the text leads and the button
+     is the only other thing on the line. */
+  .attrow { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--line-2); }
+  .rows > .attrow:last-child { border-bottom: none; }
+  .attrow .adot { width: 7px; height: 7px; border-radius: 50%; margin-top: 6px; flex: none; background: var(--warn); }
+  .attrow.bad .adot { background: var(--bad); }
+  .attrow .abody { flex: 1; min-width: 0; }
+  .attrow .atext { font-size: 13.5px; font-weight: 600; }
+  .attrow.bad .atext { color: var(--bad-tx); }
+  .attrow .asub { font-size: 12.5px; color: var(--text-2); margin-top: 2px; }
+  .attrow button { flex: none; }
+  .allclear { display: flex; align-items: center; gap: 9px; color: var(--ok); font-size: 13.5px; padding: 14px 12px; }
+  .allclear svg { width: 18px; height: 18px; flex: none; }
+
+  /* The safeguard list. It used to exist only as fourteen tooltips on a bar
+     nobody hovers; the count on the strip above is the sum of exactly this. */
+  .sg { display: flex; align-items: center; gap: 9px; padding: 7px 12px; border-bottom: 1px solid var(--line-2); font-size: 13.5px; }
+  .rows > .sg:last-child { border-bottom: none; }
+  .sg .sgi { width: 15px; height: 15px; flex: none; color: var(--ok); }
+  .sg.off { color: var(--text-3); }
+  .sg.off .sgi { color: var(--icon-off); }
+  .sg .sgt { min-width: 0; flex: 1; }
+
+  /* Activity. A feed threaded on one line, so "held" and "was weakened" are
+     separable without reading either. */
+  .act { display: flex; align-items: flex-start; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line-2); position: relative; }
+  .rows > .act:last-child { border-bottom: none; }
+  .act::before { content: ''; position: absolute; left: 15.5px; top: 0; bottom: 0; width: 1px; background: var(--line-2); }
+  .act:first-child::before { top: 13px; }
+  .act:last-child::before  { bottom: calc(100% - 13px); }
+  .act .dot {
+    width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex-shrink: 0;
+    background: var(--icon-off); box-shadow: 0 0 0 3px var(--pane); z-index: 1;
+  }
+  .act.enforced .dot { background: var(--ok); }
+  .act.weakened .dot { background: var(--warn); }
+  .act .body { flex: 1; min-width: 0; }
+  .act .text { font-size: 13.5px; line-height: 1.4; }
+  .act .sub { font-size: 12px; color: var(--text-3); margin-top: 1px; word-break: break-word; }
+  .act .when { font-size: 11.5px; color: var(--text-3); white-space: nowrap; margin-top: 3px; flex: none; }
+
+  /* =======================================================================
+     Browsers.
+     ==================================================================== */
+  .pg-browsers { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+  .pg-browsers .col-a { grid-template-rows: auto minmax(0, 1fr); }
+  .pg-browsers .col-b { grid-template-rows: auto minmax(0, 1fr); }
+  /* Browsers are the one list that is a set of objects rather than a set of
+     rules, so they are laid out as objects. */
+  #rows { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 8px; padding: 10px; }
+  #rows .row {
+    flex-direction: column; align-items: flex-start; gap: 8px; padding: 11px 12px;
+    border: 1px solid var(--line-2); border-radius: 5px; background: var(--sunken); min-height: 0;
+  }
+  #rows .row .bname { font-size: 14px; font-weight: 600; }
+  #rows .row .badge { margin-left: 0; }
+
+  /* =======================================================================
+     Blocking.
+     ==================================================================== */
+  .pg-blocking { grid-template-columns: minmax(0,1fr) minmax(0,1fr) minmax(0,1fr); }
+  .pg-blocking .col-a { grid-template-rows: minmax(0,1.35fr) minmax(0,1fr); }
+
+  /* One decision covering thirty rules, so a category is a card with its own
+     button - and its contents are one click away, because agreeing to it is
+     agreeing to every entry. */
+  .catrow { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--line-2); }
+  .rows > .catrow:last-child { border-bottom: none; }
+  .catrow .ainfo { flex: 1; min-width: 0; }
+  .catrow .aname { font-size: 14px; font-weight: 600; }
+  .catrow .anote { font-size: 12.5px; color: var(--text-3); margin-top: 1px; }
+  .catrow button { flex: none; }
+  .catrow .badge { margin-left: 0; }
+  .catnote { font-size: 12.5px; color: var(--text-2); margin-top: 8px; line-height: 1.45; }
+  .catmore {
+    background: none; border: none; color: var(--accent-hi); padding: 5px 0 0;
+    font-size: 12.5px; font-weight: 600; cursor: pointer;
+  }
+  .catmore:hover { background: none; color: var(--accent-tx-hi); text-decoration: underline; }
+  .catlist {
+    margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line-2);
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 2px 12px;
+  }
+  .catlist .item { font-size: 12.5px; color: var(--text-2); display: flex; align-items: baseline; gap: 5px; padding: 1px 0; }
+  .catlist .item.have { color: var(--text-3); }
+  .catlist .item .tick { color: var(--ok); font-size: 10px; }
+  .catlist .item .kind { color: var(--text-4); font-size: 11px; margin-left: auto; }
+  .catlisthead { font-size: 12.5px; color: var(--text-2); margin: 2px 0 5px; }
+
+  /* =======================================================================
+     Schedule and screen time. One page: when things are enforced, and how
+     much of the day they were used before they were.
+     ==================================================================== */
+  .pg-schedule { grid-template-columns: minmax(0,1.25fr) minmax(0,1fr); }
+  /* By day is exactly seven rows - usageWindowDays is a constant - so it is
+     sized to its content and the room left over goes to the list that varies,
+     which is the one naming an application per row. */
+  .pg-schedule .col-b { grid-template-rows: minmax(0,1fr) auto; }
+
+  .blockrow { display: flex; align-items: flex-start; gap: 12px; padding: 11px 12px; border-bottom: 1px solid var(--line-2); }
+  .blockrow:hover { background: var(--row); }
+  /* A locked block cannot be undone until its deadline. That is the strongest
+     promise the app makes, so it is the one row allowed a coloured edge. */
+  .blockrow.islocked { box-shadow: inset 3px 0 0 var(--accent); }
+  .blockrow .binfo { min-width: 0; flex: 1; }
+  .blockrow .btitle { font-size: 14px; font-weight: 600; }
+  .blockrow .bmeta { font-size: 12.5px; color: var(--text-3); margin-top: 2px; }
+  .blockrow .bright { margin-left: auto; display: flex; align-items: center; gap: 6px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
+  .blockrow .badge { margin-left: 0; }
+  .lockbtn { padding: 3px 10px; font-size: 12px; font-weight: 600; background: var(--ctl); border: 1px solid var(--ctl-line); color: var(--text-2); }
+  .lockbtn:hover { background: var(--accent); border-color: transparent; color: var(--on-accent); }
+
+  #usage-rows .row { align-items: flex-start; padding: 10px 12px; }
+  .usebar { height: 4px; border-radius: 999px; background: var(--track); margin-top: 7px; overflow: hidden; }
+  .usebar > span { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
+  .row .usenum { font-size: 12px; color: var(--text-3); margin-left: auto; white-space: nowrap; text-align: right; line-height: 1.4; flex: none; }
+  .row .usenum b { color: var(--text); font-weight: 620; font-size: 15px; }
+  .useday { display: flex; align-items: center; gap: 10px; padding: 6px 12px; font-size: 12.5px; color: var(--text-2); border-bottom: 1px solid var(--line-2); }
+  .useday:last-child { border-bottom: none; }
+  .useday .udlabel { width: 88px; flex: none; }
+  .useday .udbar { flex: 1; height: 6px; border-radius: 999px; background: var(--track); overflow: hidden; }
+  .useday .udbar > span { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
+  .useday .udnum { width: 60px; flex: none; text-align: right; color: var(--text); font-weight: 550; }
+  #usage-days .useday:hover { background: var(--row); }
+
+  /* =======================================================================
+     Notices, messages, modals.
+     ==================================================================== */
+  /* A notice says one thing and offers the way to close it. The four-sentence
+     paragraphs these used to carry are in the help bubbles now. */
+  .card { background: var(--head); border: 1px solid var(--line); border-radius: 5px; padding: 10px 12px; }
+  .card .lbl { font-size: 13.5px; font-weight: 600; color: var(--text); }
+  .card .announce-msg { color: var(--text-2); font-size: 12.5px; margin-top: 3px; line-height: 1.45; }
+  .bb .card { margin: 10px 12px; }
+  .warnbox { border-color: var(--warn-line); background: var(--warn-bg); }
+  .warnbox .lbl { color: var(--warn-tx); }
+  .warnbox .announce-msg { color: var(--warn-tx-2); }
+
+  .announce { position: relative; }
+  .announce.info   { border-color: var(--accent-line); background: var(--accent-bg); }
+  .announce.warn   { border-color: var(--warn-line);   background: var(--warn-bg); }
+  .announce.danger { border-color: var(--bad-line);    background: var(--bad-bg); }
+  .announce-title { font-weight: 620; font-size: 13.5px; color: var(--text); padding-right: 22px; }
+  .announce-link { margin-top: 9px; padding: 5px 11px; font-size: 12.5px; }
+  .announce-x {
+    position: absolute; top: 5px; right: 7px; background: transparent; color: var(--text-3);
+    border: none; font-size: 18px; line-height: 1; padding: 0 4px; cursor: pointer; font-weight: 400;
+  }
+  .announce-x:hover { color: var(--text); background: transparent; }
+
+  .exthint, .emptyhint { font-size: 13px; color: var(--text-2); margin: 0; padding: 14px 12px; }
+
+  .msg { font-size: 12.5px; min-height: 16px; }
+  .msg.ok { color: var(--ok); } .msg.err { color: var(--bad); } .msg.warn { color: var(--warn); }
+  /* One line every action reports into. Actions happen on four pages, so it
+     floats over all of them rather than living on one. */
   #msg {
-    position: fixed; z-index: 90; right: 24px; bottom: 24px; max-width: 420px; min-height: 0;
-    background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--r);
-    padding: 11px 15px 11px 14px; box-shadow: 0 18px 44px -14px rgba(0,0,0,.9);
-    font-size: 12.5px; border-left: 3px solid var(--text-3);
+    position: fixed; z-index: 90; right: 18px; bottom: calc(var(--sb-h) + 14px); max-width: 430px; min-height: 0;
+    background: var(--head); border: 1px solid var(--line); border-radius: 6px;
+    padding: 11px 15px 11px 14px; box-shadow: var(--shadow-pop);
+    font-size: 13px; border-left: 3px solid var(--text-3);
     opacity: 0; transform: translateY(8px); pointer-events: none;
     transition: opacity .18s ease, transform .18s ease;
   }
   #msg:not(:empty) { opacity: 1; transform: none; }
   #msg.ok  { border-left-color: var(--ok); }
   #msg.err { border-left-color: var(--bad); }
+  #msg.warn { border-left-color: var(--warn); }
+  /* A message carrying an instruction stays until it is clicked away, so it has
+     to be clickable - the toast is pointer-transparent otherwise, on purpose, so
+     a confirmation that happens to sit over a button cannot swallow the click. */
+  #msg.sticky { pointer-events: auto; cursor: pointer; padding-right: 30px; }
+  #msg.sticky::after {
+    content: '\00d7'; position: absolute; top: 6px; right: 10px;
+    font-size: 16px; line-height: 1; color: var(--text-3);
+  }
 
-  /* ------------------------------------------------------------------------
-     Notice cards: the remote announcement, the update banner, and the warning
-     boxes. .card is what the renderers reach for, so it stays.
-     --------------------------------------------------------------------- */
-  .card { background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--r); padding: 13px 15px; }
-  .card .lbl { font-size: 12.5px; color: var(--text-2); }
-  .card .val { font-size: 20px; font-weight: 650; margin-top: 2px; }
-
-  .warnbox { border-color: var(--warn-line); background: var(--warn-bg); }
-  .warnbox .lbl { color: var(--warn); font-weight: 650; }
-  .warnbox .announce-msg { color: #d8c39a; }
-
-  .announce { position: relative; }
-  .announce.info   { border-color: var(--accent-line); background: var(--accent-bg); }
-  .announce.warn   { border-color: var(--warn-line);   background: var(--warn-bg); }
-  .announce.danger { border-color: var(--bad-line);    background: var(--bad-bg); }
-  .announce-title { font-weight: 650; font-size: 13px; color: var(--text); padding-right: 24px; }
-  .announce-msg { color: var(--text-2); font-size: 12.5px; margin-top: 5px; line-height: 1.55; }
-  .announce-link { margin-top: 11px; padding: 6px 12px; font-size: 12px; }
-  .announce-x {
-    position: absolute; top: 7px; right: 9px; background: transparent; color: var(--text-3);
-    border: none; font-size: 18px; line-height: 1; padding: 0 4px; cursor: pointer; font-weight: 400;
-  }
-  .announce-x:hover { color: var(--text); background: transparent; }
-
-  /* ------------------------------------------------------------------------
-     Categories. One decision covering thirty rules, so it is a card with its
-     own button rather than another list line.
-     --------------------------------------------------------------------- */
-  #cat-rows { gap: 8px; }
-  .row.catrow {
-    display: flex; align-items: flex-start; gap: 12px; padding: 13px 14px;
-    background: var(--panel-2); border: 1px solid var(--line-soft);
-  }
-  .catrow .ainfo { flex: 1; }
-  .catrow .aname { font-size: 13.5px; font-weight: 600; }
-  .catrow .anote { color: var(--text-3); }
-  .catrow button { flex-shrink: 0; padding: 6px 12px; font-size: 12px; }
-  .catrow .badge { margin-left: 0; }
-  .catnote { font-size: 11.5px; color: var(--text-3); margin-top: 7px; line-height: 1.5; max-width: 68ch; }
-  .catmore {
-    background: none; border: none; color: var(--accent-hi); padding: 6px 0 0;
-    font-size: 11.5px; font-weight: 650; cursor: pointer;
-  }
-  .catmore:hover { background: none; color: #a5a7ff; text-decoration: underline; }
-  .catlist {
-    margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line);
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 3px 14px;
-  }
-  .catlist .item { font-size: 11.5px; color: var(--text-2); display: flex; align-items: baseline; gap: 5px; background: none; padding: 1px 0; }
-  .catlist .item.have { color: var(--text-3); }
-  .catlist .item .tick { color: var(--ok); font-size: 10px; }
-  .catlist .item .kind { color: #4d5462; font-size: 10px; margin-left: auto; }
-  .catlisthead { font-size: 11.5px; color: var(--text-2); margin: 2px 0 6px; }
-
-  /* ------------------------------------------------------------------------
-     Scheduled blocks.
-     --------------------------------------------------------------------- */
-  /* A block is an object with a name, a timetable and a state - the same kind of
-     thing as a browser, not the same kind of thing as a rule - so it is laid out
-     as a card. As a full-width row its two badges ended up a thousand pixels
-     from the name they belonged to. */
-  #block-rows { display: grid; grid-template-columns: repeat(auto-fill, minmax(304px, 1fr)); gap: 10px; }
-  #block-rows .blockrow { flex-direction: column; align-items: stretch; gap: 14px; min-height: 124px; }
-  #block-rows .blockrow .bright { margin-left: 0; margin-top: auto; justify-content: flex-start; }
-  .blockrow {
-    display: flex; align-items: flex-start; gap: 14px; background: var(--panel-2);
-    border: 1px solid var(--line-soft); border-radius: var(--r); padding: 14px 16px;
-  }
-  .blockrow:hover { background: var(--panel-3); }
-  /* A locked block cannot be undone until its deadline. That is the strongest
-     promise the app makes, so it is the one row allowed a coloured edge. */
-  .blockrow.islocked { border-color: var(--accent-line); box-shadow: inset 3px 0 0 var(--accent); }
-  .blockrow .binfo { min-width: 0; flex: 1; }
-  .blockrow .btitle { font-size: 14px; font-weight: 600; }
-  .blockrow .bmeta { font-size: 12px; color: var(--text-2); margin-top: 3px; }
-  .blockrow .bright { margin-left: auto; display: flex; align-items: center; gap: 7px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
-  .blockrow .badge { margin-left: 0; }
-  .lockbtn {
-    padding: 3px 11px; font-size: 11px; font-weight: 650; border-radius: var(--r-pill);
-    background: var(--ctl); border: 1px solid var(--ctl-line); color: var(--text-2);
-  }
-  .lockbtn:hover { background: var(--accent); border-color: transparent; color: #fff; }
-
-  /* ------------------------------------------------------------------------
-     Usage.
-     --------------------------------------------------------------------- */
-  #usage-rows .row { align-items: flex-start; padding: 11px 13px; }
-  .usebar { height: 4px; border-radius: 999px; background: #232936; margin-top: 8px; overflow: hidden; max-width: 420px; }
-  .usebar > span { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
-  .row .usenum { font-size: 12px; color: var(--text-3); margin-left: auto; white-space: nowrap; text-align: right; line-height: 1.45; }
-  .row .usenum b { color: var(--text); font-weight: 650; font-size: 15px; }
-  .useday { display: flex; align-items: center; gap: 10px; padding: 5px 0; font-size: 12px; color: var(--text-2); }
-  .useday + .useday { border-top: 1px solid var(--line-soft); }
-  .useday .udlabel { width: 96px; flex: none; }
-  .useday .udbar { flex: 1; height: 6px; border-radius: 999px; background: #232936; overflow: hidden; }
-  .useday .udbar > span { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
-  .useday .udnum { width: 58px; flex: none; text-align: right; color: var(--text); font-weight: 550; }
-  /* The first .useday is the total with any of them open - a different number
-     from the rows under it, so it is set apart from them. */
-  #usage-days .useday:first-child { border-bottom: 1px solid var(--line); padding-bottom: 9px; margin-bottom: 5px; color: var(--text); font-weight: 550; }
-
-  /* ------------------------------------------------------------------------
-     Activity. A feed, threaded on one line, so "held" and "was weakened" are
-     separable without reading either.
-     --------------------------------------------------------------------- */
-  .feed #act-rows { position: relative; gap: 0; padding-left: 2px; max-height: calc(100vh - 300px); overflow-y: auto; }
-  .feed #act-rows::before {
-    content: ''; position: absolute; left: 5px; top: 12px; bottom: 12px; width: 1px; background: var(--line);
-  }
-  .act {
-    display: flex; align-items: flex-start; gap: 12px; background: none;
-    border: none; border-radius: 0; padding: 9px 4px 9px 0; position: relative;
-  }
-  .act + .act { border-top: 1px solid var(--line-soft); }
-  .act .dot {
-    width: 9px; height: 9px; border-radius: 50%; margin-top: 5px; flex-shrink: 0;
-    background: #3a4150; box-shadow: 0 0 0 3px var(--panel); z-index: 1;
-  }
-  .act.enforced .dot { background: var(--ok); }
-  .act.weakened .dot { background: var(--warn); }
-  .act .body { flex: 1; min-width: 0; }
-  .act .text { font-size: 12.5px; line-height: 1.45; }
-  .act .sub { font-size: 11px; color: var(--text-3); margin-top: 2px; word-break: break-word; }
-  .act .when { font-size: 10.5px; color: var(--text-3); white-space: nowrap; margin-top: 4px; }
-
-  /* ------------------------------------------------------------------------
-     Modals.
-     --------------------------------------------------------------------- */
   .modal-backdrop {
-    position: fixed; inset: 0; background: rgba(4,5,8,.72); display: flex;
+    position: fixed; inset: 0; background: var(--backdrop); display: flex;
     align-items: center; justify-content: center; z-index: 100;
-    backdrop-filter: blur(3px);
   }
   .modal {
-    background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-lg);
-    padding: 20px; width: 360px; max-width: 92vw; max-height: 88vh; overflow-y: auto;
-    box-shadow: 0 30px 70px -20px rgba(0,0,0,.95);
+    background: var(--pane); border: 1px solid var(--line); border-radius: 8px;
+    width: 380px; max-width: 92vw; max-height: 88vh; overflow: hidden;
+    display: flex; flex-direction: column;
+    box-shadow: var(--shadow-modal);
   }
-  .modal.wide { width: 460px; }
-  .modal .modal-title { font-size: 15px; font-weight: 650; margin-bottom: 14px; letter-spacing: -0.01em; }
+  .modal.wide { width: 480px; }
+  .modal .modal-title {
+    flex: none; font-size: 14px; font-weight: 620; padding: 11px 16px;
+    background: var(--head); border-bottom: 1px solid var(--line);
+  }
+  .modal-body { padding: 16px; overflow-y: auto; }
   .modal input[type=password], .modal input[type=text] { width: 100%; }
-  .modal .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
-  .modal-note { font-size: 12.5px; color: var(--text-2); margin: 0 0 14px; line-height: 1.55; }
-
-  .picker { max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
-  .picker button {
-    width: 100%; text-align: left; background: var(--panel-2); border-color: var(--line-soft);
-    color: var(--text); font-weight: 400; font-size: 12px; padding: 7px 10px;
+  .modal .modal-actions {
+    flex: none; display: flex; gap: 8px; justify-content: flex-end;
+    padding: 11px 16px; border-top: 1px solid var(--line); background: var(--head);
   }
-  .picker button:hover { background: var(--accent); border-color: transparent; color: #fff; }
-  .picker .none { font-size: 12px; color: var(--text-2); padding: 6px 2px; }
-  .picker .item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--r-sm); background: var(--panel-2); }
-  .picker .item .kind { margin-left: auto; font-size: 10px; color: var(--text-3); }
-  .picker .item label { font-size: 12px; display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; cursor: pointer; }
+  .modal-note { font-size: 13px; color: var(--text-2); margin: 0 0 12px; line-height: 1.5; }
+  .modal .msg { margin-top: 9px; }
+
+  .picker { max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; margin-top: 9px; }
+  .picker button {
+    width: 100%; text-align: left; background: var(--head); border-color: var(--line-2);
+    color: var(--text); font-weight: 400; font-size: 13px; padding: 7px 10px;
+  }
+  .picker button:hover { background: var(--accent); border-color: transparent; color: var(--on-accent); }
+  .picker .none { font-size: 13px; color: var(--text-2); padding: 6px 2px; }
+  .picker .item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 5px; background: var(--head); }
+  .picker .item .kind { margin-left: auto; font-size: 11px; color: var(--text-3); }
+  .picker .item label { font-size: 13px; display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; cursor: pointer; }
   .picker .item span.nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .picker .item input { accent-color: var(--accent); }
 
-  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-  .chips button {
-    padding: 4px 11px; font-size: 11.5px; font-weight: 650; border-radius: var(--r-pill);
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+  .chips button, .lock-choices button {
+    padding: 5px 11px; font-size: 12.5px; font-weight: 620; border-radius: 5px;
     background: var(--ctl); border: 1px solid var(--ctl-line); color: var(--text-2);
   }
-  .chips button.sel, .chips button:hover { background: var(--accent); border-color: transparent; color: #fff; }
-  .nb-row { display: flex; align-items: center; gap: 9px; margin: 12px 0; flex-wrap: wrap; }
-  .nb-row .nb-lbl { font-size: 12px; color: var(--text-2); }
+  .chips button.sel, .chips button:hover,
+  .lock-choices button.sel, .lock-choices button:hover { background: var(--accent); border-color: transparent; color: var(--on-accent); }
+  .lock-choices { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 11px; }
+  .nb-row { display: flex; align-items: center; gap: 9px; margin: 11px 0; flex-wrap: wrap; }
+  .nb-row .nb-lbl { font-size: 13px; color: var(--text-2); }
   .nb-row input[type=text] { width: 96px; }
-  .nb-row input#nb-limit { width: 220px; }
-  .nb-sub { font-size: 11.5px; color: var(--text-3); margin: 7px 0 0; line-height: 1.5; }
-  .nb-check { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); cursor: pointer; }
+  .nb-row input#nb-limit { width: 230px; }
+  .nb-sub { font-size: 12.5px; color: var(--text-3); margin: 6px 0 0; line-height: 1.45; }
+  .nb-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); cursor: pointer; }
   .nb-check input { accent-color: var(--accent); }
-  .lock-choices { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
-  .lock-choices button {
-    padding: 5px 12px; font-size: 12px; background: var(--ctl);
-    border: 1px solid var(--ctl-line); color: var(--text-2);
-  }
-  .lock-choices button.sel, .lock-choices button:hover { background: var(--accent); border-color: transparent; color: #fff; }
 
-  /* ------------------------------------------------------------------------
-     The window opens maximised, but "maximised" on a 1366x768 laptop is not the
-     same room as on a 27in monitor. Three steps down, and the right-hand feed
-     is the first thing to give up its column.
-     --------------------------------------------------------------------- */
-  /* A maximised 1366-wide laptop is the commonest window this app will ever
-     have, and it is exactly wide enough for the feed to keep its column if the
-     column gives up some width first. The feed only drops below the fold on
-     something genuinely narrow. */
-  @media (max-width: 1500px) {
-    .ov { grid-template-columns: minmax(0, 1fr) 306px; }
+  /* =======================================================================
+     Room. Maximised on a 1366x768 laptop is not the room a 27in monitor has,
+     so the columns fold in a fixed order: the third column first, then the
+     second, then the rail down to icons.
+     ==================================================================== */
+  /* Nothing is ever hidden by a fold. A pane that disappeared at 1366 would be
+     a feature most people never saw, so every step below re-stacks the same
+     panes into fewer columns instead. */
+  @media (max-width: 1400px) {
+    .ov-panes { grid-template-columns: minmax(0,1.05fr) minmax(0,1fr); grid-template-rows: minmax(0,1fr) minmax(0,1fr); }
+    .ov-panes > :nth-child(1) { grid-area: 1 / 1; }
+    .ov-panes > :nth-child(2) { grid-area: 2 / 1; }
+    .ov-panes > :nth-child(3) { grid-area: 1 / 2 / 3 / 3; }
   }
   @media (max-width: 1240px) {
-    .ov { grid-template-columns: minmax(0, 1fr); }
-    .feed #act-rows { max-height: 420px; }
+    .pg-blocking { grid-template-columns: minmax(0,1fr) minmax(0,1fr); grid-template-rows: minmax(0,1fr) minmax(0,1fr); }
+    .pg-blocking .col-a { grid-area: 1 / 1 / 3 / 2; }
+    .pg-blocking .col-b { grid-area: 1 / 2; }
+    .pg-blocking .col-c { grid-area: 2 / 2; }
   }
-  @media (max-width: 1120px) {
-    .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .g2 { grid-template-columns: minmax(0, 1fr); }
-    .hero { flex-direction: column; align-items: flex-start; gap: 18px; }
+  @media (max-width: 1150px) {
+    .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .metric:nth-child(4) { border-left: none; }
+    .metric:nth-child(-n+3) { border-bottom: 1px solid var(--line-2); }
+  }
+  @media (max-width: 1080px) {
+    .ov-panes, .ov-panes.is-clear { grid-template-columns: minmax(0,1fr); grid-template-rows: repeat(3, minmax(0,1fr)); }
+    .ov-panes.is-clear { grid-template-rows: auto minmax(0,1fr) minmax(0,1fr); }
+    .ov-panes > :nth-child(1), .ov-panes.is-clear > :nth-child(1) { grid-area: 1 / 1; }
+    .ov-panes > :nth-child(2), .ov-panes.is-clear > :nth-child(2) { grid-area: 2 / 1; }
+    .ov-panes > :nth-child(3), .ov-panes.is-clear > :nth-child(3) { grid-area: 3 / 1; }
+    .pg-browsers, .pg-schedule { grid-template-columns: minmax(0,1fr); }
+    .pg-blocking { grid-template-columns: minmax(0,1fr); grid-template-rows: repeat(3, minmax(0,1fr)); }
+    .pg-blocking .col-a { grid-area: 1 / 1; }
+    .pg-blocking .col-b { grid-area: 2 / 1; }
+    .pg-blocking .col-c { grid-area: 3 / 1; }
+    .status { flex-wrap: wrap; }
+  }
+  /* A 768-tall laptop gives the lists about 500px. The strip and the figures
+     give up the first 40 of them rather than the lists giving up five rows. */
+  @media (max-height: 800px) {
+    .status { padding: 9px 14px 9px 16px; }
+    .status h1 { font-size: 19px; }
+    .metric { padding: 8px 12px; }
+    .mv { font-size: 22px; }
   }
   @media (max-width: 940px) {
-    :root { --rail-w: 62px; }
-    .navlabel, .navbadge, .brand .bt, .railfoot .foot #ver { display: none; }
+    :root { --rail-w: 56px; }
+    .navlabel, .navbadge, .brand .bn, .railfoot .ghost span { display: none; }
     .navitem { justify-content: center; padding: 10px 0; }
-    .navitem.is-on::before { left: -12px; }
-    .brand { justify-content: center; padding: 0 0 18px; }
-    /* The rail's own side padding would leave a 14px icon in a 21px button, so
-       the footer gives its padding up and the icon gets a real hit target. */
-    .railfoot { padding-left: 0; padding-right: 0; }
-    .railfoot .foot button { padding: 8px 0; }
-    .content, .topbar { padding-left: 18px; padding-right: 18px; }
+    .brand { justify-content: center; padding: 4px 0 12px; }
+    .railfoot .pill { justify-content: center; padding: 7px 0; font-size: 0; }
+    .tb-sub { display: none; }
   }
 </style>
+<script>
+  // Runs before the first paint, and does nothing else. A window that opens
+  // dark and turns light a frame later is exactly the flash a stored theme is
+  // meant to prevent, so the stamp cannot wait for the backend to answer.
+  // localStorage is the fast copy; the file the guard keeps is authoritative
+  // and reconciles this a moment later, in loadTheme() below.
+  (function () {
+    var pref = 'system';
+    try { pref = localStorage.getItem('theme') || 'system'; } catch (e) { /* private mode */ }
+    var light = pref === 'light' || (pref !== 'dark' &&
+      !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches));
+    document.documentElement.setAttribute('data-theme', light ? 'light' : 'dark');
+  })();
+</script>
 </head>
 <body>
 
-<!-- Icons, defined once. Every glyph in the window is drawn on the same 24px
-     grid at the same stroke weight - a set that mixes weights is the fastest way
-     to make a considered layout look assembled from clip art. -->
+<!-- Icons, defined once. Every glyph is drawn on the same 24px grid at the same
+     stroke weight - a set that mixes weights is the fastest way to make a
+     considered layout look assembled from clip art. -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
     <g id="g-shield"><path d="M12 21.6s7.2-3.7 7.2-9.3V5.1L12 2.4 4.8 5.1v7.2c0 5.6 7.2 9.3 7.2 9.3z"/><path d="M9.2 12.1l2 2 3.6-3.7"/></g>
@@ -667,10 +829,15 @@
     <g id="g-chart"><path d="M3.4 20.6h17.2"/><path d="M6.6 20.6v-6.2M11.4 20.6V6.4M16.2 20.6v-9.4"/></g>
     <g id="g-refresh"><path d="M20.4 12a8.4 8.4 0 1 1-2.5-6"/><path d="M20.6 4.2v4.6h-4.6"/></g>
     <g id="g-check"><circle cx="12" cy="12" r="8.8"/><path d="M8.3 12.2l2.6 2.6 4.8-5.2"/></g>
+    <g id="g-dash"><circle cx="12" cy="12" r="8.8"/><path d="M8.4 12h7.2"/></g>
     <g id="g-globe"><circle cx="12" cy="12" r="8.8"/><path d="M3.2 12h17.6"/><path d="M12 3.2c2.4 2.4 3.6 5.4 3.6 8.8s-1.2 6.4-3.6 8.8c-2.4-2.4-3.6-5.4-3.6-8.8S9.6 5.6 12 3.2z"/></g>
     <g id="g-app"><rect x="3.2" y="4.4" width="17.6" height="15.2" rx="2.2"/><path d="M3.2 8.6h17.6"/><path d="M9.6 13h4.8"/></g>
     <g id="g-update"><circle cx="12" cy="12" r="8.8"/><path d="M12 7.4v6.8"/><path d="M9 11.4l3 3 3-3"/></g>
     <g id="g-lock"><rect x="4.6" y="10.4" width="14.8" height="10.4" rx="2.2"/><path d="M8.2 10.4V7.6a3.8 3.8 0 0 1 7.6 0v2.8"/></g>
+    <g id="g-search"><circle cx="10.8" cy="10.8" r="6.6"/><path d="M15.6 15.6l4.4 4.4"/></g>
+    <g id="g-sun"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.6v2.2M12 19.2v2.2M4.2 12H2M22 12h-2.2M6.5 6.5L4.9 4.9M19.1 19.1l-1.6-1.6M17.5 6.5l1.6-1.6M4.9 19.1l1.6-1.6"/></g>
+    <g id="g-moon"><path d="M20.4 13.6A8.4 8.4 0 0 1 10.4 3.6a8.4 8.4 0 1 0 10 10z"/></g>
+    <g id="g-monitor"><rect x="3" y="4.4" width="18" height="12.4" rx="2"/><path d="M9 20.4h6M12 16.8v3.6"/></g>
   </defs>
   <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#g-shield"/></symbol>
   <symbol id="i-browser" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#g-browser"/></symbol>
@@ -679,366 +846,423 @@
   <symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#g-chart"/></symbol>
   <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#g-refresh"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#g-check"/></symbol>
+  <symbol id="i-dash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#g-dash"/></symbol>
   <symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#g-globe"/></symbol>
   <symbol id="i-app" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#g-app"/></symbol>
   <symbol id="i-update" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#g-update"/></symbol>
   <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#g-lock"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#g-search"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#g-sun"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#g-moon"/></symbol>
+  <symbol id="i-monitor" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#g-monitor"/></symbol>
 </svg>
 
 <div class="app">
 
-  <!-- Rail. The twelve sections of the old window regrouped into the five
-       questions someone actually opens this app to ask. -->
+  <!-- Rail. Four destinations, each one a page with a page's worth on it: the
+       screen-time record moved in beside the schedules it is counted against,
+       which is the only place anyone reads it from anyway. -->
   <nav class="rail">
     <div class="brand">
-      <img src="logo.png" width="26" height="26" alt="" />
-      <div class="bt">
-        <div class="bn">Extension Guard</div>
-        <div class="bv">Protection console</div>
-      </div>
+      <img src="logo.png" width="24" height="24" alt="" />
+      <div class="bn">Extension Guard</div>
     </div>
 
     <div class="nav" id="nav">
-      <button class="navitem is-on" data-pane="overview"
-              data-title="Overview" data-sub="What is protected right now, and what is not.">
+      <button class="navitem is-on" data-pane="overview" title="Ctrl+1"
+              data-title="Overview" data-sub="What is protected right now, and what is not">
         <svg><use href="#i-shield"/></svg><span class="navlabel">Overview</span>
         <span class="navdot" id="nav-dot-overview" style="display:none;"></span>
       </button>
-      <button class="navitem" data-pane="browsers"
-              data-title="Browsers" data-sub="Where the filters are enforced, and the settings that keep them there.">
+      <button class="navitem" data-pane="browsers" title="Ctrl+2"
+              data-title="Browsers" data-sub="Where the filters are enforced, and the settings that keep them there">
         <svg><use href="#i-browser"/></svg><span class="navlabel">Browsers</span>
         <span class="navbadge" id="nav-badge-browsers">—</span>
         <span class="navdot" id="nav-dot-browsers" style="display:none;"></span>
       </button>
-      <button class="navitem" data-pane="blocking"
-              data-title="Blocking" data-sub="Sites and applications that do not open.">
+      <button class="navitem" data-pane="blocking" title="Ctrl+3"
+              data-title="Blocking" data-sub="Sites and applications that do not open">
         <svg><use href="#i-block"/></svg><span class="navlabel">Blocking</span>
         <span class="navbadge" id="nav-badge-blocking">—</span>
         <span class="navdot" id="nav-dot-blocking" style="display:none;"></span>
       </button>
-      <button class="navitem" data-pane="schedule"
-              data-title="Schedule" data-sub="Blocks that apply on a timetable, or once a daily limit is spent.">
-        <svg><use href="#i-calendar"/></svg><span class="navlabel">Schedule</span>
+      <button class="navitem" data-pane="schedule" title="Ctrl+4"
+              data-title="Schedule &amp; time" data-sub="When blocks apply, and how long the blocked applications ran">
+        <svg><use href="#i-calendar"/></svg><span class="navlabel">Schedule &amp; time</span>
         <span class="navbadge" id="nav-badge-schedule">—</span>
         <span class="navdot" id="nav-dot-schedule" style="display:none;"></span>
-      </button>
-      <button class="navitem" data-pane="time"
-              data-title="Screen time" data-sub="How long the blocked applications actually ran.">
-        <svg><use href="#i-chart"/></svg><span class="navlabel">Screen time</span>
-        <span class="navdot" id="nav-dot-time" style="display:none;"></span>
       </button>
     </div>
 
     <div class="railfoot">
-      <div class="foot">
-        <span id="ver">Extension Guard</span>
-        <button class="ghost small" id="check-updates" title="Check for updates">
-          <svg><use href="#i-update"/></svg><span class="navlabel">Check for updates</span>
-        </button>
-      </div>
+      <span id="pill" class="pill inactive">…</span>
+      <button class="ghost small" id="check-updates" title="Check for updates">
+        <svg><use href="#i-update"/></svg><span>Check for updates</span>
+      </button>
     </div>
   </nav>
 
   <div class="main">
-    <header class="topbar">
-      <div>
-        <div class="ptitle" id="page-title">Overview</div>
-        <div class="psub" id="page-sub">What is protected right now, and what is not.</div>
-      </div>
-      <div class="right">
-        <span id="pill" class="pill inactive">…</span>
-        <button class="iconbtn" id="refresh" title="Refresh" aria-label="Refresh"><svg><use href="#i-refresh"/></svg></button>
+
+    <!-- Toolbar. Where you are on the left, what acts on it on the right - the
+         actions change with the page, which is what makes it a toolbar rather
+         than a heading. -->
+    <header class="toolbar">
+      <div class="tb-title" id="page-title">Overview</div>
+      <div class="tb-sub" id="page-sub">What is protected right now, and what is not</div>
+      <div class="tb-right">
+        <div class="tbgroup" data-tb="blocking">
+          <div class="filterbox">
+            <svg><use href="#i-search"/></svg>
+            <input id="blk-filter" type="text" placeholder="Filter sites and apps" autocomplete="off" spellcheck="false" />
+            <span class="fkey">/</span>
+          </div>
+        </div>
+        <div class="tbgroup" data-tb="schedule">
+          <button id="block-new">New block</button>
+        </div>
+        <button class="iconbtn" id="refresh" title="Refresh (Ctrl+R)" aria-label="Refresh"><svg><use href="#i-refresh"/></svg></button>
+
+        <!-- Appearance. Three choices rather than two: following the system is
+             what most machines want, and the other two are for the one where
+             the system setting is wrong for this room. -->
+        <div class="themepick">
+          <button class="iconbtn" id="theme-btn" title="Appearance" aria-label="Appearance"
+                  aria-haspopup="true" aria-expanded="false"><svg><use id="theme-icon" href="#i-moon"/></svg></button>
+          <div class="thememenu" id="theme-menu" hidden role="menu">
+            <button type="button" role="menuitemradio" data-theme-set="system">
+              <svg class="mi"><use href="#i-monitor"/></svg><span>Follow system</span><svg class="tk"><use href="#i-check"/></svg>
+            </button>
+            <button type="button" role="menuitemradio" data-theme-set="light">
+              <svg class="mi"><use href="#i-sun"/></svg><span>Light</span><svg class="tk"><use href="#i-check"/></svg>
+            </button>
+            <button type="button" role="menuitemradio" data-theme-set="dark">
+              <svg class="mi"><use href="#i-moon"/></svg><span>Dark</span><svg class="tk"><use href="#i-check"/></svg>
+            </button>
+          </div>
+        </div>
       </div>
     </header>
 
     <div class="content" id="content">
-      <div class="inner">
 
       <!-- ================= OVERVIEW ================= -->
-      <div class="pane is-active" id="pane-overview">
-        <div class="ov">
-          <div class="ov-main">
+      <div class="pane ov is-active" id="pane-overview">
 
-            <div id="update-banner" class="card" style="display:none; border-color: var(--accent-line); background: var(--accent-bg);">
-              <div class="lbl" id="update-text" style="color: var(--text);">An update is available.</div>
-              <div style="display:flex; gap:10px; align-items:center; margin-top:11px;">
-                <button id="update-btn">Update now</button>
-                <span id="update-msg" class="msg"></span>
-              </div>
+        <div class="ov-notices" id="ov-notices">
+          <div id="update-banner" class="card" style="display:none; border-color: var(--accent-line); background: var(--accent-bg);">
+            <div class="lbl" id="update-text">An update is available.</div>
+            <div style="display:flex; gap:10px; align-items:center; margin-top:9px;">
+              <button id="update-btn" class="small">Update now</button>
+              <span id="update-msg" class="msg"></span>
             </div>
+          </div>
 
-            <div id="announce-banner" class="card announce" style="display:none;">
-              <button id="announce-close" class="announce-x" title="Dismiss" aria-label="Dismiss">&times;</button>
-              <div class="announce-title" id="announce-title"></div>
-              <div class="announce-msg" id="announce-msg"></div>
-              <button id="announce-link" class="announce-link" style="display:none;"></button>
+          <div id="announce-banner" class="card announce" style="display:none;">
+            <button id="announce-close" class="announce-x" title="Dismiss" aria-label="Dismiss">&times;</button>
+            <div class="announce-title" id="announce-title"></div>
+            <div class="announce-msg" id="announce-msg"></div>
+            <button id="announce-link" class="announce-link" style="display:none;"></button>
+          </div>
+
+          <section class="status" id="hero-panel">
+            <div class="sbody">
+              <h1 id="hero-title">Checking…</h1>
+              <p id="hero-sub">Reading protection status</p>
             </div>
-
-            <section class="panel hero-panel" id="hero-panel">
-              <div id="hero" class="hero off">
-                <div class="ring">
-                  <svg class="ringsvg" viewBox="0 0 120 120" aria-hidden="true">
-                    <circle class="ringtrack" cx="60" cy="60" r="52"/>
-                    <circle class="ringarc" id="ring-arc" cx="60" cy="60" r="52"
-                            stroke-dasharray="326.7" stroke-dashoffset="326.7"/>
-                  </svg>
-                  <div class="ringinner">
-                    <div class="ringnum" id="cov-num">—</div>
-                    <div class="ringden" id="cov-den">safeguards</div>
-                  </div>
-                </div>
-                <div class="herobody">
-                  <h1 id="hero-title">Checking…</h1>
-                  <p id="hero-sub">Reading protection status</p>
-                  <div class="segs" id="cov-segs"></div>
-                  <div class="heroactions">
-                    <button id="protection-btn" class="bigbtn">…</button>
-                    <button class="help" data-help="The ring counts the safeguards this window can see: the guard service itself, every protected extension, every pinned browser setting, whether a password is set, and whether any browser on this machine is left neither filtered nor blocked.|It is a count of what is on, not a score. Each bar under the state is one of those safeguards - hover a bar to see which." aria-label="About the safeguard count">?</button>
-                  </div>
-                  <div class="herometa">
-                    <span>Service <b id="svc-val">—</b></span>
-                    <span class="sep">•</span>
-                    <span id="pw-state">—</span>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <div class="tiles">
-              <div class="tile">
-                <div class="tico"><svg><use href="#i-lock"/></svg></div>
-                <div class="tlabel">Browsers locked</div>
-                <div class="tval" id="locked-val">—</div>
-                <div class="tsub" id="tile-browsers-sub"></div>
-              </div>
-              <div class="tile">
-                <div class="tico"><svg><use href="#i-globe"/></svg></div>
-                <div class="tlabel">Sites blocked</div>
-                <div class="tval" id="tile-sites">—</div>
-                <div class="tsub" id="tile-sites-sub"></div>
-              </div>
-              <div class="tile">
-                <div class="tico"><svg><use href="#i-app"/></svg></div>
-                <div class="tlabel">Apps blocked</div>
-                <div class="tval" id="tile-apps">—</div>
-                <div class="tsub" id="tile-apps-sub"></div>
-              </div>
-              <div class="tile">
-                <div class="tico"><svg><use href="#i-chart"/></svg></div>
-                <div class="tlabel">Screen time today</div>
-                <div class="tval" id="tile-time">—</div>
-                <div class="tsub" id="tile-time-sub"></div>
-                <svg class="spark" id="tile-spark" viewBox="0 0 100 22" preserveAspectRatio="none" aria-hidden="true"></svg>
-              </div>
+            <div class="sact">
+              <button id="protection-btn" class="bigbtn">…</button>
+              <button class="help" data-help="Protection off means the guard stops enforcing everything on these pages. It stays installed, and turns itself back on when the time you chose is up.|Turning it back on is free. Turning it off needs the password." aria-label="About protection">?</button>
             </div>
+          </section>
 
-            <section class="panel">
-              <div class="sechead">
-                <div class="section-title">Needs attention</div>
-                <button class="help" data-help="Every gap this window can currently see, worst first. A gap is something that stops protection applying - a browser nothing reaches, a private window, a schedule that will not load - not a setting you have chosen to leave off.|Each one links to the page that closes it. An empty list means the things the guard covers are all holding." aria-label="About this section">?</button>
-                <div class="grow"></div>
-                <span class="attcount" id="att-count" style="display:none;"></span>
-              </div>
-              <div id="att-rows"></div>
+          <!-- The figures. Each one is a count of rows on a page below, so the
+               strip and the pages cannot disagree about them. -->
+          <div class="metrics">
+            <div class="metric" id="metric-safeguards">
+              <div class="mk">Safeguards on</div>
+              <div class="mv"><span id="cov-num">—</span><small id="cov-den"></small></div>
+              <div class="ms" id="cov-sub">&nbsp;</div>
+            </div>
+            <div class="metric">
+              <div class="mk">Browsers locked</div>
+              <div class="mv" id="m-locked">—</div>
+              <div class="ms" id="m-browsers-sub">&nbsp;</div>
+            </div>
+            <div class="metric">
+              <div class="mk">Sites blocked</div>
+              <div class="mv" id="m-sites">—</div>
+              <div class="ms" id="m-sites-sub">&nbsp;</div>
+            </div>
+            <div class="metric">
+              <div class="mk">Apps blocked</div>
+              <div class="mv" id="m-apps">—</div>
+              <div class="ms" id="m-apps-sub">&nbsp;</div>
+            </div>
+            <div class="metric">
+              <div class="mk">Scheduled blocks</div>
+              <div class="mv" id="m-blocks">—</div>
+              <div class="ms" id="m-blocks-sub">&nbsp;</div>
+            </div>
+            <div class="metric">
+              <div class="mk">Screen time today</div>
+              <div class="mv" id="m-time">—</div>
+              <div class="ms" id="m-time-sub">&nbsp;</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="ov-panes">
+          <section class="box">
+            <div class="bh">
+              <h2>Needs attention</h2>
+              <span class="cnt warn" id="att-count" style="display:none;"></span>
+              <div class="grow"></div>
+              <button class="help" data-help="Every gap the window can see, worst first. A gap is something stopping protection applying — a browser nothing reaches, a private window, a schedule that will not load.|A protection you chose to leave off is not a gap and is not listed here." aria-label="About this pane">?</button>
+            </div>
+            <div class="bb">
+              <div class="rows" id="att-rows"></div>
               <div class="allclear" id="att-clear" style="display:none;">
                 <svg><use href="#i-check"/></svg>
                 <span>Nothing needs attention — everything the guard covers is holding.</span>
               </div>
-            </section>
+            </div>
+          </section>
 
-          </div>
+          <section class="box" id="box-safeguards">
+            <div class="bh">
+              <h2>Safeguards</h2>
+              <span class="cnt" id="sg-count">—</span>
+              <div class="grow"></div>
+              <button class="help" data-help="Everything the window can see the state of: the service, each protected extension, each pinned browser setting, the password, and whether any browser here is left neither filtered nor blocked.|It is a count of what is on, not a score." aria-label="About this pane">?</button>
+            </div>
+            <div class="bb"><div class="rows" id="sg-rows"></div></div>
+          </section>
 
-          <aside class="ov-side">
-            <section class="panel feed">
-              <div class="sechead">
-                <div class="section-title">Recent activity</div>
-                <button class="help" data-help="What the guard did, and what was done to it. Kept on this PC only — nothing is sent anywhere." aria-label="About this section">?</button>
-                <div class="grow"></div>
-                <button id="act-more" class="ghost small" style="display:none;">Show more</button>
-              </div>
-              <div class="rows" id="act-rows"></div>
+          <section class="box">
+            <div class="bh">
+              <h2>Recent activity</h2>
+              <div class="grow"></div>
+              <button id="act-more" class="ghost small" style="display:none;">Show more</button>
+              <button class="help" data-help="What the guard did, and what was done to it. Kept on this PC only — nothing is sent anywhere." aria-label="About this pane">?</button>
+            </div>
+            <div class="bb"><div class="rows" id="act-rows"></div>
               <p class="exthint" id="act-empty" style="display:none;">Nothing recorded yet.</p>
-              <p class="actpath" id="act-path"></p>
-            </section>
-          </aside>
+            </div>
+          </section>
         </div>
       </div>
 
       <!-- ================= BROWSERS ================= -->
-      <div class="pane" id="pane-browsers">
-        <div class="stack">
+      <div class="pane pg-browsers" id="pane-browsers">
 
-          <section class="panel">
-            <div class="sechead">
-              <div class="section-title">Browsers</div>
-              <button class="help" data-help="The browsers the guard writes policy for. &ldquo;Locked&rdquo; means the protected extensions are force-installed there and cannot be removed from inside the browser.|A browser that is not installed is shown dimmed rather than hidden, so the list is the same on every machine." aria-label="About this section">?</button>
+        <div class="col col-a">
+          <section class="box">
+            <div class="bh">
+              <h2>Browsers</h2>
+              <span class="cnt" id="brw-count">—</span>
+              <div class="grow"></div>
+              <button class="help" data-help="The browsers the guard writes policy for. “Locked” means the protected extensions are force-installed there and cannot be removed from inside the browser.|One that is not installed is dimmed rather than hidden, so the list reads the same on every machine." aria-label="About this pane">?</button>
             </div>
-            <div class="rows" id="rows"></div>
+            <div class="bb"><div id="rows"></div></div>
           </section>
 
-          <div class="grid g2">
-            <section class="panel">
-              <div class="sechead">
-                <div class="section-title">Protected extensions</div>
-                <button class="help" data-help="Extensions the guard force-installs and pins. Turning one on adds protection, so it is free; turning one off removes protection, so it needs the password.|While protection is paused the direction reverses — the line under this heading always says which way round it currently is." aria-label="About this section">?</button>
+          <div id="unmanaged-section">
+            <section class="box" style="height:100%;">
+              <div class="bh">
+                <h2>Other browsers on this machine</h2>
+                <div class="grow"></div>
+                <button class="help" data-help="The guard filters inside the browsers it manages by writing policy they read. A browser that reads none of it carries no locked extension and no blocked site, so it has to be blocked instead of filtered.|Blocked ones stay listed rather than disappearing, so this is also where a newly installed browser shows up." aria-label="About this pane">?</button>
               </div>
-              <p class="exthint" id="exthint">Turning one on adds protection (free). Turning one off needs the password.</p>
-              <div class="rows" id="ext-rows" style="margin-top:10px;"></div>
+              <div class="bb">
+                <div id="unmanaged-warning" class="card warnbox" style="display:none;">
+                  <div class="lbl">Protection does not reach every browser here</div>
+                  <div class="announce-msg" id="unmanaged-warning-msg"></div>
+                  <button class="ghost small" id="unmanaged-fix" style="margin-top:9px;">Block them</button>
+                </div>
+                <div class="rows" id="unmanaged-rows"></div>
+                <p class="exthint" id="unmanaged-empty" style="display:none;">Every browser here is one the guard filters.</p>
+              </div>
             </section>
+          </div>
+        </div>
 
-            <section class="panel">
-              <div class="sechead">
-                <div class="section-title">Browser settings</div>
-                <button class="help" data-help="Settings the guard pins so the extension locks hold. Pinning one is free; handing one back needs the password.|One of them has two strengths rather than an on and an off — moving up a strength is free, moving down needs the password, because it is a request to filter less." aria-label="About this section">?</button>
-              </div>
-              <div id="harden-warning" class="card warnbox" style="display:none; margin-bottom:10px;">
-                <div class="lbl">A private window carries none of the locked extensions</div>
-                <div class="announce-msg">An extension cannot be force-installed into an Incognito, private or guest window &mdash; so while private browsing is available, every filter above can be sidestepped with Ctrl+Shift+N.</div>
-                <div class="announce-msg">Pin <b>Private browsing and guest profiles</b> below to close it.</div>
+        <div class="col col-b">
+          <section class="box">
+            <div class="bh">
+              <h2>Protected extensions</h2>
+              <div class="grow"></div>
+              <span class="note" id="exthint"></span>
+              <button class="help" data-help="Extensions the guard force-installs and pins. Turning one on adds protection, so it is free; turning one off removes protection, so it needs the password.|While protection is paused the direction reverses — the note beside this title always says which way round it is." aria-label="About this pane">?</button>
+            </div>
+            <div class="bb"><div class="rows" id="ext-rows"></div></div>
+          </section>
+
+          <section class="box">
+            <div class="bh">
+              <h2>Browser settings</h2>
+              <div class="grow"></div>
+              <button class="help" data-help="Settings the guard pins so the extension locks hold. Pinning one is free; handing one back needs the password.|One has two strengths rather than an on and an off — moving up is free, moving down needs the password, because it is a request to filter less." aria-label="About this pane">?</button>
+            </div>
+            <div class="bb">
+              <div id="harden-warning" class="card warnbox" style="display:none;">
+                <div class="lbl">Private windows carry none of the locked extensions</div>
+                <div class="announce-msg">Every filter above can be sidestepped with Ctrl+Shift+N until <b>Private browsing and guest profiles</b> is pinned.</div>
               </div>
               <div class="rows" id="harden-rows"></div>
-            </section>
-          </div>
-
-          <div id="unmanaged-section">
-            <section class="panel">
-              <div class="sechead">
-                <div class="section-title">Other browsers on this machine</div>
-                <button class="help" data-help="The guard filters inside the browsers it manages by writing policy they read. A browser that reads none of it carries none of the locked extensions and none of the blocked sites — so it has to be blocked instead of filtered.|Blocked browsers stay on this list rather than disappearing once they are handled, so it is also the only place a newly installed one shows up." aria-label="About this section">?</button>
-              </div>
-              <div id="unmanaged-warning" class="card warnbox" style="display:none; margin-bottom:10px;">
-                <div class="lbl">Protection does not reach every browser here</div>
-                <div class="announce-msg" id="unmanaged-warning-msg"></div>
-                <div class="announce-msg">Block the ones the guard knows by name from &ldquo;Unmanaged browsers&rdquo; under <b>Block a category</b> on the Blocking page. For anything that list misses, use <b>Add .exe file</b> under Blocked apps and pick the executable shown here.</div>
-              </div>
-              <div class="rows" id="unmanaged-rows"></div>
-              <p class="exthint" id="unmanaged-empty" style="display:none;">Nothing else is installed &mdash; every browser here is one the guard filters.</p>
-            </section>
-          </div>
-
+            </div>
+          </section>
         </div>
       </div>
 
       <!-- ================= BLOCKING ================= -->
-      <div class="pane" id="pane-blocking">
-        <div class="grid g2">
+      <div class="pane pg-blocking" id="pane-blocking">
 
-          <div class="stack">
-            <section class="panel">
-              <div class="sechead">
-                <div class="section-title">Blocked sites</div>
-                <button class="help" data-help="Blocking a site covers every subdomain, in all supported browsers. Adding one is free; removing one needs the password.|A site can be switched on and still not blocking right now, if a schedule has it out of window. That is shown as &ldquo;Waiting&rdquo;." aria-label="About this section">?</button>
-              </div>
-              <div class="addrow">
+        <div class="col col-a">
+          <section class="box">
+            <div class="bh">
+              <h2>Blocked sites</h2>
+              <span class="cnt" id="dom-count">0</span>
+              <div class="grow"></div>
+              <button class="help" data-help="Blocking a site covers every subdomain, in all supported browsers. Adding one is free; removing one needs the password.|A site can be on and still not blocking right now, if a schedule has it out of window. That is shown as “Waiting”." aria-label="About this pane">?</button>
+            </div>
+            <div class="bt">
+              <div class="addrow" style="flex:1;">
                 <input id="domain-input" type="text" placeholder="reddit.com" autocomplete="off" spellcheck="false" />
                 <button id="domain-add">Block</button>
               </div>
+            </div>
+            <div class="bb">
               <div class="rows" id="domain-rows"></div>
               <p class="exthint" id="domain-empty" style="display:none;">Nothing blocked yet.</p>
-            </section>
+            </div>
+          </section>
 
-            <div id="allow-section">
-              <section class="panel">
-                <div class="sechead">
-                  <div class="section-title">Allowed sites only</div>
-                  <button class="help" data-help="Blocks every site except the ones below. Turning it on is free; turning it off — and letting a site through — needs the password, because that is the direction that opens things." aria-label="About this section">?</button>
-                  <div class="grow"></div>
-                  <button id="allow-toggle" class="ghost small">Turn on</button>
-                </div>
-                <div id="allow-shut" class="card warnbox" style="display:none; margin-bottom:10px;">
-                  <div class="lbl">Every site is blocked</div>
-                  <div class="announce-msg">The allowlist is empty and the mode is on, so no page loads in Chrome, Edge, Brave, Firefox or Zen. That is what this mode means &mdash; add the sites you need below if it was not what you wanted.</div>
-                </div>
-                <div class="addrow">
+          <div id="allow-section" style="min-height:0;">
+            <section class="box" style="height:100%;">
+              <div class="bh">
+                <h2>Allowed sites only</h2>
+                <div class="grow"></div>
+                <button id="allow-toggle" class="ghost small">Turn on</button>
+                <button class="help" data-help="Blocks every site except the ones listed. Turning it on is free; turning it off — and letting a site through — needs the password, because that is the direction that opens things." aria-label="About this pane">?</button>
+              </div>
+              <div class="bt">
+                <div class="addrow" style="flex:1;">
                   <input id="allow-input" type="text" placeholder="wikipedia.org" autocomplete="off" spellcheck="false" />
                   <button id="allow-add">Allow</button>
                 </div>
+              </div>
+              <div class="bb">
+                <div id="allow-shut" class="card warnbox" style="display:none;">
+                  <div class="lbl">Every site is blocked</div>
+                  <div class="announce-msg">The mode is on and the list is empty, so no page loads in any supported browser. Add the sites you need.</div>
+                </div>
                 <div class="rows" id="allow-rows"></div>
                 <p class="exthint" id="allow-empty" style="display:none;">Nothing allowed yet.</p>
-              </section>
-            </div>
-          </div>
-
-          <div class="stack">
-            <section class="panel">
-              <div class="sechead">
-                <div class="section-title">Block a category</div>
-                <button class="help" data-help="A category blocks a whole set at once — its apps and its sites — around the clock. Adding one is free; taking it off again needs the password.|Agreeing to a category is agreeing to every entry in it, so each card can list exactly what it will add before you press the button. A category that has gained entries since you blocked it offers a top-up.|One category blocks nothing at all: Adult content turns on filtered DNS and SafeSearch instead, because what counts as adult content is a list nobody can ship and keep current. Lift that one from Browser settings, not from here." aria-label="About this section">?</button>
               </div>
-              <div class="rows" id="cat-rows"></div>
             </section>
+          </div>
+        </div>
 
-            <section class="panel">
-              <div class="sechead">
-                <div class="section-title">Blocked apps</div>
-                <button class="help" data-help="A blocked application does not start, and is closed if it is already running. Adding one is free; removing one needs the password.|There are four ways in, because &ldquo;the app I want gone&rdquo; is a file, a folder, a Store app, or just a window title. Rules added by a category are grouped under its name." aria-label="About this section">?</button>
-              </div>
-              <div class="btnrow">
-                <button id="app-add-exe">Add .exe file</button>
-                <button id="app-add-folder">Add folder</button>
-                <button id="app-add-store">Add Store app</button>
-                <button id="app-add-title">Add window title</button>
-              </div>
+        <div class="col col-b">
+          <section class="box">
+            <div class="bh">
+              <h2>Blocked apps</h2>
+              <span class="cnt" id="app-count">0</span>
+              <div class="grow"></div>
+              <button class="help" data-help="A blocked application does not start, and is closed if it is already running. Adding one is free; removing one needs the password.|There are four ways in, because “the app I want gone” is a file, a folder, a Store app, or just a window title. Rules a category added are grouped under its name." aria-label="About this pane">?</button>
+            </div>
+            <div class="bt wrap">
+              <button class="ghost" id="app-add-exe">Add .exe file</button>
+              <button class="ghost" id="app-add-folder">Add folder</button>
+              <button class="ghost" id="app-add-store">Add Store app</button>
+              <button class="ghost" id="app-add-title">Add window title</button>
+            </div>
+            <div class="bb">
               <div class="rows" id="app-rows"></div>
               <p class="exthint" id="app-empty" style="display:none;">Nothing blocked yet.</p>
-            </section>
-          </div>
-
+            </div>
+          </section>
         </div>
-      </div>
 
-      <!-- ================= SCHEDULE ================= -->
-      <div class="pane" id="pane-schedule">
-        <div id="block-section">
-          <section class="panel">
-            <div class="sechead">
-              <div class="section-title">Scheduled blocks</div>
-              <button class="help" data-help="A block enforces what it governs only during its windows, or — with a daily limit — once that much time has been used. Locking one means it cannot be released early.|A block outside its window is &ldquo;Idle&rdquo;, one inside it is &ldquo;Enforcing&rdquo;, and one with a limit still counts down as &ldquo;n left today&rdquo;. Nothing here weakens the protection you have turned on elsewhere until a window opens." aria-label="About this section">?</button>
+        <div class="col col-c">
+          <section class="box">
+            <div class="bh">
+              <h2>Categories</h2>
               <div class="grow"></div>
-              <button id="block-new" class="ghost small">New block</button>
+              <button class="help" data-help="A category blocks a whole set at once — its apps and its sites — around the clock. Adding one is free; taking it off again needs the password.|Agreeing to a category is agreeing to every entry in it, so each one lists exactly what it would add before you press the button.|Adult content blocks nothing: it turns on filtered DNS and SafeSearch instead, because what counts as adult content is a list nobody can ship and keep current." aria-label="About this pane">?</button>
             </div>
-            <div id="schedule-warning" class="card warnbox" style="display:none; margin-bottom:10px;">
-              <div class="lbl">This schedule is not being used</div>
-              <div class="announce-msg" id="schedule-warning-msg"></div>
-              <div class="announce-msg">Everything stays protected around the clock until it is fixed.</div>
-            </div>
-            <div class="rows" id="block-rows"></div>
-            <p class="exthint" id="block-empty" style="display:none;">No blocks yet &mdash; everything you have turned on is enforced around the clock.</p>
+            <div class="bb"><div class="rows" id="cat-rows"></div></div>
           </section>
         </div>
       </div>
 
-      <!-- ================= SCREEN TIME ================= -->
-      <div class="pane" id="pane-time">
-        <div id="usage-section">
-          <div class="grid g2">
-            <section class="panel">
-              <div class="sechead">
-                <div class="section-title">Time used</div>
-                <button class="help" data-help="How long each blocked application actually ran — counted while it is running, not only while you are looking at it. Kept on this PC only.|Sites and extensions cannot be measured: the guard hands the browser a policy and gets nothing back. An application that has since been unblocked keeps the time it was used." aria-label="About this section">?</button>
+      <!-- ================= SCHEDULE & TIME ================= -->
+      <div class="pane pg-schedule" id="pane-schedule">
+
+        <div class="col col-a" id="block-section">
+          <section class="box">
+            <div class="bh">
+              <h2>Scheduled blocks</h2>
+              <span class="cnt" id="blk-count">0</span>
+              <div class="grow"></div>
+              <button class="help" data-help="A block enforces what it governs only during its windows, or — with a daily limit — once that much time has been used. Locking one means it cannot be released early.|Outside its window a block is “Idle”, inside it “Enforcing”, and one with a limit counts down as “n left today”. Nothing here weakens what you turned on elsewhere until a window opens." aria-label="About this pane">?</button>
+            </div>
+            <div class="bb">
+              <div id="schedule-warning" class="card warnbox" style="display:none;">
+                <div class="lbl">This schedule is not being used</div>
+                <div class="announce-msg" id="schedule-warning-msg"></div>
+                <div class="announce-msg">Everything stays protected around the clock until it is fixed.</div>
               </div>
-              <div id="usage-warning" class="card warnbox" style="display:none; margin-bottom:10px;">
-                <div class="lbl">Today&rsquo;s usage could not be read</div>
+              <div class="rows" id="block-rows"></div>
+              <p class="exthint" id="block-empty" style="display:none;">No blocks yet — everything you have turned on is enforced around the clock.</p>
+            </div>
+          </section>
+        </div>
+
+        <div class="col col-b" id="usage-section">
+          <section class="box">
+            <div class="bh">
+              <h2>Screen time</h2>
+              <div class="grow"></div>
+              <button class="help" data-help="How long each blocked application actually ran — counted while it is running, not only while you are looking at it. Kept on this PC only.|Sites and extensions cannot be measured: the guard hands the browser a policy and gets nothing back. An application since unblocked keeps the time it was used." aria-label="About this pane">?</button>
+            </div>
+            <div class="bb">
+              <div id="usage-warning" class="card warnbox" style="display:none;">
+                <div class="lbl">Today’s usage could not be read</div>
                 <div class="announce-msg" id="usage-warning-msg"></div>
               </div>
               <div class="rows" id="usage-rows"></div>
               <p class="emptyhint" id="usage-empty" style="display:none;"></p>
-            </section>
+            </div>
+          </section>
 
-            <section class="panel">
-              <div class="sechead">
-                <div class="section-title">By day</div>
-                <button class="help" data-help="The span with any blocked application open, per day. It is not the sum of the rows beside it — an hour with two applications running is two hours of rules and one hour of the afternoon, and people mean the second one." aria-label="About this section">?</button>
-              </div>
+          <section class="box">
+            <div class="bh">
+              <h2>By day</h2>
+              <div class="grow"></div>
+              <span class="note" id="usage-note"></span>
+              <button class="help" data-help="The span with any blocked application open, per day. It is not the sum of the rows above — an hour with two applications running is two hours of rules and one hour of the afternoon, and people mean the second." aria-label="About this pane">?</button>
+            </div>
+            <div class="bb">
               <div id="usage-days"></div>
-              <p class="emptyhint" id="usage-days-empty" style="display:none;">No history to chart yet. A day appears here once a blocked application has run.</p>
-            </section>
-          </div>
+              <p class="emptyhint" id="usage-days-empty" style="display:none;">No history yet. A day appears here once a blocked application has run.</p>
+            </div>
+          </section>
         </div>
       </div>
 
-      </div>
     </div>
+
+    <footer class="statusbar">
+      <span class="sb">Service <b id="svc-val">—</b></span>
+      <span class="sep"></span>
+      <span class="sb" id="pw-state">—</span>
+      <span class="sep"></span>
+      <span class="sb" id="act-path"></span>
+      <span class="grow"></span>
+      <span class="sb" id="ver">Extension Guard</span>
+    </footer>
   </div>
 </div>
 
@@ -1048,8 +1272,10 @@
 <div id="pw-modal" class="modal-backdrop" style="display:none;">
   <div class="modal">
     <div class="modal-title" id="pw-modal-title">Enter password</div>
-    <input id="pw-modal-input" type="password" placeholder="Password" autocomplete="off" />
-    <div id="pw-modal-msg" class="msg"></div>
+    <div class="modal-body">
+      <input id="pw-modal-input" type="password" placeholder="Password" autocomplete="off" />
+      <div id="pw-modal-msg" class="msg"></div>
+    </div>
     <div class="modal-actions">
       <button class="ghost" id="pw-modal-cancel">Cancel</button>
       <button id="pw-modal-ok">Confirm</button>
@@ -1061,9 +1287,11 @@
 <div id="text-modal" class="modal-backdrop" style="display:none;">
   <div class="modal">
     <div class="modal-title" id="text-modal-title">Add</div>
-    <p class="modal-note" id="text-modal-note"></p>
-    <input id="text-modal-input" type="text" autocomplete="off" spellcheck="false" />
-    <div id="text-modal-msg" class="msg"></div>
+    <div class="modal-body">
+      <p class="modal-note" id="text-modal-note"></p>
+      <input id="text-modal-input" type="text" autocomplete="off" spellcheck="false" />
+      <div id="text-modal-msg" class="msg"></div>
+    </div>
     <div class="modal-actions">
       <button class="ghost" id="text-modal-cancel">Cancel</button>
       <button id="text-modal-ok">Block</button>
@@ -1076,8 +1304,10 @@
 <div id="store-modal" class="modal-backdrop" style="display:none;">
   <div class="modal wide">
     <div class="modal-title">Block a Microsoft Store app</div>
-    <input id="store-filter" type="text" placeholder="Search installed apps" autocomplete="off" spellcheck="false" />
-    <div class="picker" id="store-list"></div>
+    <div class="modal-body">
+      <input id="store-filter" type="text" placeholder="Search installed apps" autocomplete="off" spellcheck="false" />
+      <div class="picker" id="store-list"></div>
+    </div>
     <div class="modal-actions">
       <button class="ghost" id="store-cancel">Cancel</button>
     </div>
@@ -1090,40 +1320,42 @@
 <div id="newblock-modal" class="modal-backdrop" style="display:none;">
   <div class="modal wide">
     <div class="modal-title">New block</div>
-    <input id="nb-label" type="text" placeholder="Name, e.g. Work hours" autocomplete="off" />
-    <div class="nb-row">
-      <label class="nb-check"><input type="checkbox" id="nb-always" /> Always on &mdash; no timetable, made to be locked</label>
-    </div>
-    <div id="nb-schedule">
-      <div class="chips" id="nb-days">
-        <button type="button" data-day="mon">Mon</button>
-        <button type="button" data-day="tue">Tue</button>
-        <button type="button" data-day="wed">Wed</button>
-        <button type="button" data-day="thu">Thu</button>
-        <button type="button" data-day="fri">Fri</button>
-        <button type="button" data-day="sat">Sat</button>
-        <button type="button" data-day="sun">Sun</button>
-      </div>
-      <p class="nb-sub">No day chosen means every day. An end before the start runs past midnight.</p>
+    <div class="modal-body">
+      <input id="nb-label" type="text" placeholder="Name, e.g. Work hours" autocomplete="off" />
       <div class="nb-row">
-        <span class="nb-lbl">From</span><input id="nb-from" type="text" placeholder="09:00" autocomplete="off" />
-        <span class="nb-lbl">To</span><input id="nb-to" type="text" placeholder="17:00" autocomplete="off" />
+        <label class="nb-check"><input type="checkbox" id="nb-always" /> Always on — no timetable, made to be locked</label>
       </div>
-    </div>
-    <div class="nb-row">
-      <span class="nb-lbl">Daily limit</span><input id="nb-limit" type="text" placeholder="45m (leave empty for none)" autocomplete="off" />
-    </div>
-    <p class="nb-sub">A limit may only cover applications &mdash; the guard counts time by watching programs run, and a browser never reports back how long a site was open. Leave the times above empty for a limit that applies at any hour.</p>
-    <div class="nb-row">
-      <span class="nb-lbl">Governs</span>
-      <div class="chips" id="nb-scope">
-        <button type="button" data-scope="all" class="sel">Everything</button>
-        <button type="button" data-scope="some">Choose&hellip;</button>
+      <div id="nb-schedule">
+        <div class="chips" id="nb-days">
+          <button type="button" data-day="mon">Mon</button>
+          <button type="button" data-day="tue">Tue</button>
+          <button type="button" data-day="wed">Wed</button>
+          <button type="button" data-day="thu">Thu</button>
+          <button type="button" data-day="fri">Fri</button>
+          <button type="button" data-day="sat">Sat</button>
+          <button type="button" data-day="sun">Sun</button>
+        </div>
+        <p class="nb-sub">No day chosen means every day. An end before the start runs past midnight.</p>
+        <div class="nb-row">
+          <span class="nb-lbl">From</span><input id="nb-from" type="text" placeholder="09:00" autocomplete="off" />
+          <span class="nb-lbl">To</span><input id="nb-to" type="text" placeholder="17:00" autocomplete="off" />
+        </div>
       </div>
+      <div class="nb-row">
+        <span class="nb-lbl">Daily limit</span><input id="nb-limit" type="text" placeholder="45m (leave empty for none)" autocomplete="off" />
+      </div>
+      <p class="nb-sub">A limit may only cover applications — a browser never reports how long a site was open. Leave the times empty for a limit that applies at any hour.</p>
+      <div class="nb-row">
+        <span class="nb-lbl">Governs</span>
+        <div class="chips" id="nb-scope">
+          <button type="button" data-scope="all" class="sel">Everything</button>
+          <button type="button" data-scope="some">Choose…</button>
+        </div>
+      </div>
+      <div class="picker" id="nb-items" style="display:none;"></div>
+      <p class="modal-note" id="nb-note" style="margin:12px 0 0;"></p>
+      <div id="nb-msg" class="msg"></div>
     </div>
-    <div class="picker" id="nb-items" style="display:none;"></div>
-    <p class="modal-note" id="nb-note"></p>
-    <div id="nb-msg" class="msg"></div>
     <div class="modal-actions">
       <button class="ghost" id="nb-cancel">Cancel</button>
       <button id="nb-ok">Create</button>
@@ -1131,34 +1363,40 @@
   </div>
 </div>
 
-<!-- Lock prompt. Locking needs no password (it only strengthens), but it is
-     irreversible until the deadline, so it gets an explicit confirmation. -->
+<!-- Turning protection off. Bounded by default, because a pause that cannot be
+     forgotten about is the one worth offering first. -->
 <div id="pause-modal" class="modal-backdrop" style="display:none;">
   <div class="modal">
     <div class="modal-title">Turn protection off</div>
-    <p class="modal-note">The guard stays installed and keeps running, so it can turn protection back on by itself when the time is up.</p>
-    <div class="lock-choices" id="pause-choices"></div>
-    <input id="pause-pw" type="password" placeholder="Password" autocomplete="off" />
-    <div id="pause-msg" class="msg"></div>
+    <div class="modal-body">
+      <p class="modal-note">The guard stays installed and turns protection back on by itself when the time is up.</p>
+      <div class="lock-choices" id="pause-choices"></div>
+      <input id="pause-pw" type="password" placeholder="Password" autocomplete="off" />
+      <div id="pause-msg" class="msg"></div>
+    </div>
     <div class="modal-actions">
       <button class="ghost" id="pause-cancel">Cancel</button>
-      <button id="pause-ok">Turn off</button>
+      <button id="pause-ok" class="danger">Turn off</button>
     </div>
   </div>
 </div>
 
+<!-- Lock prompt. Locking needs no password (it only strengthens), but it is
+     irreversible until the deadline, so it gets an explicit confirmation. -->
 <div id="lock-modal" class="modal-backdrop" style="display:none;">
   <div class="modal">
     <div class="modal-title" id="lock-modal-title">Lock block</div>
-    <p class="modal-note">Once locked it cannot be shortened, changed, or removed until the deadline &mdash; not with the password, not by restarting.</p>
-    <div class="lock-choices" id="lock-choices">
-      <button type="button" data-value="24h">24 hours</button>
-      <button type="button" data-value="3d">3 days</button>
-      <button type="button" data-value="7d">7 days</button>
-      <button type="button" data-value="30d">30 days</button>
+    <div class="modal-body">
+      <p class="modal-note">Once locked it cannot be shortened, changed, or removed until the deadline — not with the password, not by restarting.</p>
+      <div class="lock-choices" id="lock-choices">
+        <button type="button" data-value="24h">24 hours</button>
+        <button type="button" data-value="3d">3 days</button>
+        <button type="button" data-value="7d">7 days</button>
+        <button type="button" data-value="30d">30 days</button>
+      </div>
+      <input id="lock-custom" type="text" placeholder="or a date: 2026-09-01, 2026-09-01T17:00" autocomplete="off" />
+      <div id="lock-modal-msg" class="msg"></div>
     </div>
-    <input id="lock-custom" type="text" placeholder="or a date: 2026-09-01, 2026-09-01T17:00" autocomplete="off" />
-    <div id="lock-modal-msg" class="msg"></div>
     <div class="modal-actions">
       <button class="ghost" id="lock-modal-cancel">Cancel</button>
       <button id="lock-modal-ok">Lock</button>
@@ -1166,28 +1404,56 @@
   </div>
 </div>
 
-
 <script>
   function bound() { return window.go && window.go.main && window.go.main.App; }
 
   let current = { serviceRunning: false, disabled: false };
+  let shellState = '';
+
+  // The Blocking toolbar's filter. A category adds twenty-odd rules in one
+  // press, so the list it produces is the one place in the window where finding
+  // a single row by eye stops being realistic. Everything it hides is a row the
+  // pane's count still accounts for - "4 / 31" rather than a silently short list.
+  let blkFilter = '';
+  function fmatch(text) {
+    return !blkFilter || String(text || '').toLowerCase().indexOf(blkFilter) >= 0;
+  }
 
   // #msg is the one line every action reports into, and those actions now happen
   // on five different pages - so it floats over all of them rather than sitting
   // on one, and it clears itself afterwards. A success message that stays until
   // the next action reads, ten minutes later, as the state of the app.
   let msgTimer = 0;
-  function setMsg(text, kind) {
+  function setMsg(text, kind, sticky) {
     const m = document.getElementById('msg');
     m.className = 'msg' + (kind ? ' ' + kind : '');
     m.textContent = text || '';
     if (msgTimer) { window.clearTimeout(msgTimer); msgTimer = 0; }
-    if (text) {
+    // A confirmation may fade; an instruction may not. Anything still asking the
+    // user to do something - restart Zen, say - has to survive the seven seconds
+    // they spend looking at the Windows prompt rather than at this line.
+    m.classList.toggle('sticky', !!(text && sticky));
+    if (text && !sticky) {
       msgTimer = window.setTimeout(function () {
         m.textContent = '';
         m.className = 'msg';
       }, 7000);
     }
+  }
+
+  document.addEventListener('click', function (e) {
+    const m = document.getElementById('msg');
+    if (m && m.classList.contains('sticky') && m.contains(e.target)) { setMsg(''); }
+  });
+
+  // Renders an action's outcome: the confirmation, plus the restart caveat when
+  // the change cannot reach a browser that is already open.
+  function setResult(res) {
+    if (res && res.restart) {
+      setMsg((res.message ? res.message + ' ' : '') + res.restart, res.ok ? 'warn' : 'err', true);
+      return;
+    }
+    setMsg(res ? res.message : '', res && res.ok ? 'ok' : 'err');
   }
 
   // askPassword shows the modal and resolves with the typed password, or null if
@@ -1378,11 +1644,11 @@
         // saying which of them applies is more use than saying "this may need a
         // password" and leaving the user to work out why.
         if (limit.value.trim()) {
-          note.textContent = 'A daily limit lets the apps it covers run for that long each day, and blocks them once the time is used up. That is weaker than blocking them outright, so creating it needs the password.';
+          note.textContent = 'A limit lets these apps run that long each day, then blocks them — weaker than blocking them outright, so it needs the password.';
         } else if (always.checked) {
           note.textContent = 'An always-on block only adds protection, so this is free. Lock it afterwards to make it stick.';
         } else {
-          note.textContent = 'A schedule enforces what it governs only during its windows — the rest of the day it is not enforced. That is weaker than around the clock, so creating it needs the password.';
+          note.textContent = 'A schedule enforces only during its windows, so it is weaker than around the clock. Creating it needs the password.';
         }
       }
       function onScope(e) {
@@ -1532,21 +1798,23 @@
     pill.textContent = paused ? 'Paused' : (s.serviceRunning ? 'Active' : 'Inactive');
     pill.className = 'pill ' + (paused ? 'paused' : (s.serviceRunning ? 'active' : 'inactive'));
 
-    const hero = document.getElementById('hero');
-    hero.className = 'hero' + (paused ? ' paused' : (s.serviceRunning ? '' : ' off'));
+    // The one place the window decides which of the three states it is in.
+    // renderShell reads this rather than working it out a second time from the
+    // same three fields, or reading it back off a class name.
+    shellState = paused ? 'paused' : (s.serviceRunning ? '' : 'off');
     document.getElementById('hero-title').textContent =
       paused ? 'Protection paused' : (s.serviceRunning ? 'Protection active' : 'Protection inactive');
     document.getElementById('hero-sub').textContent =
       paused ? (s.pausedUntil
-                  ? 'Protection is off until ' + s.pausedUntil + '. It turns itself back on then.'
-                  : 'You turned protection off. It stays off until you turn it back on.')
-             : (s.serviceRunning ? 'The guard service is running and watching your browsers.'
-                                 : 'The guard service is not running.');
+                  ? 'Off until ' + s.pausedUntil + '. It turns itself back on then.'
+                  : 'Off until you turn it back on.')
+             : (s.serviceRunning ? 'The guard service is running and enforcing every rule on these pages.'
+                                 : 'Nothing is being enforced until the service starts.');
 
     document.getElementById('svc-val').textContent =
       paused ? (s.pausedUntil ? 'Paused till ' + s.pausedUntil.replace(/,.*/, '') : 'Paused')
              : (s.serviceRunning ? 'Running' : 'Stopped');
-    document.getElementById('locked-val').textContent = s.lockedCount;
+    document.getElementById('m-locked').textContent = s.lockedCount;
 
     // One prominent control: disable when active (weakens -> password), else enable
     // (strengthens -> free).
@@ -1554,12 +1822,17 @@
     btn.textContent = active ? 'Disable protection' : 'Enable protection';
     btn.className = 'bigbtn' + (active ? ' danger' : '');
 
+    // The pane header carries this, so it is a clause rather than a sentence:
+    // which direction is free is the one thing a reader has to hold in mind,
+    // and the paragraph that used to say it is in the help bubble.
     document.getElementById('exthint').textContent = paused
-      ? 'Protection is paused — turning an extension off is free while paused. Turning one on adds protection.'
-      : 'Turning one on adds protection (free). Turning one off needs the password.';
+      ? 'Paused — both directions free'
+      : 'On is free · Off needs the password';
 
     const rows = document.getElementById('rows');
     rows.innerHTML = '';
+    document.getElementById('brw-count').textContent =
+      s.lockedCount + ' / ' + (s.browsers || []).filter(function (b) { return b.installed; }).length;
     (s.browsers || []).forEach(function (b) {
       const row = document.createElement('div');
       row.className = 'row' + (b.installed ? '' : ' absent');
@@ -1695,28 +1968,27 @@
       rows.appendChild(row);
     });
 
+    // One clause each, not the three-sentence paragraph this used to be. What a
+    // reader needs from a warning is which browsers and how bad; why a rename
+    // does not get past a rule is in the help bubble, where it can be as long
+    // as it likes without costing the pane a third of its height.
+    const named = function (list) { return list.map(function (b) { return b.label; }).join(', '); };
     const said = [];
     if (open.length) {
-      const one = open.length === 1;
-      said.push((one ? '1 browser here is' : open.length + ' browsers here are') +
-        ' neither filtered nor blocked: ' +
-        open.map(function (b) { return b.label; }).join(', ') + '. ' +
-        'Every blocked site is reachable through ' + (one ? 'it' : 'them') +
-        ', and none of the protected extensions are loaded.');
+      said.push(named(open) + (open.length === 1 ? ' is' : ' are') +
+        ' neither filtered nor blocked — every blocked site is reachable through ' +
+        (open.length === 1 ? 'it' : 'them') + '.');
     }
     // Only for browsers that were blocked. A browser nobody blocked whose file has
     // gone was almost certainly uninstalled, and saying so would put a permanent
     // warning on any machine that ever removed one - which teaches the reader to
     // ignore this box, including on the day it matters.
     if (gone.length) {
-      const one = gone.length === 1;
-      said.push((one ? '1 browser on the block list has' : gone.length + ' browsers on the block list have') +
-        ' no executable at the path registered for ' + (one ? 'it' : 'them') + ': ' +
-        gone.map(function (b) { return b.label; }).join(', ') + '. ' +
-        'That means it was uninstalled, or the file was renamed to get around the block. ' +
-        'Rules naming a bare executable also match the name built into the program, ' +
-        'so a plain rename does not get past them.');
+      said.push(named(gone) + ' ' + (gone.length === 1 ? 'is' : 'are') +
+        ' blocked, but the file registered for ' + (gone.length === 1 ? 'it' : 'them') +
+        ' is gone — uninstalled, or renamed.');
     }
+    document.getElementById('unmanaged-fix').style.display = open.length ? '' : 'none';
     if (said.length) {
       document.getElementById('unmanaged-warning-msg').textContent = said.join(' ');
       warn.style.display = '';
@@ -1732,9 +2004,13 @@
   function renderDomains(s) {
     const rows = document.getElementById('domain-rows');
     const empty = document.getElementById('domain-empty');
-    const domains = s.domains || [];
+    const all = s.domains || [];
+    const domains = all.filter(function (d) { return fmatch(d.name); });
     rows.innerHTML = '';
+    document.getElementById('dom-count').textContent =
+      blkFilter ? domains.length + ' / ' + all.length : String(all.length);
     empty.style.display = domains.length ? 'none' : '';
+    empty.textContent = all.length ? 'No site matches the filter.' : 'Nothing blocked yet.';
 
     domains.forEach(function (d) {
       const row = document.createElement('div');
@@ -1772,7 +2048,7 @@
     let res;
     try { res = await window.go.main.App.BlockDomain(value); }
     catch (e) { res = { ok: false, message: String(e) }; }
-    setMsg(res.message, res.ok ? 'ok' : 'err');
+    setResult(res);
     if (res.ok) { input.value = ''; }
     await refresh();
   }
@@ -1796,7 +2072,7 @@
       setMsg('Approve the Windows permission prompt...');
       try { res = await window.go.main.App.BlockDomain(name); } catch (e) { res = { ok: false, message: String(e) }; }
     }
-    setMsg(res.message, res.ok ? 'ok' : 'err');
+    setResult(res);
     await refresh();
   }
 
@@ -1879,7 +2155,7 @@
       setMsg('Approve the Windows permission prompt...');
       try { res = await window.go.main.App.Harden(h.id, '', ''); } catch (e) { res = { ok: false, message: String(e) }; }
     }
-    setMsg(res.message, res.ok ? 'ok' : 'err');
+    setResult(res);
     await refresh();
   }
 
@@ -1898,7 +2174,7 @@
     setMsg('Approve the Windows permission prompt...');
     let res;
     try { res = await window.go.main.App.Harden(h.id, level, pw); } catch (e) { res = { ok: false, message: String(e) }; }
-    setMsg(res.message, res.ok ? 'ok' : 'err');
+    setResult(res);
     await refresh();
   }
 
@@ -1925,14 +2201,18 @@
     // read as a broken feature in two of them.
     let note = '';
     if (!u.measured) {
-      note = 'No applications are blocked, so there is nothing to measure. Sites and extensions cannot be measured — the guard hands the browser a policy and gets nothing back.';
+      note = 'No applications are blocked, so there is nothing to measure.';
     } else if (u.unreadable) {
-      note = 'The usage record could not be read, so there is no history to show. The guard rewrites it from its own running count within half a minute.';
+      note = 'The usage record could not be read. The guard rewrites it from its own running count within half a minute.';
     } else if (!list.length) {
-      note = 'Nothing recorded yet. Time is counted while a blocked application is running; one that never starts records nothing.';
+      note = 'Nothing recorded yet — time is counted while a blocked application runs.';
     }
     empty.style.display = note ? '' : 'none';
     empty.textContent = note;
+    // The header carries the two totals, so the pane answers "how much today"
+    // before a single bar is read.
+    document.getElementById('usage-note').textContent = note
+      ? '' : 'Any open: ' + (u.today || '0m') + ' today · ' + (u.total || '0m') + ' over ' + u.span + ' days';
     if (note) { return; }
 
     list.forEach(function (r) {
@@ -1974,16 +2254,10 @@
       rows.appendChild(row);
     });
 
-    // The total with any of them open, which is not the sum of the rows above: an
-    // hour with two applications running is two hours of rules and one hour of the
-    // afternoon. Both are true and people mean the second one.
-    const head = document.createElement('div');
-    head.className = 'useday';
-    head.innerHTML = '<div class="udlabel" style="width:auto;flex:1;"></div><div class="udnum" style="width:auto;"></div>';
-    head.querySelector('.udlabel').textContent = 'Any of them open';
-    head.querySelector('.udnum').textContent = u.today + ' today, ' + u.total + ' in ' + u.span + ' days';
-    daysBox.appendChild(head);
-
+    // The total with any of them open is not the sum of the rows beside it - an
+    // hour with two applications running is two hours of rules and one hour of
+    // the afternoon, and people mean the second. It is said once, in the header
+    // of the pane that charts it, rather than as a row that reads like a day.
     (u.days || []).forEach(function (d) {
       const line = document.createElement('div');
       line.className = 'useday';
@@ -2047,9 +2321,12 @@
         row.appendChild(badge);
       }
 
+      // An allowed site is not a switch: the row's one action removes it, and a
+      // lozenge reading "Allowed" that closes the site when pressed says the
+      // opposite of what it does.
       const btn = document.createElement('button');
-      btn.className = 'toggle on';
-      btn.textContent = 'Allowed';
+      btn.className = 'ghost small';
+      btn.textContent = 'Remove';
       btn.title = 'Stop allowing this site (free \u2014 it only closes something)';
       btn.style.marginLeft = (a.on && !a.enforcing) ? '8px' : 'auto';
       btn.addEventListener('click', function () { unallowSite(host); });
@@ -2075,7 +2352,7 @@
     setMsg('Approve the Windows permission prompt...');
     let res;
     try { res = await window.go.main.App.AllowOnly(on, pw); } catch (e) { res = { ok: false, message: String(e) }; }
-    setMsg(res.message, res.ok ? 'ok' : 'err');
+    setResult(res);
     await refresh();
   }
 
@@ -2097,7 +2374,7 @@
     setMsg('Approve the Windows permission prompt...');
     let res;
     try { res = await window.go.main.App.Allow(value, pw); } catch (e) { res = { ok: false, message: String(e) }; }
-    setMsg(res.message, res.ok ? 'ok' : 'err');
+    setResult(res);
     if (res.ok) { input.value = ''; }
     await refresh();
   }
@@ -2108,7 +2385,7 @@
     setMsg('Approve the Windows permission prompt...');
     let res;
     try { res = await window.go.main.App.Unallow(host); } catch (e) { res = { ok: false, message: String(e) }; }
-    setMsg(res.message, res.ok ? 'ok' : 'err');
+    setResult(res);
     await refresh();
   }
 
@@ -2185,25 +2462,24 @@
       row.appendChild(btn);
       rows.appendChild(row);
 
-      // The caveat belongs on the card, not in a release note. Most social media
-      // has no Windows application at all, and a user who blocks the category and
-      // then opens Instagram in a browser should already know why that is the
-      // domain half's job.
+      // Everything past the one-line summary is disclosed rather than printed:
+      // the caveat about a category with no Windows applications, and the list
+      // of what it would actually add. Both matter before the button is pressed
+      // and neither is worth eight lines of the pane while it is not.
+      const items = c.items || [];
+      const detail = document.createElement('div');
+      detail.style.display = 'none';
+
       if (c.note) {
         const hint = document.createElement('div');
         hint.className = 'catnote';
         hint.textContent = c.note;
-        info.appendChild(hint);
+        detail.appendChild(hint);
       }
 
-      // The contents, one click away. Blocking a category means accepting every
-      // entry in it, and taking it off again needs the password - so the list has
-      // to be readable before the button is pressed, not after.
-      const items = c.items || [];
       if (items.length) {
         const list = document.createElement('div');
         list.className = 'catlist';
-        list.style.display = 'none';
         items.forEach(function (it) {
           const el = document.createElement('div');
           el.className = 'item' + (it.present ? ' have' : '');
@@ -2228,20 +2504,9 @@
           list.appendChild(el);
         });
 
-        const already = items.filter(function (it) { return it.present; }).length;
-        const more = document.createElement('button');
-        more.className = 'catmore';
-        const shut = (c.blocks ? 'Show what it blocks (' : 'Show what it changes (') + items.length + ')';
-        more.textContent = shut;
-        more.addEventListener('click', function () {
-          const open = list.style.display === 'none';
-          list.style.display = open ? '' : 'none';
-          more.textContent = open ? 'Hide the list' : shut;
-        });
-        info.appendChild(more);
-
         // Said above the list rather than only in the button, because "28 things"
         // and "3 things you do not already block" are very different asks.
+        const already = items.filter(function (it) { return it.present; }).length;
         if (already) {
           const head = document.createElement('div');
           head.className = 'catlisthead';
@@ -2249,7 +2514,23 @@
           head.textContent = already + ' of these are already ' + (c.blocks ? 'blocked' : 'on') + '; ' + (items.length - already) + ' would be new.';
           list.insertBefore(head, list.firstChild);
         }
-        info.appendChild(list);
+        detail.appendChild(list);
+      }
+
+      if (detail.childNodes.length) {
+        const more = document.createElement('button');
+        more.className = 'catmore';
+        const shut = items.length
+          ? (c.blocks ? 'Show what it blocks (' : 'Show what it changes (') + items.length + ')'
+          : 'Show detail';
+        more.textContent = shut;
+        more.addEventListener('click', function () {
+          const open = detail.style.display === 'none';
+          detail.style.display = open ? '' : 'none';
+          more.textContent = open ? 'Hide' : shut;
+        });
+        info.appendChild(more);
+        info.appendChild(detail);
       }
     });
   }
@@ -2262,7 +2543,7 @@
     let res;
     try { res = await window.go.main.App.BlockCategory(c.id); }
     catch (e) { res = { ok: false, message: String(e) }; }
-    setMsg(res.message, res.ok ? 'ok' : 'err');
+    setResult(res);
     await refresh();
   }
 
@@ -2277,9 +2558,16 @@
   function renderApps(s) {
     const rows = document.getElementById('app-rows');
     const empty = document.getElementById('app-empty');
-    const apps = s.apps || [];
+    const every = s.apps || [];
+    // The filter reads the rule's value as well as its label: a category adds
+    // nineteen rows named after programs, and the thing someone remembers is
+    // often the folder or the executable rather than the friendly name.
+    const apps = every.filter(function (a) { return fmatch(a.label) || fmatch(a.value); });
     rows.innerHTML = '';
+    document.getElementById('app-count').textContent =
+      blkFilter ? apps.length + ' / ' + every.length : String(every.length);
     empty.style.display = apps.length ? 'none' : '';
+    empty.textContent = every.length ? 'No rule matches the filter.' : 'Nothing blocked yet.';
 
     // Loose rules first, then one run per category, in the order the category
     // cards above are listed so the two halves of the section agree.
@@ -2353,7 +2641,7 @@
     let res;
     try { res = await window.go.main.App.BlockApp(kind, value, label || ''); }
     catch (e) { res = { ok: false, message: String(e) }; }
-    setMsg(res.message, res.ok ? 'ok' : 'err');
+    setResult(res);
     await refresh();
   }
 
@@ -2385,7 +2673,7 @@
   async function addTitle() {
     const text = await askText(
       'Block a window title',
-      'Any window whose title contains this text is closed. Useful for an app that moves its files, or for one window of an app you otherwise want.',
+      'Any window whose title contains this text is closed — useful for an app that moves its files, or for one window of an app you otherwise want.',
       'e.g. Solitaire');
     if (!text) { return; }
     await blockApp('title', text, text);
@@ -2411,7 +2699,7 @@
       setMsg('Approve the Windows permission prompt…');
       try { res = await window.go.main.App.BlockApp(app.kind, app.value, label); } catch (e) { res = { ok: false, message: String(e) }; }
     }
-    setMsg(res.message, res.ok ? 'ok' : 'err');
+    setResult(res);
     await refresh();
   }
 
@@ -2422,9 +2710,10 @@
     const rows = document.getElementById('block-rows');
     const empty = document.getElementById('block-empty');
     const blocks = s.blocks || [];
-    // The section stays visible with nothing in it, because it is now also where
-    // blocks are created - hiding it would hide the way in.
+    // The pane stays visible with nothing in it, because the toolbar above is
+    // where blocks are created - hiding it would hide the way in.
     empty.style.display = blocks.length ? 'none' : '';
+    document.getElementById('blk-count').textContent = blocks.length;
 
     const usageWarn = document.getElementById('usage-warning');
     if (s.usageError) {
@@ -2520,7 +2809,7 @@
     let res;
     try { res = await window.go.main.App.LockBlock(id, until); }
     catch (e) { res = { ok: false, message: String(e) }; }
-    setMsg(res.message, res.ok ? 'ok' : 'err');
+    setResult(res);
     await refresh();
   }
 
@@ -2540,7 +2829,7 @@
     let res;
     try { res = await window.go.main.App.CreateBlock(draft, pw); }
     catch (e) { res = { ok: false, message: String(e) }; }
-    setMsg(res.message, res.ok ? 'ok' : 'err');
+    setResult(res);
     await refresh();
   }
 
@@ -2558,7 +2847,7 @@
     let res;
     try { res = await window.go.main.App.RemoveBlock(id, pw); }
     catch (e) { res = { ok: false, message: String(e) }; }
-    setMsg(res.message, res.ok ? 'ok' : 'err');
+    setResult(res);
     await refresh();
   }
 
@@ -2578,7 +2867,7 @@
       setMsg('Approve the Windows permission prompt…');
       try { res = await window.go.main.App.Enable(); } catch (e) { res = { ok: false, message: String(e) }; }
     }
-    setMsg(res.message, res.ok ? 'ok' : 'err');
+    setResult(res);
     await refresh();
   }
 
@@ -2667,7 +2956,7 @@
       setMsg('Approve the Windows permission prompt…');
       try { res = await window.go.main.App.EnableExtension(name); } catch (e) { res = { ok: false, message: String(e) }; }
     }
-    setMsg(res.message, res.ok ? 'ok' : 'err');
+    setResult(res);
     await refresh();
   }
 
@@ -2703,11 +2992,14 @@
     const umsg = document.getElementById('update-msg');
     const btn = document.getElementById('update-btn');
     const checkBtn = document.getElementById('check-updates');
-    if (manual) { checkBtn.disabled = true; checkBtn.textContent = 'Checking…'; }
+    // The label, not the button: the button also holds an icon, and writing over
+    // its textContent would take the icon with it.
+    const checkLbl = checkBtn.querySelector('span');
+    if (manual) { checkBtn.disabled = true; checkLbl.textContent = 'Checking…'; }
     let res;
     try { res = await window.go.main.App.CheckForUpdate(); }
     catch (e) { res = { error: String(e) }; }
-    if (manual) { checkBtn.disabled = false; checkBtn.textContent = 'Check for updates'; }
+    if (manual) { checkBtn.disabled = false; checkLbl.textContent = 'Check for updates'; }
 
     if (res.error) {
       if (manual) { banner.style.display = ''; btn.style.display = 'none'; text.textContent = res.error; umsg.textContent = ''; }
@@ -2783,8 +3075,11 @@
   // How many activity entries the list shows collapsed and expanded. Expanding
   // asks the backend again rather than filtering what is already here, because the
   // point of "Show more" is to reach further back than the first call asked for.
-  const ACT_COLLAPSED = 6;
-  const ACT_EXPANDED = 50;
+  // Sized to the pane rather than to a paragraph: the feed has a column of its
+  // own now, and asking for six entries to fill it would be leaving the room
+  // empty on purpose.
+  const ACT_COLLAPSED = 14;
+  const ACT_EXPANDED = 60;
   let actLimit = ACT_COLLAPSED;
 
   // loadActivity fills the Recent activity list. Every value goes in through
@@ -2845,17 +3140,19 @@
     await showActivityPath(list.length > 0);
   }
 
-  // showActivityPath names the file under the list, so a parent who wants to read
-  // or keep the raw record does not have to be told where it is.
+  // showActivityPath names the file in the status bar, so a parent who wants to
+  // read or keep the raw record does not have to be told where it is - and it is
+  // out of the feed, which is a list of events rather than a place for a path.
   async function showActivityPath(any) {
     const el = document.getElementById('act-path');
-    if (!any || !window.go.main.App.ActivityPath) { el.textContent = ''; return; }
-    if (el.dataset.path) { el.textContent = el.dataset.path; return; }
+    if (!any || !window.go.main.App.ActivityPath) { el.textContent = ''; el.title = ''; return; }
+    if (el.dataset.path) { el.textContent = 'Log ' + el.dataset.path; el.title = el.dataset.path; return; }
     try {
       const p = await window.go.main.App.ActivityPath();
-      el.dataset.path = p ? 'Kept at ' + p : '';
-      el.textContent = el.dataset.path;
-    } catch (e) { el.textContent = ''; }
+      el.dataset.path = p || '';
+      el.textContent = p ? 'Log ' + p : '';
+      el.title = p || '';
+    } catch (e) { el.textContent = ''; el.title = ''; }
   }
 
   // toggleActivity switches between the short list and the long one.
@@ -2870,10 +3167,27 @@
     if (e.key === 'Enter') { e.preventDefault(); addDomain(); }
   });
 
+  // The warning used to end in two sentences telling the reader which section
+  // on which page to go to. This is that sentence, as the button it described.
+  document.getElementById('unmanaged-fix').addEventListener('click', function () {
+    showPane('blocking');
+  });
+
   document.getElementById('allow-toggle').addEventListener('click', toggleAllowOnly);
   document.getElementById('allow-add').addEventListener('click', allowSite);
   document.getElementById('allow-input').addEventListener('keydown', function (e) {
     if (e.key === 'Enter') { e.preventDefault(); allowSite(); }
+  });
+
+  // Filtering only re-renders; it never asks the backend again, so it is
+  // instant and cannot make the window disagree with the guard.
+  document.getElementById('blk-filter').addEventListener('input', function () {
+    blkFilter = this.value.trim().toLowerCase();
+    renderDomains(current);
+    renderApps(current);
+  });
+  document.getElementById('blk-filter').addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { this.value = ''; blkFilter = ''; renderDomains(current); renderApps(current); this.blur(); }
   });
 
   document.getElementById('block-new').addEventListener('click', newBlock);
@@ -2897,6 +3211,7 @@
   window.addEventListener('DOMContentLoaded', function () {
     refresh();
     loadVersion();
+    loadTheme();
     checkUpdates(false);
     loadAnnouncement();
   });
@@ -2905,20 +3220,19 @@
      The console shell.
 
      Everything below is about the window as a whole rather than about one
-     list: the safeguard ring, the four stats, the attention list, the rail,
-     and the pages. It is all derived from the same Status the renderers above
-     already read - nothing here asks the backend for anything new, and nothing
-     here can assert something the pages below do not also show.
+     list: the state strip, the figures, the attention list, the safeguards,
+     the rail and the pages. It is all derived from the same Status the
+     renderers above already read - nothing here asks the backend for anything
+     new, and nothing here can assert something the pages do not also show.
      ==================================================================== */
 
-  const SVGNS = 'http://www.w3.org/2000/svg';
   const NAV = Array.prototype.slice.call(document.querySelectorAll('.navitem'));
-  const PANES = ['overview', 'browsers', 'blocking', 'schedule', 'time'];
+  const PANES = ['overview', 'browsers', 'blocking', 'schedule'];
 
-  // showPane swaps the visible page. Every section stays in the document either
-  // way - the renderers above write into all of them on every refresh, and a
-  // page that had to be visited before its list existed would be a window that
-  // lies until you click it.
+  // showPane swaps the visible page and the toolbar that acts on it. Every pane
+  // stays in the document either way - the renderers above write into all of
+  // them on every refresh, and a page that had to be visited before its list
+  // existed would be a window that lies until you click it.
   function showPane(name) {
     let hit = null;
     NAV.forEach(function (b) {
@@ -2932,14 +3246,151 @@
     Array.prototype.forEach.call(document.querySelectorAll('.pane'), function (p) {
       p.classList.toggle('is-active', p.id === 'pane-' + name);
     });
-    // A new page is a new subject, so it starts at the top. Landing halfway down
-    // something you have not read is disorienting.
-    document.getElementById('content').scrollTop = 0;
+    // The toolbar's right-hand side belongs to whatever is open: New block on
+    // the schedule, the filter on the block lists, nothing on the rest. An
+    // action for a page you are not looking at is an action you cannot use.
+    Array.prototype.forEach.call(document.querySelectorAll('.tbgroup'), function (g) {
+      g.classList.toggle('is-on', g.getAttribute('data-tb') === name);
+    });
   }
 
   NAV.forEach(function (b) {
     b.addEventListener('click', function () { showPane(b.getAttribute('data-pane')); });
   });
+
+  /* ---- keyboard --------------------------------------------------------
+     A desktop window is driven from the keyboard by anyone who uses it daily.
+     Ctrl+1..4 are the pages, Ctrl+R re-reads the state, and "/" jumps to the
+     filter - all ignored while a prompt is open, because a modal has the floor.
+     -------------------------------------------------------------------- */
+  function modalOpen() {
+    return Array.prototype.some.call(document.querySelectorAll('.modal-backdrop'), function (m) {
+      return m.style.display !== 'none';
+    });
+  }
+  function typing(el) {
+    return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
+  }
+  document.addEventListener('keydown', function (e) {
+    if (modalOpen()) { return; }
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
+      const n = PANES[Number(e.key) - 1];
+      if (n) { e.preventDefault(); showPane(n); return; }
+      if (e.key === 'r' || e.key === 'R') { e.preventDefault(); document.getElementById('refresh').click(); }
+      return;
+    }
+    if (e.key === '/' && !typing(e.target)) {
+      const f = document.getElementById('blk-filter');
+      e.preventDefault();
+      showPane('blocking');
+      f.focus();
+      f.select();
+    }
+  });
+
+  /* ---- appearance ------------------------------------------------------
+     The attribute on <html> is always "light" or "dark" and never "system",
+     so every rule in the stylesheet is a two-way switch on one attribute.
+     Which of the three the user actually chose is held here instead, because
+     "follow the system" has to keep following it after the window is open.
+     -------------------------------------------------------------------- */
+  const THEME_KEY = 'theme';
+  let themePref = 'system';
+
+  // Held in a variable rather than created inline at the point of use: a
+  // MediaQueryList nothing refers to can be collected with its listener still
+  // attached, and the symptom is a window that follows the system exactly until
+  // the first garbage collection and silently stops afterwards.
+  const SYSTEM_LIGHT = window.matchMedia ? window.matchMedia('(prefers-color-scheme: light)') : null;
+
+  function systemIsLight() {
+    return !!(SYSTEM_LIGHT && SYSTEM_LIGHT.matches);
+  }
+
+  // paintTheme stamps the resolved theme and updates the control. It persists
+  // nothing: it also runs when Windows changes its own setting, and a machine
+  // that went dark at sunset has not changed what the user asked for.
+  function paintTheme() {
+    const resolved = themePref === 'system' ? (systemIsLight() ? 'light' : 'dark') : themePref;
+    document.documentElement.setAttribute('data-theme', resolved);
+    document.getElementById('theme-icon').setAttribute('href', resolved === 'light' ? '#i-sun' : '#i-moon');
+    document.getElementById('theme-btn').title = themePref === 'system'
+      ? 'Appearance: following the system (' + resolved + ')'
+      : 'Appearance: ' + themePref;
+    Array.prototype.forEach.call(document.querySelectorAll('[data-theme-set]'), function (b) {
+      const on = b.getAttribute('data-theme-set') === themePref;
+      b.classList.toggle('sel', on);
+      b.setAttribute('aria-checked', on ? 'true' : 'false');
+    });
+  }
+
+  // setTheme records the choice in both places. The guard's file is the one
+  // that matters next time - main.go reads it to pick the colour the window is
+  // painted before the first frame, and to theme the title bar, neither of
+  // which the page can reach - and localStorage is only the copy the pre-paint
+  // script in the head can read without waiting for the backend.
+  async function setTheme(pref) {
+    themePref = pref;
+    paintTheme();
+    try { localStorage.setItem(THEME_KEY, pref); } catch (e) { /* private mode */ }
+    if (bound() && window.go.main.App.SetTheme) {
+      // A failure here costs the choice at the next start, not now, so it is
+      // not worth a message over the window the user is looking at.
+      try { await window.go.main.App.SetTheme(pref); } catch (e) { /* keep the paint */ }
+    }
+  }
+
+  // loadTheme reconciles the pre-paint guess with what was actually stored.
+  async function loadTheme() {
+    let pref = null;
+    if (bound() && window.go.main.App.GetTheme) {
+      try { pref = await window.go.main.App.GetTheme(); } catch (e) { pref = null; }
+    }
+    if (!pref) {
+      try { pref = localStorage.getItem(THEME_KEY); } catch (e) { pref = null; }
+    }
+    themePref = pref === 'light' || pref === 'dark' ? pref : 'system';
+    try { localStorage.setItem(THEME_KEY, themePref); } catch (e) { /* private mode */ }
+    paintTheme();
+  }
+
+  // Both of these only act while following the system: an explicit choice
+  // outlives the desktop changing its mind at sunset.
+  if (SYSTEM_LIGHT) {
+    SYSTEM_LIGHT.addEventListener('change', function () {
+      if (themePref === 'system') { paintTheme(); }
+    });
+  }
+  // And again when the window is looked at. The event above is the right
+  // mechanism and is all that is needed when the change arrives while this
+  // window is in front - but the usual way somebody changes the Windows theme
+  // is in the Settings app, with this window behind it, and a host that does
+  // not forward the change to the webview would leave it stale until a
+  // restart. Re-reading on focus costs one media query and closes that.
+  window.addEventListener('focus', function () {
+    if (themePref === 'system') { paintTheme(); }
+  });
+
+  (function () {
+    const btn = document.getElementById('theme-btn');
+    const menu = document.getElementById('theme-menu');
+    function close() { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); }
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      menu.hidden = !menu.hidden;
+      btn.setAttribute('aria-expanded', menu.hidden ? 'false' : 'true');
+    });
+    menu.addEventListener('click', function (e) {
+      const hit = e.target.closest('[data-theme-set]');
+      if (!hit) { return; }
+      setTheme(hit.getAttribute('data-theme-set'));
+      close();
+    });
+    document.addEventListener('click', function (e) {
+      if (!menu.hidden && !menu.contains(e.target)) { close(); }
+    });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { close(); } });
+  })();
 
   /* ---- help ------------------------------------------------------------
      The old window explained every section in one to three sentences, always
@@ -2993,7 +3444,9 @@
     });
 
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { hide(); } });
-    document.getElementById('content').addEventListener('scroll', hide);
+    // Any pane can scroll under the bubble, so the listener is on the capture
+    // phase at the document rather than on one scrolling element.
+    document.addEventListener('scroll', hide, true);
   })();
 
   /* ---- safeguards ----------------------------------------------------- */
@@ -3070,6 +3523,19 @@
           ' — every blocked site is reachable through ' + (one ? 'it' : 'them') + '.', 'browsers');
       }
     }
+    // Firefox and Zen read their policies once, at startup, and offer no way to
+    // reload them - so a change made while one is open is written, verified, and
+    // invisible in that browser until it restarts. The message on the action says
+    // so once and fades; this stays for exactly as long as it is true, because the
+    // gap it describes lasts until somebody acts on it.
+    const stale = s.staleGecko || [];
+    if (stale.length) {
+      const one = stale.length === 1;
+      push('warn', stale.join(' and ') + (one ? ' is' : ' are') + ' showing older rules',
+        (one ? 'It has' : 'They have') + ' been open since before your last change and ' +
+        (one ? 'reads' : 'read') + ' these rules only at startup. Restart ' +
+        (one ? 'it' : 'them') + ' to apply what you changed.', 'blocking');
+    }
     if ((s.allowlist || {}).shut) {
       push('warn', 'Every site is blocked',
         'Allowed-sites-only is on and the list is empty, so no page loads in any supported browser.', 'blocking');
@@ -3085,7 +3551,7 @@
       push('bad', 'A schedule could not be loaded', s.scheduleError, 'schedule');
     }
     if (s.usageError) {
-      push('warn', 'Today’s usage could not be read', s.usageError, 'time');
+      push('warn', 'Today’s usage could not be read', s.usageError, 'schedule');
     }
     const ext = s.extensions || [];
     if (ext.length && !ext.filter(function (e) { return e.enabled; }).length) {
@@ -3097,40 +3563,7 @@
 
   /* ---- the shell ------------------------------------------------------ */
 
-  const RING_R = 52;
-  const RING_LEN = 2 * Math.PI * RING_R;
-
-  // sparkline draws the week of "any blocked application open" into the screen
-  // time tile. Days arrive newest first, which is the right order for the list
-  // on the Screen time page and the wrong one for a chart, so they are
-  // reversed - a sparkline is read left to right as time passing.
-  function sparkline(days) {
-    const el = document.getElementById('tile-spark');
-    el.innerHTML = '';
-    if (days.length < 2) { return; }
-
-    const back = days.slice().reverse();
-    const pts = back.map(function (d, i) {
-      const pct = Math.max(0, Math.min(100, d.percent || 0));
-      return [(i / (back.length - 1)) * 100, 20 - (pct / 100) * 18];
-    });
-    const line = pts.map(function (p, i) {
-      return (i ? 'L' : 'M') + p[0].toFixed(2) + ' ' + p[1].toFixed(2);
-    }).join(' ');
-
-    const area = document.createElementNS(SVGNS, 'path');
-    area.setAttribute('class', 'area');
-    area.setAttribute('d', line + ' L100 22 L0 22 Z');
-    el.appendChild(area);
-
-    const path = document.createElementNS(SVGNS, 'path');
-    path.setAttribute('class', 'line');
-    path.setAttribute('d', line);
-    // The tile is a flexible width, so the viewBox is stretched to fill it. The
-    // stroke has to opt out of that or it thins out as the window widens.
-    path.setAttribute('vector-effect', 'non-scaling-stroke');
-    el.appendChild(path);
-  }
+  const SVGNS = 'http://www.w3.org/2000/svg';
 
   // renderShell paints everything that is about the whole window. Called at the
   // end of render(), so the hero's own state class is already set and this can
@@ -3138,38 +3571,50 @@
   function renderShell(s) {
     const checks = safeguards(s);
     const on = checks.filter(function (c) { return c.on; }).length;
+    const gaps = checks.length - on;
 
     document.getElementById('cov-num').textContent = on;
-    document.getElementById('cov-den').textContent = 'of ' + checks.length + ' safeguards';
-    const arc = document.getElementById('ring-arc');
-    arc.setAttribute('stroke-dasharray', RING_LEN.toFixed(1));
-    arc.setAttribute('stroke-dashoffset',
-      (RING_LEN * (1 - (checks.length ? on / checks.length : 0))).toFixed(1));
+    document.getElementById('cov-den').textContent = ' / ' + checks.length;
+    document.getElementById('cov-sub').textContent = gaps
+      ? gaps + (gaps === 1 ? ' is off' : ' are off')
+      : 'all on';
+    document.getElementById('metric-safeguards').className = 'metric' + (gaps ? ' warn' : '');
+    const sgCount = document.getElementById('sg-count');
+    sgCount.textContent = on + ' / ' + checks.length;
+    sgCount.className = 'cnt' + (gaps ? ' warn' : '');
 
-    const segs = document.getElementById('cov-segs');
-    segs.innerHTML = '';
+    // The list that count is the sum of. It used to exist only as a row of
+    // fourteen tooltips on a bar nobody hovers, which is a way of not saying it.
+    const sg = document.getElementById('sg-rows');
+    sg.innerHTML = '';
     checks.forEach(function (c) {
-      const seg = document.createElement('i');
-      seg.className = c.on ? 'on' : '';
-      seg.title = (c.on ? 'On — ' : 'Off — ') + c.label;
-      segs.appendChild(seg);
+      const row = document.createElement('div');
+      row.className = 'sg' + (c.on ? '' : ' off');
+      const ico = document.createElementNS(SVGNS, 'svg');
+      ico.setAttribute('class', 'sgi');
+      const use = document.createElementNS(SVGNS, 'use');
+      use.setAttribute('href', c.on ? '#i-check' : '#i-dash');
+      ico.appendChild(use);
+      const txt = document.createElement('div');
+      txt.className = 'sgt';
+      txt.textContent = c.label;
+      row.appendChild(ico);
+      row.appendChild(txt);
+      sg.appendChild(row);
     });
 
-    // One source of truth for what colour the window is: the hero's state class,
-    // set by render() just above, copied onto the panel that tints behind it.
-    const hero = document.getElementById('hero');
-    document.getElementById('hero-panel').className = 'panel hero-panel' +
-      (hero.classList.contains('off') ? ' s-off'
-        : (hero.classList.contains('paused') ? ' s-paused' : ''));
+    // Set by render() just above; the strip is the one thing in the window
+    // allowed to be coloured by the overall state.
+    document.getElementById('hero-panel').className = 'status' + (shellState ? ' s-' + shellState : '');
 
     document.getElementById('pw-state').textContent =
       s.hasPassword ? 'Password set' : 'No password set';
 
-    // --- stats. Each one is a count of rows on a page below it, so the two can
-    // never disagree.
+    // --- the figures. Each one is a count of rows on a page below it, so the
+    // two can never disagree.
     const browsers = s.browsers || [];
     const installed = browsers.filter(function (b) { return b.installed; }).length;
-    document.getElementById('tile-browsers-sub').textContent = installed
+    document.getElementById('m-browsers-sub').textContent = installed
       ? 'of ' + installed + ' installed here'
       : 'no supported browser installed';
 
@@ -3177,28 +3622,33 @@
     const domOn = doms.filter(function (d) { return d.enabled; }).length;
     const allow = s.allowlist || {};
     const allowed = (allow.sites || []).length;
-    document.getElementById('tile-sites').textContent = domOn;
-    document.getElementById('tile-sites-sub').textContent = allow.on
-      ? 'and everything but ' + allowed + ' allowed site' + (allowed === 1 ? '' : 's')
+    document.getElementById('m-sites').textContent = domOn;
+    document.getElementById('m-sites-sub').textContent = allow.on
+      ? 'plus all but ' + allowed + ' allowed'
       : (doms.length > domOn ? (doms.length - domOn) + ' switched off'
         : (doms.length ? 'every subdomain, all browsers' : 'nothing blocked yet'));
 
     const apps = s.apps || [];
     const appOn = apps.filter(function (a) { return a.enabled; }).length;
     const waiting = apps.filter(function (a) { return a.enabled && a.scheduled && !a.blocked; }).length;
-    document.getElementById('tile-apps').textContent = appOn;
-    document.getElementById('tile-apps-sub').textContent = waiting
+    document.getElementById('m-apps').textContent = appOn;
+    document.getElementById('m-apps-sub').textContent = waiting
       ? waiting + ' waiting on a schedule'
       : (apps.length > appOn ? (apps.length - appOn) + ' switched off'
         : (apps.length ? 'closed on sight' : 'nothing blocked yet'));
 
+    const blocks = s.blocks || [];
+    const nowOn = blocks.filter(function (b) { return b.active || b.inBudget; }).length;
+    document.getElementById('m-blocks').textContent = blocks.length;
+    document.getElementById('m-blocks-sub').textContent = blocks.length
+      ? (nowOn ? nowOn + ' enforcing now' : 'none enforcing now')
+      : 'everything on, around the clock';
+
     const u = s.usage || {};
-    const timeTile = document.getElementById('tile-time');
-    timeTile.textContent = u.measured ? (u.today || '0m') : '—';
-    document.getElementById('tile-time-sub').textContent = u.measured
+    document.getElementById('m-time').textContent = u.measured ? (u.today || '0m') : '—';
+    document.getElementById('m-time-sub').textContent = u.measured
       ? (u.total ? u.total + ' over ' + u.span + ' days' : '')
       : 'nothing blocked to measure';
-    sparkline(u.days || []);
     const charted = u.measured && !u.unreadable && (u.rows || []).length && (u.days || []).length;
     document.getElementById('usage-days-empty').style.display = charted ? 'none' : '';
 
@@ -3214,6 +3664,8 @@
     document.getElementById('att-clear').style.display = list.length ? 'none' : '';
     attCount.style.display = list.length ? '' : 'none';
     attCount.textContent = list.length;
+    // Nothing wrong is one line, and one line does not need a column of its own.
+    document.querySelector('.ov-panes').classList.toggle('is-clear', !list.length);
 
     list.forEach(function (a) {
       const row = document.createElement('div');
@@ -3250,7 +3702,7 @@
     // opening each page, and a dot on any page with a gap on it.
     document.getElementById('nav-badge-browsers').textContent = s.lockedCount;
     document.getElementById('nav-badge-blocking').textContent = domOn + appOn;
-    document.getElementById('nav-badge-schedule').textContent = (s.blocks || []).length;
+    document.getElementById('nav-badge-schedule').textContent = blocks.length;
 
     const worst = {};
     list.forEach(function (a) {

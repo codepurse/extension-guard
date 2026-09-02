@@ -146,6 +146,16 @@ prompt, and the guard re-verifies the password itself, so the button can't be
 bypassed from the UI. Turning protection off asks **how long for** as well as for
 the password; see [Pausing protection](#pausing-protection).
 
+The window is a console rather than one long page: a navigation rail with
+**Overview**, **Browsers**, **Blocking** and **Schedule & time** (`Ctrl+1` to
+`Ctrl+4`), a toolbar carrying whatever acts on the open page, and a status bar.
+Nothing scrolls except the inside of a pane. The **?** beside a pane's title
+explains it, `/` jumps to the filter over the block lists, and `Ctrl+R` re-reads
+the state. The appearance button next to **Refresh** switches between **Follow
+system**, **Light** and **Dark** — the choice is per user, kept in
+`%AppData%\Extension Guard\ui.json`, and read before the window opens so a cold
+start does not flash the other theme.
+
 The **Protected extensions** list lets you turn each configured extension on or
 off after install: turning one **on** is free (it only adds protection), turning
 one **off** requires the password. Each toggle runs the guard elevated (UAC) and
@@ -160,10 +170,11 @@ anything is Reachable, because a window saying "protection active" over a browse
 that filters nothing is the one thing this app must not do. See
 [Browsers the guard cannot manage](#browsers-the-guard-cannot-manage).
 
-The **Time used** section shows how long each blocked application actually ran,
-today and over the last week, with a bar per day underneath. It is the one section
-that is a record rather than a control - there is nothing to click, and reading it
-needs neither admin nor the password. See [Time used](#time-used).
+The **Screen time** pane, on the Schedule & time page, shows how long each blocked
+application actually ran, today and over the last week, with **By day** charting
+the span beside it. It is the one pane that is a record rather than a control -
+there is nothing to click, and reading it needs neither admin nor the password.
+See [Time used](#time-used).
 
 The **Allowed sites only** section is the block list read the other way round -
 one box, one list, and a button that turns the mode on or off. Turning it on is
