@@ -46,17 +46,30 @@ The app makes exactly one kind of outbound request, and only for updates:
 You can turn this off entirely by setting `"autoUpdate": "off"` in
 `extension-ids.json`, after which the app makes no network requests at all.
 
-## No content filtering or data access
+## What it blocks, and what it never reads
 
-Ward does **not** read, filter, or transmit your browsing history or
-page content. The activity log records the guard's **own actions** — that a site
-was added to the block list, that a blocked application was closed — never which
-pages you visited or what was on them. A daily time limit counts how long an
-application you chose to limit was **running**, which is the minimum the limit
-needs in order to exist; it is not a record of what you did in that application,
-and nothing is counted for programs no limit covers. It only writes the browsers' enterprise "force-install" policy so
-the configured extensions cannot be removed. Any actual content filtering is done
-by those extensions, under their own privacy policies.
+Ward blocks. It does not watch. It writes policy that can stop a page from
+loading — a URL blocklist the browser obeys, and, if you enable it, DNS pinned to
+a filtering resolver — but it never reads, records, or transmits your browsing
+history or the contents of any page. Those are two different powers and it only
+takes the first.
+
+The activity log records the guard's **own actions** — that a site was added to
+the block list, that a blocked application was closed — never which pages you
+visited or what was on them. A daily time limit counts how long an application
+you chose to limit was **running**, which is the minimum the limit needs in order
+to exist; it is not a record of what you did in that application, and nothing is
+counted for programs no limit covers.
+
+One consequence worth stating plainly: turning on `dns-filter` points the
+*browser's* DNS at Cloudflare for Families, so from then on your name lookups are
+answered by Cloudflare instead of your ISP, under Cloudflare's privacy terms
+rather than this app's. Ward sends nothing there itself — it only tells the
+browser where to ask. Leave the setting off and nothing about DNS on your machine
+changes.
+
+Extensions that Ward locks in place do their own filtering, under their own
+privacy policies.
 
 ## Contact
 

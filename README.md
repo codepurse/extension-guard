@@ -1,24 +1,41 @@
 # Ward (PC version)
 
-A small native companion that **locks one or more browser extensions in place**
-so they can't be removed from the browser UI. It resists tampering (watchdog),
-requires a password to uninstall, and ships a small status window.
+A native parental-control and self-control tool for **Windows** and **Linux**. It
+blocks websites, applications and browsers, hardens the browser's own settings,
+holds all of it to a schedule and a daily budget, and resists being switched off:
+a watchdog restarts it, weakening it costs minutes of typing, and removing it
+needs a password.
 
-It does **no** content blocking itself — that all stays in the extensions it
-protects. This app just plants and guards the browser "force-install" enterprise
-policy for every extension listed in its config. It's product-neutral: point it
-at any set of store-published extensions (e.g. BlockNSFW and Sieve) and it locks
-them all with one install.
+It works by running as a privileged service *above* the browser, which is what
+makes any of this stick. An extension cannot prevent its own uninstall; a process
+with enterprise-policy rights can force-install one and grey out the Remove and
+Disable buttons. The same position lets it write a URL blocklist the browser
+obeys, pin DNS to a filtering resolver, and refuse to let an unmanaged browser run
+at all.
 
-It runs on **Windows** (registry + Service Control Manager) and **Linux**
-(managed policy files + systemd). The OS-specific code is selected automatically
-at build time by Go build tags (`*_windows.go` / `*_linux.go`), so it's one app,
-not two — see the **Linux** section below.
+Everything below is verified on a timer and re-applied if it is tampered with:
 
-> Why this works: a browser extension can't prevent its own uninstall, but a
-> privileged process *above* the browser can force-install it via policy, which
-> greys out the Remove/Disable buttons. See `docs/pc-version.md` for the full
-> picture.
+| Area | What is enforced |
+|---|---|
+| **Extensions** | force-installed by enterprise policy, un-removable from the browser UI |
+| **Sites** | per-browser `URLBlocklist`, subdomains included — or allowlist mode, where everything *else* is blocked |
+| **Apps** | matched on the name compiled into the executable, so renaming the file does not help |
+| **Browsers** | the ones it cannot filter are blocked outright, rather than left as a hole |
+| **Browser settings** | private and guest windows off, SafeSearch forced, DNS pinned to a filtering resolver |
+| **Schedules** | named windows — days, start, end — instead of always-on |
+| **Time limits** | a daily budget per block, counted by watching processes, against the real day |
+
+It stays product-neutral about the extensions it locks: point it at any set of
+store-published extensions (e.g. BlockNSFW and Sieve) and it locks them all with
+one install.
+
+The OS-specific code is selected at build time by Go build tags
+(`*_windows.go` / `*_linux.go`) — Windows uses the registry and the Service
+Control Manager, Linux uses managed-policy files and systemd — so this is one
+app, not two. See the **Linux** section below.
+
+> `docs/pc-version.md` has the full picture of why a process above the browser is
+> the only place this can be enforced from.
 
 ## Status — milestone roadmap
 
@@ -111,10 +128,13 @@ quarantine it. Here's the honest *why*, and how to check for yourself.
    password can remove it. See [docs/signing.md](docs/signing.md) for the full
    story, the signing plan, and how false positives are reported.
 
-**What it does — and doesn't:** it only writes the browsers' enterprise
-"force-install" policy and keeps it applied. It does **no** content filtering
-itself (the extensions do that), collects **no** personal data, and makes **no**
-network calls except checking GitHub for updates.
+**What it does — and doesn't:** it writes browser and system policy —
+force-install, URL blocklists, hardened browser settings — keeps it applied, and
+blocks the applications and unmanaged browsers you have listed. It collects **no**
+personal data and sends nothing anywhere: the only calls it makes are the update
+check and the announcement banner. The one exception worth naming is `dns-filter`,
+and it is not the guard calling out — it points the *browser's* DNS at Cloudflare
+for Families, so name resolution goes there instead of to your ISP.
 
 **Don't take our word for it — verify:**
 

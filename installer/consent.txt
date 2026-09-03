@@ -3,19 +3,32 @@ Ward - what this installs and what it does
 Ward is a parental-control / accountability tool. By installing it you
 acknowledge and agree to the following:
 
-1. This software keeps the configured browser extension(s) force-installed in your
-   web browsers using Windows enterprise policy. While it is active, the
-   extension cannot be removed from the browser's normal Remove/Disable buttons.
+1. This software enforces the restrictions configured on this device, using
+   Windows enterprise policy and system-level filtering. Depending on what is
+   configured, that can include: keeping browser extensions force-installed so
+   they cannot be removed from the browser's normal Remove/Disable buttons;
+   blocking websites; blocking chosen applications from running; blocking
+   browsers it is unable to filter; forcing browser settings such as disabling
+   private windows and requiring SafeSearch; and holding any of these to a
+   schedule or a daily time limit.
 
-2. It installs a background Windows service and a watchdog that restart
+2. If DNS filtering is enabled, this software points your browsers' DNS at
+   Cloudflare for Families. Your name lookups are then answered by Cloudflare
+   instead of your internet provider, under Cloudflare's terms.
+
+3. It keeps a local activity log of its own actions - what was blocked, what was
+   changed, when protection was paused. It does not record which pages you
+   visited or what was on them, and nothing leaves this device.
+
+4. It installs a background Windows service and a watchdog that restart
    themselves if stopped or killed. This is intentional: it is what prevents the
    protection from being switched off in a moment of weakness.
 
-3. Removing this software requires the uninstall password set during this setup.
+5. Removing this software requires the uninstall password set during this setup.
    That password should be held by the parent or accountability partner, not by
    the person whose browsing is being filtered.
 
-4. You should install this only on a device you own or administer, or with the
+6. You should install this only on a device you own or administer, or with the
    clear consent of the device's owner/user. Installing software that resists
    removal on someone else's device without their knowledge may be unlawful.
 
