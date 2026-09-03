@@ -61,6 +61,17 @@ type GeckoBrowser struct {
 
 // BrowserNames lists browsers the way a sentence does: "Firefox", or "Firefox
 // and Zen". Empty for an empty list, so a caller can test it and say nothing.
+// BrowserNameList is BrowserNames without the joining: the names on their own,
+// for a caller that renders them itself rather than dropping them into a
+// sentence.
+func BrowserNameList(list []GeckoBrowser) []string {
+	out := make([]string, 0, len(list))
+	for _, b := range list {
+		out = append(out, b.Name)
+	}
+	return out
+}
+
 func BrowserNames(list []GeckoBrowser) string {
 	names := make([]string, 0, len(list))
 	for _, b := range list {

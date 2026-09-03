@@ -20,6 +20,19 @@ var chromiumPolicyRoot = map[Kind]string{
 
 const forcelistSubkey = `ExtensionInstallForcelist`
 
+// geckoPrivateBrowsingValue is the one ExtensionSettings member that closes the
+// hole hardening.go exists for, in the Firefox family only: an add-on the guard
+// force-installs is still absent from a private window unless this says
+// otherwise, so without it "locked" means locked in ordinary windows and nowhere
+// else. Mozilla added it in Firefox 136 and ESR 128.8.
+//
+// Two facts make it safe to write unconditionally. Mozilla's policy engine reads
+// a registry DWORD as the boolean the schema asks for - the same encoding
+// DisablePrivateBrowsing already uses here - and it validates the members its
+// schema names rather than rejecting an object for carrying one it does not
+// know, so an older Firefox ignores this and force-installs exactly as before.
+const geckoPrivateBrowsingValue = "private_browsing"
+
 // appPathExe is the executable name used to detect each browser via the
 // Windows "App Paths" registry.
 var appPathExe = map[Kind]string{
@@ -122,13 +135,24 @@ func applyGecko(g GeckoBrowser, targets []Target) error {
 			key.Close()
 			return err
 		}
+		if err := key.SetDWordValue(geckoPrivateBrowsingValue, 1); err != nil {
+			key.Close()
+			return err
+		}
 		key.Close()
 	}
 	return nil
 }
 
 // firefoxEntryCorrect reports whether the ExtensionSettings key at path already
-// force-installs installURL, so applyGecko can leave it alone.
+// force-installs installURL into every window, so applyGecko can leave it alone.
+//
+// private_browsing counts towards "correct" rather than being written once and
+// forgotten, and that is what makes it tamper-proof for free: deleting the value
+// leaves the add-on installed and silently absent from private windows, which
+// this would otherwise read as a key that is already right. Saying it here costs
+// one rewrite on the upgrade that introduces it, on a machine that already had
+// the entry.
 func firefoxEntryCorrect(path, installURL string) bool {
 	key, err := registry.OpenKey(registry.LOCAL_MACHINE, path, registry.QUERY_VALUE)
 	if err != nil {
@@ -137,6 +161,9 @@ func firefoxEntryCorrect(path, installURL string) bool {
 	defer key.Close()
 	mode, _, _ := key.GetStringValue("installation_mode")
 	url, _, _ := key.GetStringValue("install_url")
+	if private, _, err := key.GetIntegerValue(geckoPrivateBrowsingValue); err != nil || private != 1 {
+		return false
+	}
 	return mode == "force_installed" && url == installURL
 }
 

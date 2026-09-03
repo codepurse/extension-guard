@@ -25,14 +25,15 @@ import (
 )
 
 const (
-	stateKeyPath  = `SOFTWARE\ExtensionGuard`
-	disabledValue = "GuardDisabled"
-	updatingValue = "GuardUpdating"
-	passwordValue = "PasswordHash"
-	frictionValue = "FrictionChars"
-	pausedValue   = "GuardPausedUntil"
-	trustedValue  = "TrustedConfig"
-	resetPeriod   = uint32(24 * 60 * 60) // recovery failure-count reset window (seconds)
+	stateKeyPath    = `SOFTWARE\ExtensionGuard`
+	disabledValue   = "GuardDisabled"
+	updatingValue   = "GuardUpdating"
+	passwordValue   = "PasswordHash"
+	frictionValue   = "FrictionChars"
+	pausedValue     = "GuardPausedUntil"
+	trustedValue    = "TrustedConfig"
+	staleGeckoValue = "StaleGecko"
+	resetPeriod     = uint32(24 * 60 * 60) // recovery failure-count reset window (seconds)
 )
 
 // Harden configures the service to auto-restart on failure and to start
@@ -292,6 +293,16 @@ func GetTrustedConfig() ([]byte, bool) {
 	}
 	return []byte(s), true
 }
+
+// SetStaleGecko records which Firefox-family browser instances were running when
+// the browser policy was last written, as "kind:pid" pairs. Written by whatever
+// privileged process did the writing - the elevated CLI or the service - and read
+// unprivileged by the status window, which is why it lives here rather than in a
+// file next to the config.
+func SetStaleGecko(v string) error { return setStringIn(registry.LOCAL_MACHINE, staleGeckoValue, v) }
+
+// GetStaleGecko returns what SetStaleGecko last recorded.
+func GetStaleGecko() (string, bool) { return getStringIn(registry.LOCAL_MACHINE, staleGeckoValue) }
 
 // ClearTrustedConfig removes the trusted copy (called after a verified
 // uninstall, alongside the password hash).

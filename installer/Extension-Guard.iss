@@ -24,6 +24,17 @@ AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher=monolab
 DefaultDirName={autopf}\Extension Guard
+; Both binaries are 64-bit Go builds. Without these two lines Inno runs the
+; installer in 32-bit mode, {autopf} resolves to "Program Files (x86)", and a
+; 64-bit program lands in the directory Windows keeps for 32-bit ones. It works
+; there, which is why this went unnoticed - it is just wrong, and it is the sort
+; of wrong that makes someone reading the install path doubt everything else.
+; x64compatible rather than x64os so ARM64 machines, which run x64 under
+; emulation, still install. An existing install keeps the directory it already
+; has: the AppId is unchanged and UsePreviousAppDir defaults to yes, so an
+; upgrade over the x86 copy stays put rather than silently forking into two.
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
 DisableProgramGroupPage=yes
 PrivilegesRequired=admin
 OutputDir=output
@@ -76,6 +87,62 @@ Filename: "{app}\extension-guard-status.exe"; Description: "Open the Extension G
 var
   PwPage: TInputQueryWizardPage;
 
+{ ---- The 32-bit install this version supersedes ---- }
+{
+  ArchitecturesInstallIn64BitMode moved Setup into the 64-bit registry view, and
+  an install made before that lives in the 32-bit one. Inno cannot see it from
+  here - the AppId key it reads for UsePreviousAppDir is simply not there - so
+  without help an upgrade becomes a second, parallel copy: two sets of binaries,
+  two entries in Installed apps, and a service only one of them owns.
+
+  So Setup migrates it instead of asking anybody to do anything. The config is
+  carried across before the guard reads it, and the old copy is retired once the
+  new service is confirmed running.
+
+  Retiring it directly, rather than through its own uninstaller, is the whole
+  point: that uninstaller is password-gated and clears the stored password and
+  the trusted config with it. That is correct for someone removing protection and
+  wrong for an upgrade that is keeping it - an upgrade must not ask for the
+  password, and must not cost the machine its rules.
+}
+const
+  LegacyUninstallKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{6B2C9E4A-3F71-4B8E-9C2D-5A1E7F0D9C34}_is1';
+  StateKey = 'SOFTWARE\ExtensionGuard';
+  { The sentinel internal/guardsvc's watchdog already watches for, and the name
+    of the service it guards. Read by the copy of the guard *already installed*,
+    which is why this is done here in registry terms rather than through a new
+    guard.exe verb: the binary on disk during an upgrade is the old one, and a
+    verb it has never heard of is no use for the upgrade that needs it most. }
+  UpdatingValue = 'GuardUpdating';
+  GuardService  = 'ExtensionGuard';
+  { watchdogInterval is five seconds; this gives it a full cycle and some slack
+    to notice the sentinel and exit. }
+  StandDownMs = 8000;
+
+var
+  LegacyDir: String;   { '' when there is no 32-bit install to migrate }
+  IsUpgrade: Boolean;  { the guard has been set up on this machine before }
+  StoodDown: Boolean;  { the sentinel was set and the service stopped }
+  ServiceUp: Boolean;  { install-service ran and the service is back up }
+
+function InitializeSetup(): Boolean;
+var
+  loc, hash: String;
+begin
+  Result := True;
+  IsUpgrade := RegQueryStringValue(HKLM64, StateKey, 'PasswordHash', hash) and (hash <> '');
+
+  LegacyDir := '';
+  if not RegQueryStringValue(HKLM32, LegacyUninstallKey, 'InstallLocation', loc) then
+    Exit;
+  loc := RemoveBackslashUnlessRoot(loc);
+  { Only ever treat a directory that actually holds this program as ours to
+    remove. InstallLocation is just a string in a registry key, and the step it
+    feeds is a recursive delete. }
+  if (loc <> '') and FileExists(loc + '\guard.exe') then
+    LegacyDir := loc;
+end;
+
 procedure InitializeWizard;
 begin
   PwPage := CreateInputQueryPage(wpLicense,
@@ -85,6 +152,16 @@ begin
     'It will be required to uninstall Extension Guard.');
   PwPage.Add('Password:', True);          { True = masked }
   PwPage.Add('Confirm password:', True);
+end;
+
+{ An upgrade already has a password and a set of locked extensions, and asking
+  again for either is friction that changes nothing: `guard install-service`
+  keeps the password it already stored and ignores anything passed to it, and
+  re-running `select` from the wizard defaults would quietly re-enable an
+  extension the user had turned off. So on an upgrade neither page is shown. }
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := IsUpgrade and ((PageID = PwPage.ID) or (PageID = wpSelectComponents));
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
@@ -121,27 +198,138 @@ begin
   Result := sel;
 end;
 
+{ ---- Stand the running guard down so its binary can be replaced ----
+
+  Windows holds an image-section lock on a running executable: it can be renamed,
+  but it cannot be deleted or written over. Both the service and its watchdog run
+  from the installed guard.exe, so on an upgrade Setup's first [Files] entry failed
+  with "An error occurred while trying to replace the existing file: DeleteFile
+  failed; code 5. Access is denied", and the machine quietly stayed on the old
+  build with the new one never installed.
+
+  Stopping the service alone does not fix it, and is why this needs the sentinel:
+  the watchdog notices a stopped service within watchdogInterval and starts it
+  again, and the watchdog's own process holds the same binary open meanwhile. The
+  sentinel is what makes the watchdog exit instead - it is the one the in-app
+  updater sets for exactly this reason before it swaps the binaries itself, and
+  the guard already on disk honours it.
+
+  This has to happen here rather than in install-service, which knows how to take
+  over from a previous registration but runs at ssPostInstall - after the copy
+  that could not happen. PrepareToInstall is the last hook before any file is
+  touched. }
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  resultCode: Integer;
+begin
+  Result := '';
+  if not FileExists(ExpandConstant('{app}\guard.exe')) then
+    Exit;  { a first install has nothing running to stand down }
+
+  RegWriteDWordValue(HKLM64, StateKey, UpdatingValue, 1);
+  StoodDown := True;
+  Sleep(StandDownMs);
+
+  { net stop rather than sc stop: sc returns as soon as the SCM accepts the
+    request, which is not the same as the process having exited and let go of the
+    file. A service that was not running reports an error here, and that is the
+    state this wants anyway, so the result is not checked - the copy that follows
+    is the real test of whether the binary is free. }
+  Exec(ExpandConstant('{sys}\net.exe'), 'stop ' + GuardService,
+    '', SW_HIDE, ewWaitUntilTerminated, resultCode);
+end;
+
+{ Setup can end at any point after that stand-down: a copy that still failed, a
+  cancelled wizard, an install-service that could not run. Every one of those
+  would otherwise leave the sentinel set and the service stopped - protection
+  off, the watchdog gone, and nothing to turn either back on before the next
+  reboot. Unless the post-install step got the service running again, put the
+  machine back the way it was found. }
+procedure DeinitializeSetup();
+var
+  resultCode: Integer;
+begin
+  if StoodDown and not ServiceUp then
+  begin
+    RegWriteDWordValue(HKLM64, StateKey, UpdatingValue, 0);
+    Exec(ExpandConstant('{sys}\net.exe'), 'start ' + GuardService,
+      '', SW_HIDE, ewWaitUntilTerminated, resultCode);
+  end;
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   resultCode: Integer;
-  sel: String;
+  sel, pw: String;
 begin
   if CurStep = ssPostInstall then
   begin
-    { Filter the installed config down to the chosen extensions before the
-      service reads it, so only those get force-installed and locked. }
-    sel := SelectedExtensions();
-    if sel <> '' then
-      Exec(ExpandConstant('{app}\guard.exe'),
-        '-config "' + ExpandConstant('{app}\extension-ids.json') + '" -extensions "' + sel + '" select',
-        '', SW_HIDE, ewWaitUntilTerminated, resultCode);
+    { Carry the existing config across before anything reads it.
+
+      The trusted copy in the registry survives a move of the install directory
+      on its own - guard.exe is 64-bit either way and writes it to the registry,
+      nowhere near the install directory - but an install old enough to predate
+      the trusted store has only
+      this file, and letting the shipped template stand would silently drop that
+      machine's rules. }
+    if (LegacyDir <> '') and FileExists(LegacyDir + '\extension-ids.json') then
+      CopyFile(LegacyDir + '\extension-ids.json', ExpandConstant('{app}\extension-ids.json'), False);
+
+    { The service is installed first, and everything below only runs if that
+      succeeded. The other way round cost a real machine its blocks: `select`
+      commits the config it writes to the trusted store, so when install-service
+      then failed, Setup had already replaced what the machine enforces - and
+      went on to report success over it. Nothing here may touch the enforced
+      config, or retire the old install, until the step that can actually fail
+      has passed. }
+    pw := '';
+    if not IsUpgrade then
+      pw := ' -password "' + PwPage.Values[0] + '"';
 
     if not Exec(ExpandConstant('{app}\guard.exe'),
-      '-config "' + ExpandConstant('{app}\extension-ids.json') + '" -password "' + PwPage.Values[0] + '" install-service',
+      '-config "' + ExpandConstant('{app}\extension-ids.json') + '"' + pw + ' install-service',
       '', SW_HIDE, ewWaitUntilTerminated, resultCode) then
-      MsgBox('Failed to launch the guard service installer.', mbError, MB_OK)
+      MsgBox('Could not start the guard service installer.' + #13#10#13#10 +
+        'The files are installed, but nothing is being enforced yet. Nothing else on this machine was changed.',
+        mbError, MB_OK)
     else if resultCode <> 0 then
-      MsgBox('The guard service could not be installed (exit code ' + IntToStr(resultCode) + ').', mbError, MB_OK);
+      MsgBox('The guard service could not be installed (exit code ' + IntToStr(resultCode) + ').' + #13#10#13#10 +
+        'The files are installed, but nothing is being enforced yet. Nothing else on this machine was changed.' + #13#10#13#10 +
+        'Run this from an administrator command prompt to see why:' + #13#10 +
+        ExpandConstant('"{app}\guard.exe" install-service'),
+        mbError, MB_OK)
+    else
+    begin
+      { The service is registered and started again, so the stand-down above is
+        over: the service clears the sentinel itself as the first thing it does
+        on start, and spawns a fresh watchdog from the new binary. Nothing for
+        DeinitializeSetup to put back. }
+      ServiceUp := True;
+
+      { First install only: filter the config down to the chosen extensions, so
+        only those stay force-installed and locked. An upgrade keeps whatever the
+        machine is already enforcing - see ShouldSkipPage. }
+      if not IsUpgrade then
+      begin
+        sel := SelectedExtensions();
+        if sel <> '' then
+          Exec(ExpandConstant('{app}\guard.exe'),
+            '-config "' + ExpandConstant('{app}\extension-ids.json') + '" -extensions "' + sel + '" select',
+            '', SW_HIDE, ewWaitUntilTerminated, resultCode);
+      end;
+
+      { The 32-bit copy is redundant now: its files are superseded, and the
+        service registration it owned has just been replaced by install-service,
+        which stops the old service before removing it - so nothing in there is
+        still running. A file that is somehow still locked simply stays; the
+        uninstall entry is what matters, because two of those in Installed apps
+        is what makes somebody uninstall the wrong one. }
+      if LegacyDir <> '' then
+      begin
+        DelTree(LegacyDir, True, True, True);
+        RegDeleteKeyIncludingSubkeys(HKLM32, LegacyUninstallKey);
+      end;
+    end;
   end;
 end;
 

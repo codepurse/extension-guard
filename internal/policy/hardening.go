@@ -20,6 +20,23 @@ import (
 // refuses to ship, and it is the same failure browsers.go exists to report for a
 // browser the guard cannot filter at all.
 //
+// How wide that hole is depends on the browser, and the answer has changed:
+//
+//   - The Firefox family no longer has it. Mozilla added private_browsing to
+//     ExtensionSettings in Firefox 136 and ESR 128.8, so the guard force-enables
+//     the add-on in private windows outright, with no switch and nothing for the
+//     user to agree to. That is written by the extension enforcer next to
+//     installation_mode, not from here, because it takes no feature away and so
+//     is part of force-installing rather than a setting to opt into.
+//   - Edge can be told to refuse InPrivate navigation until the user allows the
+//     extension there - MandatoryExtensionsForInPrivateNavigation, Edge 139. That
+//     keeps InPrivate working and filtered instead of removing it, so it is the
+//     softer of the two remedies and gets its own knob.
+//   - Chrome and Brave still have it whole. Google's equivalent policy exists but
+//     is declared for ChromeOS only, so writing it on a desktop would be the
+//     exact failure gecko.go warns about: a policy that verifies perfectly and
+//     enforces nothing. Turning Incognito off remains the only lever there.
+//
 // The second knob here is different in kind. SafeSearch is not a hole in
 // anything - it is filtering the guard can perform with the mechanism it already
 // owns, for free, because it is one more value in the same policy hive the tamper
@@ -50,6 +67,10 @@ type Hardening struct {
 	// the guard is managing it, which everywhere else in this config means more
 	// protection rather than less.
 	PrivateBrowsing bool `json:"privateBrowsing,omitempty"`
+	// PrivateExtensions requires the locked extensions to be allowed in a private
+	// window before that window will navigate, rather than removing private
+	// windows. Edge only - see KnobPrivateExtensions.
+	PrivateExtensions bool `json:"privateExtensions,omitempty"`
 	// SafeSearch is "", "off", "moderate" or "strict". Empty and "off" both mean
 	// the guard does not manage it.
 	SafeSearch string `json:"safeSearch,omitempty"`
@@ -124,9 +145,10 @@ func LookupResolver(id string) (Resolver, bool) {
 
 // Hardening knob ids, as the CLI and the status window name them.
 const (
-	KnobPrivateBrowsing = "private-browsing"
-	KnobSafeSearch      = "safe-search"
-	KnobDNSFilter       = "dns-filter"
+	KnobPrivateBrowsing   = "private-browsing"
+	KnobPrivateExtensions = "private-extensions"
+	KnobSafeSearch        = "safe-search"
+	KnobDNSFilter         = "dns-filter"
 )
 
 // Knob is one hardening switch: what it is called, and what it does and does not
@@ -137,6 +159,12 @@ type Knob struct {
 	ID    string
 	Label string
 	Note  string
+	// Gap replaces the reason Gaps() gives for the browsers a knob cannot reach.
+	// The default sentence - "there is no policy for it" - is true of every knob
+	// here but one, and saying it of a browser that needs no policy because the
+	// guard already covers it another way would send a reader looking for a hole
+	// that is not there.
+	Gap string
 }
 
 // Knobs is every hardening switch, in the order they are listed.
@@ -145,12 +173,38 @@ var Knobs = []Knob{
 		ID:    KnobPrivateBrowsing,
 		Label: "Private browsing and guest profiles",
 		Note: "This is the bypass that makes a locked extension optional: an extension cannot be " +
-			"force-installed into an Incognito or private window, and a guest profile carries no " +
-			"extensions at all, so every filter the guard installs is one keystroke from being off. " +
-			"Turning this on disables private windows and guest profiles in Chrome, Edge, Brave, " +
-			"Firefox and Zen. It does not cover a browser the guard writes no policy for - run " +
-			"`guard browsers` for those - and it leaves ordinary named profiles alone, which need no " +
-			"blocking because a machine-wide force-install reaches all of them.",
+			"force-installed into a Chrome, Edge or Brave Incognito window, and a guest profile " +
+			"carries no extensions at all, so every filter the guard installs in those browsers is " +
+			"one keystroke from being off. Turning this on disables private windows and guest " +
+			"profiles in Chrome, Edge, Brave, Firefox and Zen. The Firefox family is the one place " +
+			"this is no longer the only answer - the guard force-enables the add-on in private " +
+			"windows there, so Firefox and Zen are already covered whether or not this is on, and " +
+			"turning it on removes the window rather than closing a hole. In Edge, `" +
+			KnobPrivateExtensions + "` is the narrower alternative. It does not cover a browser the " +
+			"guard writes no policy for - run `guard browsers` for those - and it leaves ordinary " +
+			"named profiles alone, which need no blocking because a machine-wide force-install " +
+			"reaches all of them.",
+	},
+	{
+		ID:    KnobPrivateExtensions,
+		Label: "Extensions required in private windows",
+		Gap:   "see the note on this setting for what covers each of them instead",
+		Note: "The same hole as `" + KnobPrivateBrowsing + "`, closed without taking the window " +
+			"away: InPrivate keeps working, but refuses to navigate until the locked extensions are " +
+			"allowed to run in it. The user is the one who allows them, on Edge's own extensions " +
+			"page, and until they do InPrivate opens and goes nowhere - so it cannot be used as a " +
+			"way past the filters, and it is not removed either. Prefer it to `" +
+			KnobPrivateBrowsing + "` when InPrivate is something the person here has a real use for; " +
+			"prefer `" + KnobPrivateBrowsing + "` when it is not, because that one needs nobody's " +
+			"cooperation. Turning both on is not an error and not useful: with private browsing " +
+			"blocked there is no InPrivate window left for this to hold up. " +
+			"Where it applies is narrow and worth reading twice. Edge only, and only Edge 139 and " +
+			"newer - an older Edge ignores it and InPrivate stays open. Chrome and Brave are not " +
+			"covered: Google's equivalent policy is declared for ChromeOS and not for desktop, and " +
+			"writing it here would report a setting that enforces nothing, so the guard does not " +
+			"write it. Firefox and Zen need nothing - the add-on is force-enabled in their private " +
+			"windows already. So on a machine where Chrome is the browser that matters, this " +
+			"setting changes nothing and `" + KnobPrivateBrowsing + "` is still the only answer.",
 	},
 	{
 		ID:    KnobSafeSearch,
@@ -208,8 +262,15 @@ var Knobs = []Knob{
 // pretending the browser is unsupported.
 var knobSupport = map[string][]Kind{
 	KnobPrivateBrowsing: {Chrome, Edge, Brave, Firefox, Zen},
-	KnobSafeSearch:      {Chrome, Edge, Brave},
-	KnobDNSFilter:       {Chrome, Edge, Brave, Firefox, Zen},
+	// private-extensions is Edge's alone, and both halves of that are facts about
+	// the browsers rather than about this program. Chrome and Brave: Chromium
+	// declares MandatoryExtensionsForIncognitoNavigation for ChromeOS only, so on a
+	// desktop it is a policy that would be written, verified and ignored. Firefox
+	// and Zen: nothing to require, because the extension enforcer force-enables the
+	// add-on in their private windows outright.
+	KnobPrivateExtensions: {Edge},
+	KnobSafeSearch:        {Chrome, Edge, Brave},
+	KnobDNSFilter:         {Chrome, Edge, Brave, Firefox, Zen},
 }
 
 // KnobSupported reports whether a knob can be enforced in a browser at all.
@@ -236,6 +297,30 @@ func KnobSupported(id string, k Kind) bool {
 	return false
 }
 
+// mandatoryPrivateIDs is the extension ids this browser should require in a
+// private window - which is every extension it is actually force-installing, and
+// nothing at all for a browser that cannot be told to require anything.
+//
+// It reads the same targets the forcelist writer does, through the same "is this
+// target applyable" check, so the two cannot disagree about which extensions
+// exist. Requiring an id that is not being force-installed would be worse than
+// pointless: Edge blocks InPrivate navigation when a required extension is not
+// installed, so a placeholder left in the config would turn into an InPrivate
+// window that can never work, no matter what the user allows.
+func mandatoryPrivateIDs(cfg Config, k Kind) []string {
+	if !KnobSupported(KnobPrivateExtensions, k) {
+		return nil
+	}
+	out := make([]string, 0, 2)
+	for _, t := range cfg.Targets(k) {
+		if _, err := chromiumForcelistValue(t); err != nil {
+			continue
+		}
+		out = append(out, t.ExtensionID)
+	}
+	return out
+}
+
 // Gaps lists, in words, every browser a knob that is currently on cannot be
 // enforced in. It is printed by `guard hardening` next to the settings rather
 // than left to the knob's note, because a gap that only appears in documentation
@@ -253,8 +338,12 @@ func (h Hardening) Gaps() []string {
 			}
 		}
 		if len(missing) > 0 {
-			out = append(out, fmt.Sprintf("%s is not enforced in %s - there is no policy for it",
-				knob.ID, strings.Join(missing, ", ")))
+			reason := knob.Gap
+			if reason == "" {
+				reason = "there is no policy for it"
+			}
+			out = append(out, fmt.Sprintf("%s is not enforced in %s - %s",
+				knob.ID, strings.Join(missing, ", "), reason))
 		}
 	}
 	return out
@@ -275,8 +364,25 @@ func (h Hardening) Gaps() []string {
 // machine with no lock to sidestep - and a warning that is always on teaches the
 // reader to skip past it on the day it means something. That is the same
 // gating decision VanishedBrowsers makes for a browser whose executable is gone.
+// It is also asked per browser rather than once, which it did not have to be
+// until the answer stopped being the same everywhere. A machine locking only
+// Firefox has no hole to warn about - the add-on runs in its private windows -
+// and warning anyway would be the always-on warning this comment refuses.
 func (c Config) PrivateBrowsingOpen() bool {
-	return c.LockingAnything() && !c.Hardened().PrivateBrowsing
+	h := c.Hardened()
+	if h.PrivateBrowsing {
+		return false
+	}
+	for _, k := range ChromiumKinds {
+		if len(chromiumForcelistValues(c.Targets(k))) == 0 {
+			continue
+		}
+		if k == Edge && h.PrivateExtensions {
+			continue // InPrivate will not navigate without the extension
+		}
+		return true
+	}
+	return false
 }
 
 // LockingAnything reports whether any enabled extension has a usable target for
@@ -391,7 +497,7 @@ func (h Hardening) SafeSearchOn() (string, bool) {
 func (h Hardening) Any() bool {
 	_, safe := h.SafeSearchOn()
 	_, dns := h.DNSFilterOn()
-	return h.PrivateBrowsing || safe || dns
+	return h.PrivateBrowsing || h.PrivateExtensions || safe || dns
 }
 
 // On reports whether one knob is on, by id.
@@ -399,6 +505,8 @@ func (h Hardening) On(id string) bool {
 	switch id {
 	case KnobPrivateBrowsing:
 		return h.PrivateBrowsing
+	case KnobPrivateExtensions:
+		return h.PrivateExtensions
 	case KnobSafeSearch:
 		_, on := h.SafeSearchOn()
 		return on
@@ -417,6 +525,13 @@ func (h Hardening) Describe(id string) string {
 	case KnobPrivateBrowsing:
 		if h.PrivateBrowsing {
 			return "blocked"
+		}
+	case KnobPrivateExtensions:
+		// "required" rather than "on", because which of the two private-window
+		// settings is in force is exactly what a reader needs to tell apart: this
+		// one leaves the window open and holds it up, the other removes it.
+		if h.PrivateExtensions {
+			return "required"
 		}
 	case KnobSafeSearch:
 		if level, on := h.SafeSearchOn(); on {
@@ -506,6 +621,11 @@ func (c *Config) SetKnob(id string, on bool, level string) (bool, error) {
 			return false, fmt.Errorf("%s takes no level", knob.ID)
 		}
 		want.PrivateBrowsing = on
+	case KnobPrivateExtensions:
+		if strings.TrimSpace(level) != "" {
+			return false, fmt.Errorf("%s takes no level", knob.ID)
+		}
+		want.PrivateExtensions = on
 	case KnobSafeSearch:
 		if !on {
 			if strings.TrimSpace(level) != "" {
@@ -550,7 +670,8 @@ func (c *Config) SetKnob(id string, on bool, level string) (bool, error) {
 	// unrelated strengthening until the file is hand-fixed.
 	wantLevel, _ := NormalizeSafeSearch(want.SafeSearch)
 	wantDNS, _ := NormalizeDNSFilter(want.DNSFilter)
-	if want.PrivateBrowsing == before.PrivateBrowsing && wantLevel == before.SafeSearch && wantDNS == before.DNSFilter {
+	if want.PrivateBrowsing == before.PrivateBrowsing && want.PrivateExtensions == before.PrivateExtensions &&
+		wantLevel == before.SafeSearch && wantDNS == before.DNSFilter {
 		return false, nil
 	}
 	want.SafeSearch = wantLevel

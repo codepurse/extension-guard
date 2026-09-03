@@ -14,7 +14,7 @@ extension:
 - **Chromium** (Chrome, Edge, Brave): `ExtensionInstallForcelist` under
   `HKLM\SOFTWARE\Policies\<vendor>\<browser>`.
 - **Firefox family** (Firefox, Zen): `ExtensionSettings` with
-  `installation_mode = force_installed` under
+  `installation_mode = force_installed` and `private_browsing = 1` under
   `HKLM\SOFTWARE\Policies\Mozilla\<application name>` — that is
   `...\Mozilla\Firefox` and `...\Mozilla\Zen`. A fork reads the same policies
   from a key named after itself, and installs the same add-on from
@@ -24,6 +24,13 @@ extension:
   binary — see `internal/policy/gecko.go`.
 
 A force-installed extension shows **no Remove or Disable button** in the browser.
+
+`private_browsing` is the Firefox family's alone, and it is what makes the lock
+cover private windows as well as ordinary ones — Mozilla added it in Firefox 136
+and ESR 128.8, and older builds ignore the member rather than rejecting the entry.
+Chromium has no equivalent: an extension cannot be force-installed into Incognito
+there at all, which is what the `private-browsing` and `private-extensions`
+settings in the README exist to answer.
 
 ## Why a registry key alone isn't enough
 

@@ -130,6 +130,11 @@ func applyFirefox(targets, inactive []Target) error {
 		extSettings[t.AddonID] = map[string]any{
 			"installation_mode": "force_installed",
 			"install_url":       t.InstallURL,
+			// The member that makes the lock reach private windows too - see
+			// geckoPrivateBrowsingValue in the Windows writer for why it is written
+			// unconditionally. A policies.json is read as JSON, so this is a real
+			// boolean rather than the registry's 0/1.
+			"private_browsing": true,
 		}
 	}
 	// Drop anything switched off. policies.json is shared with policies we did not

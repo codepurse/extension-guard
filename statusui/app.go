@@ -82,6 +82,13 @@ type Status struct {
 	// whatsoever when it is false, and the window must not print a clean bill of
 	// health for a scan that never ran. See policy.BrowserScanSupported.
 	UnmanagedScanned bool `json:"unmanagedScanned"`
+
+	// StaleGecko names the Firefox-family browsers that are still running the
+	// instance that was open when the rules last changed. They show what they read
+	// at startup and cannot be told to re-read, so the window carries a standing
+	// notice for as long as this is non-empty - the one caveat that outlives the
+	// message confirming the change.
+	StaleGecko []string `json:"staleGecko"`
 	// UsageError is set when the daily-limit counters could not be read. Every
 	// limit then counts as used up (policy.Spent fails closed), which looks like a
 	// fault from the outside unless the window says what happened.
@@ -297,6 +304,14 @@ type ExtensionRow struct {
 type ActionResult struct {
 	OK      bool   `json:"ok"`
 	Message string `json:"message"`
+	// Restart names the browsers that will not see this change until they are
+	// restarted, or "" when there are none. It is a field of its own rather than a
+	// sentence glued onto Message because the two have different lifetimes: the
+	// message is a confirmation and can fade, while this is an outstanding
+	// instruction and has to stay on screen until it is dealt with. Gluing them
+	// together is what made the caveat disappear seven seconds after a UAC prompt
+	// the user was still looking at.
+	Restart string `json:"restart,omitempty"`
 }
 
 // BrowserRow is one row in the status list.
@@ -543,7 +558,11 @@ func (a *App) GetStatus() Status {
 			row.Level, _ = hardened.SafeSearchOn()
 		}
 		if missing := hardeningMissing(knob.ID); missing != "" {
-			row.Gap = "Not enforced in " + missing + " - there is no policy for it."
+			reason := knob.Gap
+			if reason == "" {
+				reason = "there is no policy for it"
+			}
+			row.Gap = "Not enforced in " + missing + " - " + reason + "."
 		}
 		hardening = append(hardening, row)
 	}
@@ -589,6 +608,7 @@ func (a *App) GetStatus() Status {
 		PrivateBrowsingOpen: a.cfg.PrivateBrowsingOpen(),
 		Unmanaged:           unmanaged,
 		UnmanagedScanned:    policy.BrowserScanSupported(),
+		StaleGecko:          policy.BrowserNameList(policy.StaleGecko()),
 		UsageError:          usageErr,
 		ScheduleError:       scheduleErr,
 	}
@@ -630,9 +650,9 @@ func (a *App) BlockDomain(name string) ActionResult {
 		// prompt to be told the same thing.
 		return ActionResult{Message: capitalize(err.Error())}
 	}
-	return a.execGuard(
+	return withRestartNote(a.execGuard(
 		[]string{"-config", a.cfgPath, "block-domain", name},
-		withRestartNote("Blocked, including every subdomain."))
+		"Blocked, including every subdomain."))
 }
 
 // UnblockDomain stops filtering a site, keeping it in the list so it can be
@@ -652,25 +672,34 @@ func (a *App) UnblockDomain(name, password string) ActionResult {
 		args = append(args, pw...)
 	}
 	args = append(args, "unblock-domain", name)
-	return a.execGuard(args, withRestartNote(name+" is no longer filtered."))
+	return withRestartNote(a.execGuard(args, name+" is no longer filtered."))
 }
 
-// withRestartNote adds the one caveat a site block still has. Chrome, Edge and
+// withRestartNote records the one caveat a site block still has. Chrome, Edge and
 // Brave are made to re-read their policy as part of applying the change, so they
 // honour it within a second or two - but Firefox and Zen read their policies only
 // when they start and offer no way to reload them, so a change made while one of
 // them is open does not reach it until it is restarted. Naming only the ones
-// actually running keeps the message off the machines it does not apply to.
-func withRestartNote(msg string) string {
+// actually running keeps the note off the machines it does not apply to.
+//
+// It is applied to the finished result rather than to the message beforehand, so
+// the browsers it names are the ones still running when the change landed.
+func withRestartNote(res ActionResult) ActionResult {
+	if !res.OK {
+		return res // nothing was applied, so there is nothing to restart for
+	}
 	running := policy.GeckoRunning()
 	if len(running) == 0 {
-		return msg
+		return res
 	}
-	verb, subject := "applies", "it starts"
+	verb, subject := "reads", "it starts"
 	if len(running) > 1 {
-		verb, subject = "apply", "they start"
+		verb, subject = "read", "they start"
 	}
-	return fmt.Sprintf("%s %s %s this the next time %s.", msg, policy.BrowserNames(running), verb, subject)
+	res.Restart = fmt.Sprintf("%s %s these rules only when %s, so this change is not active there yet. Restart %s to apply it.",
+		policy.BrowserNames(running), verb, subject,
+		map[bool]string{true: "them", false: "it"}[len(running) > 1])
+	return res
 }
 
 // BlockApp adds an application to the block list. Free of the password - it only
@@ -905,7 +934,7 @@ func (a *App) Harden(id, level, password string) ActionResult {
 		args = append(args, "-level", level)
 	}
 	args = append(args, "harden", knob.ID)
-	return a.execGuard(args, withRestartNote(knob.Label+" is pinned."))
+	return withRestartNote(a.execGuard(args, knob.Label+" is pinned."))
 }
 
 // HardenNeedsPassword lets the window ask for the password only when the change
@@ -938,9 +967,10 @@ func (a *App) Unharden(id, password string) ActionResult {
 	args = append(args, "unharden", knob.ID)
 	msg := knob.Label + " is no longer pinned."
 	if knob.ID == policy.KnobPrivateBrowsing {
-		msg += " Private windows work again, and a locked extension does not run in one."
+		msg += " Private windows work again, and in Chrome, Edge and Brave a locked extension" +
+			" does not run in one."
 	}
-	return a.execGuard(args, withRestartNote(msg))
+	return withRestartNote(a.execGuard(args, msg))
 }
 
 // AllowOnly turns the allowed-sites-only mode on or off.
@@ -978,7 +1008,7 @@ func (a *App) AllowOnly(on bool, password string) ActionResult {
 	} else if len(a.cfg.Allowing().AllowedSites()) == 0 {
 		msg = "Every site is blocked now - the allowlist is empty. Add the ones you need below."
 	}
-	return a.execGuard(args, withRestartNote(msg))
+	return withRestartNote(a.execGuard(args, msg))
 }
 
 // Allow lets a site through the mode. This is the one "add" in the window that
@@ -1009,7 +1039,7 @@ func (a *App) Allow(name, password string) ActionResult {
 		args = append(args, pw...)
 	}
 	args = append(args, "allow", name)
-	return a.execGuard(args, withRestartNote("Allowed, including every subdomain."))
+	return withRestartNote(a.execGuard(args, "Allowed, including every subdomain."))
 }
 
 // Unallow closes a site again. Free of the password - it only strengthens, the
@@ -1018,9 +1048,9 @@ func (a *App) Unallow(name string) ActionResult {
 	if strings.TrimSpace(name) == "" {
 		return ActionResult{Message: "No site selected."}
 	}
-	return a.execGuard(
+	return withRestartNote(a.execGuard(
 		[]string{"-config", a.cfgPath, "unallow", name},
-		withRestartNote(name+" is no longer allowed through."))
+		name+" is no longer allowed through."))
 }
 
 // AllowNeedsPassword lets the window prompt only when the change actually calls for

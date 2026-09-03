@@ -192,14 +192,14 @@ func TestWantedValuesEmptyWhenNothingAsked(t *testing.T) {
 // from "somebody asked and this browser cannot do it". Reporting the second as
 // "not configured" would hide a setting the user believes is enforced everywhere.
 func TestVerifyHardeningNotAvailable(t *testing.T) {
-	s := verifyHardeningOne(Status{Kind: Firefox}, mozillaPolicyPrefix+"Firefox", nil, true)
+	s := verifyHardeningOne(Status{Kind: Firefox}, mozillaPolicyPrefix+"Firefox", nil, "", nil, true)
 	if s.Locked {
 		t.Error("a browser that cannot enforce the setting reported it as enforced")
 	}
 	if s.Detail != "not available in firefox" {
 		t.Errorf("Detail = %q, want \"not available in firefox\"", s.Detail)
 	}
-	if s := verifyHardeningOne(Status{Kind: Firefox}, mozillaPolicyPrefix+"Firefox", nil, false); s.Detail != "not configured" {
+	if s := verifyHardeningOne(Status{Kind: Firefox}, mozillaPolicyPrefix+"Firefox", nil, "", nil, false); s.Detail != "not configured" {
 		t.Errorf("with nothing asked, Detail = %q, want \"not configured\"", s.Detail)
 	}
 }

@@ -8,6 +8,8 @@ import (
 	"sync/atomic"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/codepurse/extension-guard/internal/scm"
 )
 
 // Writing a browser policy key is not the same as the browser reading it. This
@@ -42,6 +44,13 @@ var (
 	procRefreshPolicyEx = modUserenv.NewProc("RefreshPolicyEx")
 )
 
+// Behind vars so a test can exercise the staleness bookkeeping without touching
+// the registry - the seam trust.go uses for the trusted store, for the reason.
+var (
+	setStaleGecko = scm.SetStaleGecko
+	getStaleGecko = scm.GetStaleGecko
+)
+
 // rpForce reapplies every setting rather than only the ones Windows believes
 // changed. A refresh is only requested after the guard has actually written a
 // key, so the extra work is bounded and worth the certainty.
@@ -72,11 +81,66 @@ func refreshBrowserPolicy() error {
 	if !browserPolicyDirty.Swap(false) {
 		return nil
 	}
+	// The Chromium browsers are about to be told to re-read. The Firefox family
+	// cannot be told anything, so note which of them are running right now: those
+	// instances are from here on serving rules they can no longer be given, and the
+	// window has to be able to say so for as long as that stays true.
+	recordStaleGecko()
 	if err := refreshPolicy(); err != nil {
 		browserPolicyDirty.Store(true)
 		return err
 	}
 	return nil
+}
+
+// recordStaleGecko stores the Firefox-family instances running at this moment,
+// as "kind:pid" pairs.
+//
+// The pid is what keeps this honest. Recording the browser alone would go on
+// warning after the user had restarted it - the very thing the warning asks for -
+// and a browser that has restarted is reading the current rules. A pid that is
+// gone matches nothing, so the warning clears itself without anything having to
+// remember to clear it.
+//
+// Best effort: it needs a privileged process, and is only ever called from one
+// that has just written HKLM policy. Where it fails, the note on the action
+// itself still stands.
+func recordStaleGecko() {
+	procs := runningGecko()
+	parts := make([]string, 0, len(procs))
+	for _, g := range procs {
+		parts = append(parts, fmt.Sprintf("%s:%d", g.browser.Kind, g.pid))
+	}
+	_ = setStaleGecko(strings.Join(parts, ","))
+}
+
+// StaleGecko lists the Firefox-family browsers still running the instance that
+// was open when the policy last changed - the ones showing rules that are no
+// longer the rules. Empty is the normal state, including on a machine where none
+// of them is open.
+func StaleGecko() []GeckoBrowser {
+	rec, ok := getStaleGecko()
+	if !ok || rec == "" {
+		return nil
+	}
+	recorded := make(map[string]bool)
+	for _, f := range strings.Split(rec, ",") {
+		if f != "" {
+			recorded[f] = true
+		}
+	}
+	var out []GeckoBrowser
+	seen := make(map[Kind]bool)
+	for _, g := range runningGecko() {
+		if seen[g.browser.Kind] {
+			continue
+		}
+		if recorded[fmt.Sprintf("%s:%d", g.browser.Kind, g.pid)] {
+			seen[g.browser.Kind] = true
+			out = append(out, g.browser)
+		}
+	}
+	return out
 }
 
 // refreshPolicy is the syscall, behind a var so a test can exercise the
@@ -103,6 +167,29 @@ func refreshMachinePolicy() error {
 // - a running browser nothing was written for has nothing to pick up on restart,
 // so naming it would be a caveat about a change that never applied to it.
 func GeckoRunning() []GeckoBrowser {
+	var out []GeckoBrowser
+	seen := make(map[Kind]bool)
+	for _, g := range runningGecko() {
+		if seen[g.browser.Kind] {
+			continue
+		}
+		seen[g.browser.Kind] = true
+		out = append(out, g.browser)
+	}
+	return out
+}
+
+// geckoProc is one running Firefox-family process: the browser it belongs to, and
+// the pid identifying this particular run of it.
+type geckoProc struct {
+	browser GeckoBrowser
+	pid     uint32
+}
+
+// runningGecko lists every Firefox-family process running now - all of them
+// rather than one per browser, because a browser is still "the instance that was
+// open" only while one of the pids it was made of is alive.
+func runningGecko() []geckoProc {
 	// No needs: this asks only whether a process by a given name exists, which the
 	// plain snapshot answers. Nothing here is a block rule, so nothing here wants
 	// paths, titles, or the name compiled into the image.
@@ -110,15 +197,14 @@ func GeckoRunning() []GeckoBrowser {
 	if err != nil && len(procs) == 0 {
 		return nil
 	}
-	var out []GeckoBrowser
+	var out []geckoProc
 	for _, g := range geckoBrowsers() {
 		if g.Image == "" {
 			continue
 		}
 		for _, p := range procs {
 			if strings.EqualFold(p.Name, g.Image) {
-				out = append(out, g)
-				break
+				out = append(out, geckoProc{browser: g, pid: p.PID})
 			}
 		}
 	}

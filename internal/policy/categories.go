@@ -781,6 +781,8 @@ func (c Config) hasSetting(st CategorySetting) bool {
 	switch strings.ToLower(strings.TrimSpace(st.Knob)) {
 	case KnobPrivateBrowsing:
 		return h.PrivateBrowsing
+	case KnobPrivateExtensions:
+		return h.PrivateExtensions
 	case KnobSafeSearch:
 		cur, on := h.SafeSearchOn()
 		if !on {

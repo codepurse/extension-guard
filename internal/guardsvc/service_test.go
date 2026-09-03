@@ -1,11 +1,16 @@
 package guardsvc
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/kardianos/service"
 
 	"github.com/codepurse/extension-guard/internal/enforce"
 	"github.com/codepurse/extension-guard/internal/policy"
@@ -267,5 +272,145 @@ func TestEnforcementIsAppliedWhenNothingIsPaused(t *testing.T) {
 	}
 	if p.paused {
 		t.Error("the paused latch was set with no pause in force")
+	}
+}
+
+// Install used to fail outright when a registration was already there, which is
+// what an installer re-run and every upgrade hit. These pin the replacement path
+// - the ordering in particular, because the sentinel and the watchdog are what
+// decide whether the new registration survives the swap.
+
+// stubInstall replaces the service-control seams with recorders and restores
+// them when the test ends. It returns the call log, in order.
+func stubInstall(t *testing.T, exists bool, controlErr map[string]error) *[]string {
+	t.Helper()
+	oldExists, oldRunning, oldHarden := serviceExists, serviceRunning, serviceHarden
+	oldDisabled, oldControl := setDisabled, controlService
+	oldReplace, oldStop, oldCreate, oldPoll := replaceWait, stopWait, createWait, pollInterval
+	oldEnforcers := defaultEnforcers
+	t.Cleanup(func() {
+		serviceExists, serviceRunning, serviceHarden = oldExists, oldRunning, oldHarden
+		setDisabled, controlService = oldDisabled, oldControl
+		replaceWait, stopWait, createWait, pollInterval = oldReplace, oldStop, oldCreate, oldPoll
+		defaultEnforcers = oldEnforcers
+	})
+	// Uninstall lifts protection through this; the real set writes browser policy.
+	defaultEnforcers = func() enforce.Set { return enforce.Set{} }
+
+	var calls []string
+	serviceExists = func(string) bool { return exists }
+	serviceRunning = func(string) bool { return false }
+	serviceHarden = func(string) error { calls = append(calls, "harden"); return nil }
+	setDisabled = func(v bool) error {
+		calls = append(calls, fmt.Sprintf("disabled=%v", v))
+		return nil
+	}
+	controlService = func(_ service.Service, action string) error {
+		calls = append(calls, action)
+		return controlErr[action]
+	}
+	replaceWait, stopWait, pollInterval = 0, 0, 0
+	createWait = time.Second
+	return &calls
+}
+
+func TestInstallReplacesAnExistingRegistration(t *testing.T) {
+	calls := stubInstall(t, true, nil)
+
+	if err := Install(policy.Config{}, "cfg.json"); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+
+	want := []string{"disabled=true", "stop", "uninstall", "disabled=false", "install", "harden", "start"}
+	if got := strings.Join(*calls, ","); got != strings.Join(want, ",") {
+		t.Errorf("call order: got %v, want %v", *calls, want)
+	}
+}
+
+func TestInstallOnACleanMachineTearsNothingDown(t *testing.T) {
+	calls := stubInstall(t, false, nil)
+
+	if err := Install(policy.Config{}, "cfg.json"); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+
+	// No sentinel dance and no uninstall: there is nothing registered to replace,
+	// and a fresh install must not open a window where protection is off.
+	want := []string{"disabled=false", "install", "harden", "start"}
+	if got := strings.Join(*calls, ","); got != strings.Join(want, ",") {
+		t.Errorf("call order: got %v, want %v", *calls, want)
+	}
+}
+
+// The failure that matters most. The sentinel is set before the swap, so an
+// error partway through must not leave it set - that is the state in which the
+// watchdog stands down and the old service, which is still registered, stops
+// being guarded.
+func TestAFailedReplaceDoesNotLeaveProtectionDisabled(t *testing.T) {
+	calls := stubInstall(t, true, map[string]error{"uninstall": errors.New("access denied")})
+
+	err := Install(policy.Config{}, "cfg.json")
+	if err == nil {
+		t.Fatal("Install: want an error when the existing registration cannot be removed")
+	}
+	if !strings.Contains(err.Error(), "access denied") {
+		t.Errorf("error should carry the cause, got %v", err)
+	}
+
+	last := (*calls)[len(*calls)-1]
+	if last != "disabled=false" {
+		t.Errorf("sentinel must be cleared on the failure path; last call was %q (%v)", last, *calls)
+	}
+	for _, c := range *calls {
+		if c == "install" {
+			t.Error("must not register a new service after failing to remove the old one")
+		}
+	}
+}
+
+// The bug this pins cost a machine its service outright. The SCM keeps a deleted
+// service's name reserved until the old process exits, so the create that
+// follows a removal can fail for a moment - and failing there left the old
+// registration gone and no new one in its place.
+func TestTheNewRegistrationIsRetriedWhileTheNameIsStillHeld(t *testing.T) {
+	calls := stubInstall(t, true, nil)
+
+	refusals := 2
+	inner := controlService
+	controlService = func(s service.Service, action string) error {
+		err := inner(s, action)
+		if action == "install" && refusals > 0 {
+			refusals--
+			return errors.New("the specified service has been marked for deletion")
+		}
+		return err
+	}
+
+	if err := Install(policy.Config{}, "cfg.json"); err != nil {
+		t.Fatalf("Install should ride out a name that is still held: %v", err)
+	}
+	if refusals != 0 {
+		t.Errorf("expected both refusals to be consumed, %d left", refusals)
+	}
+	// It has to reach start; a create that succeeded on the third try is still a
+	// successful install and the service must end up running.
+	if last := (*calls)[len(*calls)-1]; last != "start" {
+		t.Errorf("install did not finish: last call %q (%v)", last, *calls)
+	}
+}
+
+func TestARegistrationThatIsAlreadyGoneDoesNotBlockUninstall(t *testing.T) {
+	calls := stubInstall(t, false, map[string]error{"uninstall": errors.New("does not exist")})
+
+	// enforce.Default() is reached at the end of Uninstall; on a machine with no
+	// browsers configured it has nothing to lift, which is what the empty config
+	// here gives it.
+	if err := Uninstall(policy.Config{}, "cfg.json"); err != nil {
+		t.Fatalf("Uninstall with no service registered: %v", err)
+	}
+	for _, c := range *calls {
+		if c == "uninstall" {
+			t.Error("must not ask the SCM to remove a service that is not registered")
+		}
 	}
 }

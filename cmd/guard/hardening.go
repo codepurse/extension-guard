@@ -23,10 +23,10 @@ import (
 func hardeningCmd(cfg policy.Config) {
 	h := cfg.Hardened()
 
-	fmt.Printf("  %-18s %-10s %s\n", "setting", "state", "what it covers")
+	fmt.Printf("  %-20s %-10s %s\n", "setting", "state", "what it covers")
 	for _, knob := range policy.Knobs {
 		where := browsersFor(knob.ID)
-		fmt.Printf("  %-18s %-10s %s\n", knob.ID, h.Describe(knob.ID), where)
+		fmt.Printf("  %-20s %-10s %s\n", knob.ID, h.Describe(knob.ID), where)
 	}
 
 	for _, gap := range h.Gaps() {
@@ -117,7 +117,8 @@ func unhardenCmd(cfg policy.Config, cfgPath, what, password string) {
 	activity.Record(activity.Event{Kind: activity.HardeningDisabled, Target: knob.ID})
 	fmt.Printf("%s: off\n", knob.ID)
 	if knob.ID == policy.KnobPrivateBrowsing {
-		fmt.Println("(private windows work again, and a locked extension does not run in one)")
+		fmt.Println("(private windows work again, and in Chrome, Edge and Brave a locked extension")
+		fmt.Println("does not run in one)")
 	}
 	printRestartNote()
 }
@@ -143,7 +144,11 @@ func privateBrowsingWarning(cfg policy.Config) string {
 	if !cfg.PrivateBrowsingOpen() {
 		return ""
 	}
-	return "warning: private browsing is available, and a force-installed extension does not run in a\n" +
-		"private or guest window - so every extension this guard locks can be sidestepped with\n" +
-		"Ctrl+Shift+N. Close it with `guard harden " + policy.KnobPrivateBrowsing + "`."
+	return "warning: private browsing is available in Chrome, Edge or Brave, and a force-installed\n" +
+		"extension does not run in an Incognito or guest window there - so every extension this\n" +
+		"guard locks can be sidestepped with Ctrl+Shift+N. Close it with\n" +
+		"`guard harden " + policy.KnobPrivateBrowsing + "`, or in Edge with `guard harden " +
+		policy.KnobPrivateExtensions + "`,\nwhich keeps InPrivate and refuses to navigate in it " +
+		"until the extension is allowed there.\n" +
+		"(Firefox and Zen are not part of this: the add-on is force-enabled in their private windows.)"
 }

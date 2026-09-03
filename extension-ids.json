@@ -8,10 +8,7 @@
         "updateUrl": "https://clients2.google.com/service/update2/crx"
       },
       "edge": {},
-      "brave": {
-        "extensionId": "fiecjgpoilkhmoieaboolkfmgbnhlhop",
-        "updateUrl": "https://clients2.google.com/service/update2/crx"
-      },
+      "brave": {},
       "firefox": {
         "addonId": "blocknsfw@extension.local",
         "installUrl": "https://addons.mozilla.org/firefox/downloads/latest/blocknsfw-porn-adult-content/latest.xpi"
@@ -21,21 +18,82 @@
       "name": "sieve",
       "label": "Sieve",
       "chrome": {
-        "extensionId": "REPLACE_WITH_SIEVE_CHROME_ID",
+        "extensionId": "aaaabbbbccccddddeeeeffffgggghhhh",
         "updateUrl": "https://clients2.google.com/service/update2/crx"
       },
       "edge": {},
-      "brave": {
-        "extensionId": "REPLACE_WITH_SIEVE_CHROME_ID",
-        "updateUrl": "https://clients2.google.com/service/update2/crx"
-      },
+      "brave": {},
       "firefox": {
         "addonId": "sieve@extension.local",
         "installUrl": "https://addons.mozilla.org/firefox/downloads/latest/sieve-site-content-blocker/latest.xpi"
       }
     }
   ],
-  "hardening": {
-    "privateBrowsing": true
-  }
+  "blocks": [
+    {
+      "id": "work",
+      "label": "Work hours",
+      "extensions": [
+        "sieve"
+      ],
+      "domains": [
+        "reddit.com"
+      ],
+      "windows": [
+        {
+          "days": [
+            "mon",
+            "tue",
+            "wed",
+            "thu",
+            "fri"
+          ],
+          "start": "09:00",
+          "end": "17:00"
+        }
+      ]
+    },
+    {
+      "id": "weekend",
+      "label": "Weekend guard",
+      "extensions": [
+        "blocknsfw"
+      ],
+      "windows": [
+        {
+          "days": [
+            "sat",
+            "sun"
+          ],
+          "start": "10:00",
+          "end": "23:00"
+        }
+      ],
+      "lockedUntil": "2026-08-24T09:00:00+08:00"
+    }
+  ],
+  "domains": [
+    {
+      "name": "reddit.com",
+      "disabled": true
+    },
+    {
+      "name": "gambling.example"
+    },
+    {
+      "name": "news.ycombinator.com",
+      "disabled": true
+    },
+    {
+      "name": "example.com",
+      "disabled": true
+    }
+  ],
+  "apps": [
+    {
+      "kind": "exe",
+      "value": "C:\\Users\\G360\\AppData\\Local\\Discord\\Update.exe",
+      "label": "Update.exe"
+    }
+  ]
 }

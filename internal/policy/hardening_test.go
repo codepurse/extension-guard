@@ -424,3 +424,156 @@ func TestValidateRejectsUnknownResolver(t *testing.T) {
 		t.Error("an unknown resolver read as on")
 	}
 }
+
+// TestPrivateExtensionsKnob covers the wiring a knob needs to exist at all: off
+// until somebody says otherwise, its own state word rather than a bare "on", no
+// level, and the encoding invariant TestSetKnobDropsEmptyHardening holds for the
+// others - a config that turned this on and off again has to encode
+// byte-identically to one that never touched it.
+func TestPrivateExtensionsKnob(t *testing.T) {
+	base := Config{Extensions: []Extension{{Name: "blocknsfw"}}}
+	want, err := base.Canonical()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := base
+	if cfg.Hardened().On(KnobPrivateExtensions) {
+		t.Error("a config that asked for nothing reports the setting as on")
+	}
+	if _, err := cfg.SetKnob(KnobPrivateExtensions, true, ""); err != nil {
+		t.Fatal(err)
+	}
+	h := cfg.Hardened()
+	if !h.PrivateExtensions || !h.On(KnobPrivateExtensions) || !h.Any() {
+		t.Errorf("after turning it on: %+v", h)
+	}
+	if got := h.Describe(KnobPrivateExtensions); got != "required" {
+		t.Errorf("Describe = %q, want \"required\" - which of the two private-window "+
+			"settings is in force is the part a reader cannot guess", got)
+	}
+	if _, err := cfg.SetKnob(KnobPrivateExtensions, true, "strict"); err == nil {
+		t.Error("a level was accepted for a setting that has only on and off")
+	}
+
+	if _, err := cfg.SetKnob(KnobPrivateExtensions, false, ""); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Hardening != nil {
+		t.Error("the last knob went off but the Hardening object stayed")
+	}
+	got, err := cfg.Canonical()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(want) {
+		t.Errorf("canonical encoding after on+off:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// TestMandatoryPrivateIDsIsEdgeOnly is the test that stops the worst version of
+// this feature: a policy written for a browser that does not implement it, which
+// would verify perfectly and enforce nothing. Chrome and Brave are the ones to
+// watch - Chromium declares the equivalent policy for ChromeOS and not for
+// desktop - and the Firefox family needs nothing, because the add-on is
+// force-enabled in its private windows by the extension enforcer.
+func TestMandatoryPrivateIDsIsEdgeOnly(t *testing.T) {
+	const edgeID = "hkgfoiooedgoejojocmhlaklaeopbecg"
+	cfg := Config{Extensions: []Extension{{
+		Name:    "blocknsfw",
+		Chrome:  Target{ExtensionID: "ekdegpeejlidlkofccgakfdbiegmicmj", UpdateURL: "https://example.invalid/crx"},
+		Edge:    Target{ExtensionID: edgeID, UpdateURL: "https://example.invalid/crx"},
+		Brave:   Target{ExtensionID: "ekdegpeejlidlkofccgakfdbiegmicmj", UpdateURL: "https://example.invalid/crx"},
+		Firefox: Target{AddonID: "blocknsfw@example.invalid", InstallURL: "https://example.invalid/x.xpi"},
+	}}}
+
+	got := mandatoryPrivateIDs(cfg, Edge)
+	if len(got) != 1 || got[0] != edgeID {
+		t.Errorf("edge = %v, want [%s]", got, edgeID)
+	}
+	for _, k := range []Kind{Chrome, Brave, Firefox, Zen} {
+		if ids := mandatoryPrivateIDs(cfg, k); len(ids) != 0 {
+			t.Errorf("%s: would be written %v for a policy it does not implement", k, ids)
+		}
+	}
+}
+
+// TestMandatoryPrivateIDsSkipsPlaceholders holds the sharpest edge of this
+// setting. Edge blocks InPrivate navigation when a *required* extension is not
+// installed, so requiring an id nothing installs does not weaken protection - it
+// leaves an InPrivate window that can never work no matter what the user allows,
+// on a config whose author only forgot to fill in a placeholder.
+func TestMandatoryPrivateIDsSkipsPlaceholders(t *testing.T) {
+	cfg := Config{Extensions: []Extension{{
+		Name: "sieve",
+		Edge: Target{ExtensionID: "REPLACE_WITH_SIEVE_EDGE_ID", UpdateURL: "https://example.invalid/crx"},
+	}}}
+	if ids := mandatoryPrivateIDs(cfg, Edge); len(ids) != 0 {
+		t.Errorf("an unfilled placeholder was required in InPrivate: %v", ids)
+	}
+}
+
+// TestPrivateBrowsingOpenIsAskedPerBrowser holds the other half of the change.
+// The warning used to be one question because the answer was the same in every
+// browser; it is not any more, and a warning that fires on a machine with no hole
+// is the warning nobody reads on the day it means something.
+func TestPrivateBrowsingOpenIsAskedPerBrowser(t *testing.T) {
+	geckoOnly := Config{Extensions: []Extension{{
+		Name:    "blocknsfw",
+		Firefox: Target{AddonID: "blocknsfw@example.invalid", InstallURL: "https://example.invalid/x.xpi"},
+	}}}
+	if geckoOnly.PrivateBrowsingOpen() {
+		t.Error("a Firefox-only lock reported a hole; the add-on runs in its private windows")
+	}
+
+	edgeOnly := Config{Extensions: []Extension{{
+		Name: "blocknsfw",
+		Edge: Target{ExtensionID: "hkgfoiooedgoejojocmhlaklaeopbecg", UpdateURL: "https://example.invalid/crx"},
+	}}}
+	if !edgeOnly.PrivateBrowsingOpen() {
+		t.Error("InPrivate is open and nothing requires the extension in it, but nothing is reported")
+	}
+	required := edgeOnly
+	if _, err := required.SetKnob(KnobPrivateExtensions, true, ""); err != nil {
+		t.Fatal(err)
+	}
+	if required.PrivateBrowsingOpen() {
+		t.Error("InPrivate will not navigate without the extension, but the hole is still reported")
+	}
+
+	// The same setting on a machine that also locks Chrome closes nothing there,
+	// so the warning has to stay up.
+	withChrome := edgeOnly
+	withChrome.Extensions = []Extension{{
+		Name:   "blocknsfw",
+		Chrome: Target{ExtensionID: "ekdegpeejlidlkofccgakfdbiegmicmj", UpdateURL: "https://example.invalid/crx"},
+		Edge:   Target{ExtensionID: "hkgfoiooedgoejojocmhlaklaeopbecg", UpdateURL: "https://example.invalid/crx"},
+	}}
+	if _, err := withChrome.SetKnob(KnobPrivateExtensions, true, ""); err != nil {
+		t.Fatal(err)
+	}
+	if !withChrome.PrivateBrowsingOpen() {
+		t.Error("Chrome has no policy for requiring an extension in Incognito, but the hole was " +
+			"reported closed")
+	}
+}
+
+// TestPrivateExtensionsGapNamesItsOwnReason guards the sentence a reader acts on.
+// The default - "there is no policy for it" - is true of Chrome and Brave here
+// and false of Firefox and Zen, which need no policy, and sending somebody to
+// look for a Firefox hole that does not exist is the failure this whole file is
+// about.
+func TestPrivateExtensionsGapNamesItsOwnReason(t *testing.T) {
+	gaps := (Hardening{PrivateExtensions: true}).Gaps()
+	if len(gaps) != 1 {
+		t.Fatalf("Gaps() = %v, want one", gaps)
+	}
+	for _, browser := range []string{"chrome", "brave", "firefox", "zen"} {
+		if !strings.Contains(gaps[0], browser) {
+			t.Errorf("gap does not name %s: %q", browser, gaps[0])
+		}
+	}
+	if strings.Contains(gaps[0], "there is no policy for it") {
+		t.Errorf("gap gives the default reason, which is wrong for firefox and zen: %q", gaps[0])
+	}
+}

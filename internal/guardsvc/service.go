@@ -171,13 +171,95 @@ func New(cfg policy.Config, configPath string) (service.Service, error) {
 	return s, nil
 }
 
+// The install path reaches the service control manager and the SYSTEM-owned
+// state store, neither of which a test may touch, so both go through vars the
+// tests substitute - the same seam policy/trust.go uses for the trusted store.
+// replaceWait is one too, because the real value is a sleep no test should sit
+// through.
+var (
+	serviceExists  = scm.Exists
+	serviceRunning = scm.IsRunning
+	serviceHarden  = scm.Harden
+	setDisabled    = scm.SetDisabled
+	controlService = service.Control
+	// defaultEnforcers is the set Uninstall lifts protection with. The service
+	// itself carries its own (program.enforcers); this is for the package-level
+	// teardown, and it is a var for the same reason: the real one writes browser
+	// policy, which a test may not do.
+	defaultEnforcers = enforce.Default
+	replaceWait      = watchdogInterval + 2*time.Second
+	// stopWait is how long a replacement waits for the outgoing service to
+	// actually stop, and createWait how long the incoming one waits for its name
+	// to come free. Both are polled at pollInterval.
+	stopWait     = 20 * time.Second
+	createWait   = 20 * time.Second
+	pollInterval = 250 * time.Millisecond
+)
+
 // Install registers the service, hardens it (recovery + Automatic start),
 // clears the disabled sentinel, and starts it.
+//
+// A registration that already exists is replaced rather than refused. Refusing
+// was a real hole rather than a strict-correctness nicety: `service.Control(s,
+// "install")` fails with "already exists", which is precisely what an installer
+// re-run or an upgrade hits, and the installer's post-install step could only
+// report an error the person running it had no way to act on. Setup then went on
+// to declare success - leaving the new binaries on disk with the *old* service
+// still enforcing from wherever it happened to be registered, which is the one
+// outcome that looks installed and is not.
 func Install(cfg policy.Config, configPath string) error {
-	if err := scm.SetDisabled(false); err != nil {
+	if serviceExists(ServiceName) {
+		if err := replaceRegistration(cfg, configPath); err != nil {
+			// Put the sentinel back the way an untouched machine has it. The old
+			// service is very likely still registered and running, and a failed
+			// install must not be the thing that stops the watchdog guarding it.
+			_ = setDisabled(false)
+			return fmt.Errorf("replace the existing service registration: %w", err)
+		}
+	}
+	if err := setDisabled(false); err != nil {
 		return err
 	}
 	return install(cfg, configPath)
+}
+
+// replaceRegistration removes the service already registered here so Install can
+// register this binary and this config path in its place.
+//
+// The sentinel-then-wait is the teardown Uninstall performs, for the reason
+// given there: a live watchdog re-installs the service within watchdogInterval
+// of noticing it gone. Without the pause it wins the race, and the machine keeps
+// the registration - old binary, old config path - that the installer just
+// replaced.
+func replaceRegistration(cfg policy.Config, configPath string) error {
+	_ = setDisabled(true)
+	time.Sleep(replaceWait)
+	s, err := New(cfg, configPath)
+	if err != nil {
+		return err
+	}
+	// Stop, and then wait for it to actually be stopped. Control returns as soon
+	// as the SCM accepts the request, and deleting a service that is still running
+	// leaves its *name* reserved until the process exits - so a create in that
+	// window fails, and "replace the registration" becomes "remove the
+	// registration and fail to make a new one". That leaves the machine with no
+	// service at all, which is worse than the refusal this whole path replaced.
+	_ = controlService(s, "stop")
+	waitUntil(func() bool { return !serviceRunning(ServiceName) }, stopWait)
+	return controlService(s, "uninstall")
+}
+
+// waitUntil polls done until it reports true or the timeout passes. It does not
+// say which happened: every caller here is followed by the operation that was
+// being waited for, and that operation's own error is the better answer.
+func waitUntil(done func() bool, timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	for !done() {
+		if !time.Now().Before(deadline) {
+			return
+		}
+		time.Sleep(pollInterval)
+	}
 }
 
 // install (re)registers + hardens + starts. Shared by Install and the watchdog.
@@ -186,13 +268,32 @@ func install(cfg policy.Config, configPath string) error {
 	if err != nil {
 		return err
 	}
-	if err := service.Control(s, "install"); err != nil {
+	if err := createService(s); err != nil {
 		return err
 	}
-	if err := scm.Harden(ServiceName); err != nil {
+	if err := serviceHarden(ServiceName); err != nil {
 		return err
 	}
-	return service.Control(s, "start")
+	return controlService(s, "start")
+}
+
+// createService registers the service, retrying while the name is still held.
+//
+// After a removal the SCM keeps the name reserved until the last handle to the
+// old service closes, and the wait in replaceRegistration narrows that window
+// without closing it - a handle held by services.msc or by anything else that
+// looked at the service keeps it open too. The message the create fails with is
+// localized, so this retries on any error and returns the last one rather than
+// trying to recognize that particular failure by its text.
+func createService(s service.Service) error {
+	deadline := time.Now().Add(createWait)
+	for {
+		err := controlService(s, "install")
+		if err == nil || !time.Now().Before(deadline) {
+			return err
+		}
+		time.Sleep(pollInterval)
+	}
 }
 
 // Uninstall sets the disabled sentinel (so the watchdog stops resurrecting),
@@ -200,20 +301,28 @@ func install(cfg policy.Config, configPath string) error {
 // removes the service. The wait closes a race where the watchdog could
 // re-install the service mid-teardown.
 func Uninstall(cfg policy.Config, configPath string) error {
-	_ = scm.SetDisabled(true)
-	time.Sleep(watchdogInterval + 2*time.Second)
+	_ = setDisabled(true)
+	time.Sleep(replaceWait)
 	s, err := New(cfg, configPath)
 	if err != nil {
 		return err
 	}
-	_ = service.Control(s, "stop")
-	if err := service.Control(s, "uninstall"); err != nil {
-		return err
+	// A registration that is already gone is this function's goal, not its error.
+	// Refusing here is what stops somebody removing the program at all after a
+	// failed install took the service with it - and an uninstall that cannot be
+	// run is the one failure mode a blocker must never have, because it is
+	// indistinguishable from the program refusing to let itself be removed.
+	if serviceExists(ServiceName) {
+		_ = controlService(s, "stop")
+		waitUntil(func() bool { return !serviceRunning(ServiceName) }, stopWait)
+		if err := controlService(s, "uninstall"); err != nil {
+			return err
+		}
 	}
 	// Lift what every enforcer holds too, so an authorized uninstall fully
 	// restores the machine - otherwise the extensions stay locked with no service
 	// left to manage the lock.
-	return enforce.Default().Remove(cfg)
+	return defaultEnforcers().Remove(cfg)
 }
 
 // Pause turns protection off and keeps the guard running.

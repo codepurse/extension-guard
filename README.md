@@ -146,15 +146,24 @@ prompt, and the guard re-verifies the password itself, so the button can't be
 bypassed from the UI. Turning protection off asks **how long for** as well as for
 the password; see [Pausing protection](#pausing-protection).
 
-The window is a console rather than one long page: a navigation rail with
+The window is a console rather than one long page: a top bar carrying
 **Overview**, **Browsers**, **Blocking** and **Schedule & time** (`Ctrl+1` to
-`Ctrl+4`), a toolbar carrying whatever acts on the open page, and a status bar.
-Nothing scrolls except the inside of a pane. The **?** beside a pane's title
-explains it, `/` jumps to the filter over the block lists, and `Ctrl+R` re-reads
-the state. The appearance button next to **Refresh** switches between **Follow
-system**, **Light** and **Dark** — the choice is per user, kept in
-`%AppData%\Extension Guard\ui.json`, and read before the window opens so a cold
-start does not flash the other theme.
+`Ctrl+4`) plus whatever acts on the open page, a workspace of cards, and a
+status bar. Every page opens on a row of figures — safeguards on, browsers
+locked, rules enforcing, screen time today — each one a count of rows on a card
+below it, so the two can never disagree. The Overview charts the week's screen
+time and the mix of rules being enforced; the Schedule page charts the same
+week as a column per day beside the applications the time went to.
+
+Cards are sized by what is in them. A list of three sites is three rows tall,
+a card with nothing in it becomes a strip carrying the way in, and the cards
+sharing a row divide the width by how much each has to show — so a quiet
+machine is a short page rather than a screenful of empty panels. The **?**
+beside a card's title explains it, `/` jumps to the filter over the block
+lists, and `Ctrl+R` re-reads the state. The appearance button next to
+**Refresh** switches between **Follow system**, **Light** and **Dark** — the
+choice is per user, kept in `%AppData%\Extension Guard\ui.json`, and read before the
+window opens so a cold start does not flash the other theme.
 
 The **Protected extensions** list lets you turn each configured extension on or
 off after install: turning one **on** is free (it only adds protection), turning
@@ -163,16 +172,16 @@ rewrites the config; the service picks the change up on its next cycle. This is
 how you add a second extension (e.g. Sieve) to a guard you first installed for
 just one — no reinstall needed.
 
-The **Other browsers on this machine** section lists every browser the guard
+The **Other browsers here** section lists every browser the guard
 writes no policy for, badged **Reachable**, **Waiting**, **Blocked** or **File
 gone**, with the executable to block it by. A warning sits above it whenever
 anything is Reachable, because a window saying "protection active" over a browser
 that filters nothing is the one thing this app must not do. See
 [Browsers the guard cannot manage](#browsers-the-guard-cannot-manage).
 
-The **Screen time** pane, on the Schedule & time page, shows how long each blocked
-application actually ran, today and over the last week, with **By day** charting
-the span beside it. It is the one pane that is a record rather than a control -
+The **Where the time went** card, on the Schedule & time page, shows how long each
+blocked application actually ran, today and over the last week, with **By day**
+charting the span beside it. It is the one card that is a record rather than a control -
 there is nothing to click, and reading it needs neither admin nor the password.
 See [Time used](#time-used).
 
@@ -473,13 +482,31 @@ administrator and no rename, while the status window read *protection active* �
 the same failure [`guard browsers`](#browsers-the-guard-cannot-manage) exists to
 report one step further out.
 
-Three settings close it, and they are pinned the way everything else here is
+**How wide that hole is depends on the browser**, and the answer is no longer the
+same in all of them:
+
+- **Firefox and Zen no longer have it.** Mozilla added `private_browsing` to
+  `ExtensionSettings` in Firefox 136 and ESR 128.8, so the guard force-enables the
+  add-on in private windows outright — no switch, and nothing for the user to
+  agree to. It is written next to `installation_mode` by the extension enforcer
+  rather than by a setting here, because it takes no feature away and so is part
+  of force-installing rather than something to opt into.
+- **Edge can be held up instead of shut down.** `MandatoryExtensionsForInPrivateNavigation`
+  (Edge 139) lets InPrivate open but refuses to navigate in it until the user
+  allows the locked extension there. That is `private-extensions` below.
+- **Chrome and Brave still have it whole.** Google's equivalent policy exists but
+  is declared for ChromeOS only, so writing it on a desktop would verify perfectly
+  and enforce nothing — the exact half-truth this project refuses to ship. Turning
+  Incognito off is still the only lever there.
+
+Four settings close it, and they are pinned the way everything else here is
 enforced: policy values in `HKLM\SOFTWARE\Policies`, which the tamper watcher
 already watches, so a deleted one is restored within milliseconds for free.
 
 ```sh
 guard hardening                        # what is pinned, where it reaches, and what is still open
 guard harden private-browsing          # admin; no password - it only adds protection
+guard harden private-extensions        # edge: keep InPrivate, but require the extension in it
 guard harden safe-search               # strict by default
 guard -level moderate harden safe-search
 guard harden dns-filter                # resolve through a filtering resolver, pinned closed
@@ -490,6 +517,7 @@ guard unharden private-browsing        # password (unless protection is paused)
 {
   "hardening": {
     "privateBrowsing": true,
+    "privateExtensions": true,
     "safeSearch": "strict",
     "dnsFilter": "cloudflare-family"
   }
@@ -499,12 +527,16 @@ guard unharden private-browsing        # password (unless protection is paused)
 | Setting | What it pins | Where |
 |---|---|---|
 | `private-browsing` | No Incognito or private windows, and no guest profiles. Brave's *private window with Tor* too, which the Chromium switch does not describe. | chrome, edge, brave, firefox, zen |
+| `private-extensions` | InPrivate stays, but will not navigate until the locked extensions are allowed to run in it. The narrower alternative to the row above, for a machine where InPrivate is actually used. Needs Edge 139. | edge |
 | `safe-search` | Google and Bing SafeSearch, and YouTube's restricted mode. `-level` takes `moderate` or `strict`. | chrome, edge, brave |
 | `dns-filter` | Every browser's DNS, pinned to [Cloudflare for Families](https://developers.cloudflare.com/1.1.1.1/setup/) — malware and adult content — with no fallback, so it cannot be turned off by breaking it. | chrome, edge, brave, firefox, zen |
 
 **The hole is reported whether or not you close it.** `guard verify`, `guard
 hardening` and the status window all say so while any extension is being
-force-installed and private browsing is still available. It is deliberately not a
+force-installed and private browsing is still available. It is asked per browser
+rather than once, because the answer stopped being the same everywhere: a machine
+locking only Firefox has nothing to warn about, and neither does an Edge machine
+with `private-extensions` on. It is deliberately not a
 row in `verify`'s table, for the reason an unmanaged browser is not one: those are
 enforcement facts, and a row that is present and can never be enforced would read
 as permanent tamper and log a correction every thirty seconds. The warning is also
@@ -630,7 +662,7 @@ somebody who has not looked at it — the same reason `ValidateCatalog` refuses
 window-title rules outright.
 
 **`private-browsing` is deliberately not the third setting.** It is the right
-knob for a locked extension, which cannot load in an Incognito window — but both
+knob for a locked extension, which cannot load in a Chromium Incognito window — but both
 settings here are *browser policy*, and browser policy applies to Incognito too.
 Adding it would take a feature away to buy nothing, under a switch that costs no
 password.
@@ -1024,7 +1056,7 @@ guard browsers     # every browser here, and what the guard can do about each
 | `gone` | registered as a browser, but the executable it names is not there — see [Renaming](#renaming-the-one-bypass-nothing-corrected) |
 
 `guard verify` prints a one-line warning when anything is `reachable`, and the
-status window grows an **Other browsers on this machine** section under the
+status window grows an **Other browsers here** section under the
 Browsers list, with the same four states as badges. Reading any of it needs
 neither admin nor the password, like `guard activity`: a gap only the parent can
 see is one the household argues about instead of closing.

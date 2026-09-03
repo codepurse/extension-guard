@@ -22,8 +22,8 @@ var assets embed.FS
 // is the whole reason the preference is stored where Go can read it rather
 // than only in the page's localStorage.
 var (
-	darkGround  = options.RGBA{R: 14, G: 16, B: 20, A: 255}
-	lightGround = options.RGBA{R: 236, G: 238, B: 243, A: 255}
+	darkGround  = options.RGBA{R: 8, G: 11, B: 18, A: 255}
+	lightGround = options.RGBA{R: 238, G: 241, B: 247, A: 255}
 )
 
 func main() {
@@ -48,14 +48,15 @@ func main() {
 	err := wails.Run(&options.App{
 		Title: "Extension Guard",
 
-		// Opens maximised. The window is a console - a navigation rail, a
-		// toolbar, a workspace of docked panes and a status bar - and nothing
-		// in it scrolls except the inside of a pane, so the room the window is
-		// given is the room the pages get. Width and Height are what an
+		// Opens maximised. The window is a console - a top bar carrying the
+		// four pages, a scrolling workspace of cards, and a status bar - and
+		// every card in it is sized by what is actually in it, so the wider the
+		// window the more of each page is on screen at once rather than the
+		// same panels stretched further apart. Width and Height are what an
 		// un-maximised window restores to; the minimum is the point below which
-		// the layout has folded every page to a single column and the rail down
-		// to icons, and stopping there keeps it from being dragged into a size
-		// nothing fits in.
+		// the layout has folded every page to a single column and the page tabs
+		// down to icons, and stopping there keeps it from being dragged into a
+		// size nothing fits in.
 		WindowStartState: options.Maximised,
 		Width:            1360,
 		Height:           860,

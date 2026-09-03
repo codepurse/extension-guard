@@ -37,13 +37,22 @@ const (
 // a boolean policy is a boolean and an enumerated one is a number; writing 1 for
 // BrowserGuestModeEnabled would be a type error Chromium discards the whole file
 // over.
-func chromiumHardeningDoc(k Kind, h Hardening) map[string]any {
+func chromiumHardeningDoc(cfg Config, k Kind, h Hardening) map[string]any {
 	doc := map[string]any{}
 	if h.PrivateBrowsing && KnobSupported(KnobPrivateBrowsing, k) {
 		doc["IncognitoModeAvailability"] = 1
 		doc["BrowserGuestModeEnabled"] = false
 		if k == Brave {
 			doc["TorDisabled"] = true
+		}
+	}
+	if h.PrivateExtensions {
+		// A list here and a numbered subkey on Windows, which is the same policy
+		// either way. Written only when there is something to require: an empty
+		// array would be a policy saying "InPrivate needs nothing", which is what
+		// not writing it already says.
+		if ids := mandatoryPrivateIDs(cfg, k); len(ids) > 0 {
+			doc["MandatoryExtensionsForInPrivateNavigation"] = ids
 		}
 	}
 	if level, on := h.SafeSearchOn(); on && KnobSupported(KnobSafeSearch, k) {
@@ -106,7 +115,7 @@ func ApplyHardening(cfg Config) error {
 	h := cfg.Hardened()
 	var errs []string
 	for _, k := range ChromiumKinds {
-		if err := applyChromiumHardening(k, h); err != nil {
+		if err := applyChromiumHardening(cfg, k, h); err != nil {
 			errs = append(errs, fmt.Sprintf("%s: %v", k, err))
 		}
 	}
@@ -122,10 +131,10 @@ func ApplyHardening(cfg Config) error {
 // applyChromiumHardening writes the wanted document wholesale, which reconciles by
 // construction. Nothing wanted clears a file we previously wrote - a knob turned
 // off has to stop being enforced - but does not create one where none existed.
-func applyChromiumHardening(k Kind, h Hardening) error {
+func applyChromiumHardening(cfg Config, k Kind, h Hardening) error {
 	dir := chromiumManagedDir[k]
 	path := filepath.Join(dir, hardeningPolicyFileName)
-	doc := chromiumHardeningDoc(k, h)
+	doc := chromiumHardeningDoc(cfg, k, h)
 	if len(doc) == 0 {
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 			return err
@@ -187,15 +196,15 @@ func VerifyHardening(cfg Config) []Status {
 	installed := DetectBrowsers()
 	out := make([]Status, 0, len(ChromiumKinds)+1)
 	for _, k := range ChromiumKinds {
-		out = append(out, verifyChromiumHardening(k, h, installed[k]))
+		out = append(out, verifyChromiumHardening(cfg, k, h, installed[k]))
 	}
 	out = append(out, verifyFirefoxHardening(h, installed[Firefox]))
 	return out
 }
 
-func verifyChromiumHardening(k Kind, h Hardening, installed bool) Status {
+func verifyChromiumHardening(cfg Config, k Kind, h Hardening, installed bool) Status {
 	s := Status{Kind: k, Installed: installed}
-	want := chromiumHardeningDoc(k, h)
+	want := chromiumHardeningDoc(cfg, k, h)
 	if len(want) == 0 {
 		return notAvailableOr(s, h.Any())
 	}
@@ -261,7 +270,7 @@ func sameJSON(a, b any) bool {
 func RemoveHardening(cfg Config) error {
 	var errs []string
 	for _, k := range ChromiumKinds {
-		if err := applyChromiumHardening(k, Hardening{}); err != nil {
+		if err := applyChromiumHardening(cfg, k, Hardening{}); err != nil {
 			errs = append(errs, fmt.Sprintf("%s: %v", k, err))
 		}
 	}

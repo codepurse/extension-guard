@@ -50,6 +50,16 @@ const (
 	valFirefoxPrivate = "DisablePrivateBrowsing"
 )
 
+// mandatoryPrivateSubkey is the private-extensions knob, and it is the only
+// hardening setting that is not a value at all: Edge reads it as one of the
+// numbered lists numberedlist_windows.go exists for - "1", "2", "3", one
+// extension id each. That is why it is written beside syncPolicyValues rather
+// than through it, since the polRef/polVal model above is one name and one value.
+// It is also why it costs nothing to get the guard's usual manners here:
+// syncNumberedList already keeps entries the guard did not write and renumbers
+// what is left.
+const mandatoryPrivateSubkey = "MandatoryExtensionsForInPrivateNavigation"
+
 // The DNS-over-HTTPS names, which are the reason this file carries value types at
 // all: everything above is a DWORD directly under the policy root, and none of
 // this is.
@@ -202,6 +212,22 @@ func wantedValues(k Kind, gecko bool, h Hardening) map[polRef]polVal {
 	return out
 }
 
+// syncMandatoryPrivate writes, or clears, one browser's required-extension list.
+// Clearing is by exact id rather than by wiping the key, for the reason
+// managedValues gives: an administrator may have required extensions of their
+// own, and turning this knob off is not permission to discard them.
+func syncMandatoryPrivate(cfg Config, h Hardening, t policyTarget) error {
+	ids := mandatoryPrivateIDs(cfg, t.Kind)
+	if len(ids) == 0 {
+		return nil
+	}
+	var want []string
+	if h.PrivateExtensions {
+		want = ids
+	}
+	return syncNumberedList(t.Root+`\`+mandatoryPrivateSubkey, want, dropExact(ids))
+}
+
 // ApplyHardening reconciles every browser's policy root with the hardening cfg
 // asks for: the values for each knob that is on are written, the values for a
 // knob that has been turned off are cleared, and anything else under the key is
@@ -211,6 +237,9 @@ func ApplyHardening(cfg Config) error {
 	var errs []string
 	for _, t := range policyTargets() {
 		if err := syncPolicyValues(t.Root, wantedValues(t.Kind, t.Gecko, h), managedValues(t.Kind, t.Gecko)); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", t.Kind, err))
+		}
+		if err := syncMandatoryPrivate(cfg, h, t); err != nil {
 			errs = append(errs, fmt.Sprintf("%s: %v", t.Kind, err))
 		}
 	}
@@ -234,10 +263,16 @@ func VerifyHardening(cfg Config) []Status {
 	targets := policyTargets()
 	out := make([]Status, 0, len(targets))
 	for _, t := range targets {
+		var listWant []string
+		if h.PrivateExtensions {
+			listWant = mandatoryPrivateIDs(cfg, t.Kind)
+		}
 		out = append(out, verifyHardeningOne(
 			Status{Kind: t.Kind, Installed: installed[t.Kind]},
 			t.Root,
 			wantedValues(t.Kind, t.Gecko, h),
+			t.Root+`\`+mandatoryPrivateSubkey,
+			listWant,
 			h.Any(),
 		))
 	}
@@ -248,8 +283,8 @@ func VerifyHardening(cfg Config) []Status {
 // worth the extra branch: a config with only SafeSearch on asks nothing of
 // Firefox, and reporting that as "not configured" would read as "nobody asked",
 // when in fact somebody asked and Firefox cannot do it.
-func verifyHardeningOne(s Status, root string, want map[polRef]polVal, asked bool) Status {
-	if len(want) == 0 {
+func verifyHardeningOne(s Status, root string, want map[polRef]polVal, listPath string, listWant []string, asked bool) Status {
+	if len(want) == 0 && len(listWant) == 0 {
 		if asked {
 			s.Detail = "not available in " + string(s.Kind)
 			return s
@@ -263,7 +298,12 @@ func verifyHardeningOne(s Status, root string, want map[polRef]polVal, asked boo
 			matched++
 		}
 	}
-	return lockStatus(s, matched, len(want))
+	// The required-extension list counts entry by entry into the same tally, so a
+	// browser holding the settings but missing one required id reads as partial
+	// rather than as locked - the same arithmetic VerifyDomains does, and for the
+	// same reason: a list that is half written is not a list that is enforced.
+	listMatched, listTotal := tally(listPath, listWant)
+	return lockStatus(s, matched+listMatched, len(want)+listTotal)
 }
 
 // RemoveHardening clears every value the guard manages here, whatever the config
@@ -273,6 +313,9 @@ func RemoveHardening(cfg Config) error {
 	var errs []string
 	for _, t := range policyTargets() {
 		if err := syncPolicyValues(t.Root, nil, managedValues(t.Kind, t.Gecko)); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", t.Kind, err))
+		}
+		if err := syncMandatoryPrivate(cfg, Hardening{}, t); err != nil {
 			errs = append(errs, fmt.Sprintf("%s: %v", t.Kind, err))
 		}
 	}
