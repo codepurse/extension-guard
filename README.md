@@ -1,4 +1,4 @@
-# Extension Guard (PC version)
+# Ward (PC version)
 
 A small native companion that **locks one or more browser extensions in place**
 so they can't be removed from the browser UI. It resists tampering (watchdog),
@@ -64,16 +64,16 @@ Runs the tests, then builds all three artifacts into `release\`:
 |----------|-----------|
 | `guard.exe` | CLI + Windows service + watchdog |
 | `extension-guard-status.exe` | the status window (Wails) |
-| `Extension-Guard-Setup.exe` | installer that bundles both + creates shortcuts |
+| `Ward-Setup.exe` | installer that bundles both + creates shortcuts |
 
 Go core only: `go test ./...` then `go build ./cmd/guard`.
 
 ## Install the app (end users — Windows)
 
-Run `release\Extension-Guard-Setup.exe`. It shows a consent page, asks
+Run `release\Ward-Setup.exe`. It shows a consent page, asks
 you to **set an uninstall password** (give it to the parent / accountability
 partner, *not* the person being filtered), installs + starts the guard service,
-locks the browsers, and creates an **Extension Guard** shortcut.
+locks the browsers, and creates an **Ward** shortcut.
 
 > Windows will likely warn that this is from an **"unknown publisher,"** and some
 > antivirus may flag it. That's expected for now — see
@@ -101,7 +101,7 @@ quarantine it. Here's the honest *why*, and how to check for yourself.
    that's in place, releases are unsigned, so Windows can't display a verified
    publisher — hence "unknown publisher." *A cert is on the way; once it's in
    place these warnings go away.*
-2. **It's deliberately tamper-resistant.** Extension Guard runs a service with a
+2. **It's deliberately tamper-resistant.** Ward runs a service with a
    watchdog that restarts itself if it's killed — that's the entire point (it
    stops the filtered user from simply uninstalling it). That "won't stay dead"
    behavior is *also* what some malware does, so a **small number** of heuristic /
@@ -134,7 +134,7 @@ network calls except checking GitHub for updates.
 [SignPath Foundation](https://signpath.org). (Application in progress — until it
 is active, release binaries are unsigned, which is why the warnings above appear.)
 
-**Privacy:** Extension Guard collects no personal data — see
+**Privacy:** Ward collects no personal data — see
 [PRIVACY.md](PRIVACY.md).
 
 ### Status window (day-to-day)
@@ -162,7 +162,7 @@ machine is a short page rather than a screenful of empty panels. The **?**
 beside a card's title explains it, `/` jumps to the filter over the block
 lists, and `Ctrl+R` re-reads the state. The appearance button next to
 **Refresh** switches between **Follow system**, **Light** and **Dark** — the
-choice is per user, kept in `%AppData%\Extension Guard\ui.json`, and read before the
+choice is per user, kept in `%AppData%\Ward\ui.json`, and read before the
 window opens so a cold start does not flash the other theme.
 
 The **Protected extensions** list lets you turn each configured extension on or

@@ -10,9 +10,9 @@
   },
   "info": {
     "companyName": "monolab",
-    "productName": "Extension Guard",
+    "productName": "Ward",
     "productVersion": "1.0.0",
     "copyright": "Copyright (c) monolab. MIT License.",
-    "comments": "Extension Guard status window - github.com/codepurse/extension-guard"
+    "comments": "Ward status window - github.com/codepurse/extension-guard"
   }
 }

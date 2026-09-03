@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Extension Guard</title>
+<title>Ward</title>
 <style>
   /* ========================================================================
      WARD — console design system.
@@ -1117,7 +1117,7 @@
   <header class="topbar">
     <div class="brand">
       <img src="logo.png" width="26" height="26" alt="" />
-      <div class="bn">Extension Guard</div>
+      <div class="bn">Ward</div>
     </div>
 
     <nav class="nav" id="nav">
@@ -1750,7 +1750,7 @@
       <span class="sep"></span>
       <span class="sb" id="act-path"></span>
       <span class="grow"></span>
-      <span class="sb" id="ver">Extension Guard</span>
+      <span class="sb" id="ver">Ward</span>
     </footer>
 </div>
 
@@ -4003,7 +4003,7 @@
   async function refresh() {
     if (!bound()) {
       text('hero-title', 'Run inside the app');
-      text('hero-sub', 'This window must be launched by Extension Guard.');
+      text('hero-sub', 'This window must be launched by Ward.');
       return;
     }
     render(await window.go.main.App.GetStatus());
@@ -4013,12 +4013,12 @@
     await loadActivity();
   }
 
-  // loadVersion shows the running build in the footer, e.g. "Extension Guard v1.2.0".
+  // loadVersion shows the running build in the footer, e.g. "Ward v1.2.0".
   async function loadVersion() {
     if (!bound() || !window.go.main.App.GetVersion) { return; }
     try {
       const v = await window.go.main.App.GetVersion();
-      text('ver', 'Extension Guard v' + v);
+      text('ver', 'Ward v' + v);
     } catch (e) { /* leave the default label */ }
   }
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Removes Extension Guard on Linux. uninstall-service prompts for the uninstall
+# Removes Ward on Linux. uninstall-service prompts for the uninstall
 # password, stops + removes the systemd unit, and lifts the browser lock.
 #
 # Run:  sudo installer/linux/uninstall.sh
@@ -13,7 +13,7 @@ fi
 
 dest=/opt/extension-guard
 if [ ! -x "$dest/guard" ]; then
-  echo "Extension Guard does not appear to be installed at $dest." >&2
+  echo "Ward does not appear to be installed at $dest." >&2
   exit 1
 fi
 

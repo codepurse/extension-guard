@@ -1,4 +1,4 @@
-// Package guardsvc hosts the Extension Guard as a long-running service and its
+// Package guardsvc hosts Ward as a long-running service and its
 // watchdog companion. The service applies the force-install policy on start,
 // re-applies it on registry tamper (via the watcher) and on a backstop timer,
 // and spawns a watchdog process. The watchdog re-asserts service recovery,
@@ -151,8 +151,8 @@ func New(cfg policy.Config, configPath string) (service.Service, error) {
 	}
 	conf := &service.Config{
 		Name:        ServiceName,
-		DisplayName: "Extension Guard",
-		Description: "Keeps the configured browser extensions force-installed and re-applies the policy if it is tampered with.",
+		DisplayName: "Ward",
+		Description: "Blocks the configured apps, sites and browser extensions, enforces schedules and daily limits, and re-applies the policy if it is tampered with.",
 		Arguments:   []string{"-config", configPath, "run"},
 		// systemd: auto-restart the daemon if it dies. Ignored on Windows, where
 		// SCM recovery actions are configured separately by scm.Harden.
@@ -404,7 +404,7 @@ func RunWatchdog(cfg policy.Config, configPath string) error {
 }
 
 func (p *program) Start(s service.Service) error {
-	p.logger.Info("Extension Guard starting")
+	p.logger.Info("Ward starting")
 	// The service runs as SYSTEM, which makes it the right - and normally the
 	// first - place to create the activity log and stamp its permissions. Nothing
 	// unprivileged may create it, so until this has run the window and the
@@ -444,7 +444,7 @@ func (p *program) Start(s service.Service) error {
 }
 
 func (p *program) Stop(s service.Service) error {
-	p.logger.Info("Extension Guard stopping")
+	p.logger.Info("Ward stopping")
 	// Recorded even though a stop is usually authorized (a pause, or an update
 	// swapping binaries). "The guard was not running between 02:10 and 07:30" is
 	// exactly the kind of gap the record exists to make visible, and the reason it

@@ -1,4 +1,4 @@
-// Package updater checks for a newer Extension Guard build, downloads and
+// Package updater checks for a newer Ward build, downloads and
 // integrity-checks the binaries, and swaps them into place.
 //
 // It resolves releases from the endpoint configured in internal/endpoint when

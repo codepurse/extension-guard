@@ -1,4 +1,4 @@
-// Command statusui is the Extension Guard status window - the day-to-day
+// Command statusui is the Ward status window - the day-to-day
 // console. It is a Wails app: a Go backend (app.go) bound to an HTML/CSS
 // frontend (frontend/dist) rendered via WebView2. It only reads state and
 // verifies the password; all enforcement lives in the guard service.
@@ -46,7 +46,7 @@ func main() {
 	}
 
 	err := wails.Run(&options.App{
-		Title: "Extension Guard",
+		Title: "Ward",
 
 		// Opens maximised. The window is a console - a top bar carrying the
 		// four pages, a scrolling workspace of cards, and a status bar - and

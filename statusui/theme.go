@@ -33,6 +33,13 @@ type uiPrefs struct {
 // themePath is %AppData%\Extension Guard\ui.json on Windows, and the
 // equivalent under the user's config directory elsewhere. Per-user by design:
 // two people sharing a PC do not share an eyesight.
+//
+// The directory keeps the old product name on purpose. The app is called Ward
+// now, but this path is where every existing install already wrote its theme:
+// rename it and those preferences are silently orphaned - the window reverts to
+// the system theme once, for no reason the user can see. It is a private
+// directory nobody browses to, so the inconsistency costs nothing and the
+// rename would. Same reasoning as the service name and the registry key.
 func themePath() (string, error) {
 	dir, err := os.UserConfigDir()
 	if err != nil {

@@ -210,7 +210,7 @@ func TestBlockedProcessesNeverTouchesProtected(t *testing.T) {
 	procs := []Process{
 		{PID: 4, Name: "System"},
 		{PID: 900, Name: "explorer.exe", Titles: []string{"Program Manager"}},
-		{PID: 901, Name: "guard.exe", Path: `C:\Program Files\Extension Guard\guard.exe`},
+		{PID: 901, Name: "guard.exe", Path: `C:\Program Files\Ward\guard.exe`},
 		{PID: 902, Name: "mygame.exe", Path: `C:\Games\mygame.exe`},
 	}
 	got := BlockedProcesses(apps, procs)

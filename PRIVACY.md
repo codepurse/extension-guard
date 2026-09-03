@@ -2,13 +2,13 @@
 
 _Last updated: 2026-08-21_
 
-**Extension Guard collects no personal data.** There are no accounts, no
+**Ward collects no personal data.** There are no accounts, no
 telemetry, no analytics, and no tracking of any kind. Nothing about you or your
 browsing is sent anywhere.
 
 ## What stays on your device
 
-Everything Extension Guard needs lives locally and never leaves your computer:
+Everything Ward needs lives locally and never leaves your computer:
 
 - **The uninstall password** is stored only as a bcrypt **hash** (in the Windows
   registry, or a root-owned state file on Linux). The password itself is never
@@ -48,7 +48,7 @@ You can turn this off entirely by setting `"autoUpdate": "off"` in
 
 ## No content filtering or data access
 
-Extension Guard does **not** read, filter, or transmit your browsing history or
+Ward does **not** read, filter, or transmit your browsing history or
 page content. The activity log records the guard's **own actions** — that a site
 was added to the block list, that a blocked application was closed — never which
 pages you visited or what was on them. A daily time limit counts how long an

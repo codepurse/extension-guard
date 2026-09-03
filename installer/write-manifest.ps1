@@ -23,7 +23,7 @@ function Sha($path) {
 
 $manifest = [ordered]@{
   version = $Version
-  notes   = "Extension Guard $Version"
+  notes   = "Ward $Version"
   files   = @(
     [ordered]@{ name = "guard.exe";                  sha256 = (Sha (Join-Path $Release "guard.exe")) },
     [ordered]@{ name = "extension-guard-status.exe"; sha256 = (Sha (Join-Path $Release "extension-guard-status.exe")) }

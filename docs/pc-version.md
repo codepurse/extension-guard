@@ -1,4 +1,4 @@
-# Extension Guard — how uninstall protection works
+# Ward — how uninstall protection works
 
 ## The core idea
 
@@ -7,7 +7,7 @@ Firefox guarantee the user can always remove extensions, and any extension that
 tries to block this gets pulled from the stores. So self-protection has to live
 *above* the browser.
 
-Extension Guard is a small native app installed with admin rights. It uses the
+Ward is a small native app installed with admin rights. It uses the
 browsers' **enterprise "force-install" policy** to lock every configured
 extension:
 

@@ -1,4 +1,4 @@
-// Command guard is the Extension Guard enforcement tool.
+// Command guard is the Ward enforcement tool.
 //
 //   - milestone 1: apply / verify / remove the browser force-install policy.
 //   - milestone 2: run as a Windows service that re-applies the policy on tamper.
@@ -698,7 +698,7 @@ func waitForStop(name string, timeout time.Duration) {
 // printUsage is the help text. It is not called "usage" because that name now
 // belongs to the package that counts how long a limited block has been used.
 func printUsage() {
-	fmt.Println(`Extension Guard
+	fmt.Println(`Ward
 
 usage: guard [flags] <command>
 

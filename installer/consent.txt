@@ -1,6 +1,6 @@
-Extension Guard - what this installs and what it does
+Ward - what this installs and what it does
 
-Extension Guard is a parental-control / accountability tool. By installing it you
+Ward is a parental-control / accountability tool. By installing it you
 acknowledge and agree to the following:
 
 1. This software keeps the configured browser extension(s) force-installed in your

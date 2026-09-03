@@ -2,7 +2,7 @@
   "name": "extension-guard-status-frontend",
   "private": true,
   "version": "1.0.0",
-  "description": "Static frontend for the Extension Guard status window (no build step)",
+  "description": "Static frontend for the Ward status window (no build step)",
   "scripts": {
     "build": "node -e \"process.exit(0)\""
   }

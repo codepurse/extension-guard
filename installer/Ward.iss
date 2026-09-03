@@ -1,4 +1,4 @@
-; Inno Setup script for the Extension Guard (PC version).
+; Inno Setup script for Ward (PC version).
 ;
 ; Builds a double-click installer that:
 ;   - shows a consent page (LicenseFile),
@@ -7,12 +7,12 @@
 ;   - runs `guard install-service` to install + harden + start the service,
 ;   - and on uninstall, requires that password via `guard uninstall-service`.
 ;
-; Build with: ISCC.exe Extension-Guard.iss   (see README.md in this folder)
+; Build with: ISCC.exe Ward.iss   (see README.md in this folder)
 ; NOTE: unsigned until a code-signing certificate is available (SignPath).
 
-#define AppName "Extension Guard"
+#define AppName "Ward"
 ; AppVersion is normally passed by build.ps1 (ISCC /DAppVersion=x.y.z from the
-; repo-root VERSION file). The fallback keeps a bare `ISCC Extension-Guard.iss`
+; repo-root VERSION file). The fallback keeps a bare `ISCC Ward.iss`
 ; working.
 #ifndef AppVersion
   #define AppVersion "1.0.0"
@@ -23,7 +23,14 @@ AppId={{6B2C9E4A-3F71-4B8E-9C2D-5A1E7F0D9C34}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher=monolab
-DefaultDirName={autopf}\Extension Guard
+; New installs land in "Ward"; installs made under the old name keep
+; "Extension Guard", because the AppId below is unchanged and
+; UsePreviousAppDir defaults to yes. That divergence is deliberate. Moving
+; an existing install would mean stopping a hardened, auto-restarting
+; service, relocating the binary the SCM has a recorded path to, and
+; re-registering it - a lot of moving parts for a folder name nobody reads.
+; The fleet converges on its own as machines are reinstalled.
+DefaultDirName={autopf}\Ward
 ; Both binaries are 64-bit Go builds. Without these two lines Inno runs the
 ; installer in 32-bit mode, {autopf} resolves to "Program Files (x86)", and a
 ; 64-bit program lands in the directory Windows keeps for 32-bit ones. It works
@@ -38,7 +45,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 DisableProgramGroupPage=yes
 PrivilegesRequired=admin
 OutputDir=output
-OutputBaseFilename=Extension-Guard-Setup
+OutputBaseFilename=Ward-Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -76,12 +83,20 @@ Source: "..\extension-ids.default.json"; DestDir: "{app}"; Flags: ignoreversion
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut for the status window"; GroupDescription: "Additional shortcuts:"
 
+; The product was renamed from "Extension Guard" to "Ward". Inno creates the
+; new shortcuts but leaves the old ones alone, so an upgraded machine would
+; show both names pointing at the same exe. Remove the old pair first.
+; Harmless on a clean install - nothing is there to delete.
+[InstallDelete]
+Type: files; Name: "{autoprograms}\Extension Guard.lnk"
+Type: files; Name: "{autodesktop}\Extension Guard.lnk"
+
 [Icons]
-Name: "{autoprograms}\Extension Guard"; Filename: "{app}\extension-guard-status.exe"
-Name: "{autodesktop}\Extension Guard"; Filename: "{app}\extension-guard-status.exe"; Tasks: desktopicon
+Name: "{autoprograms}\Ward"; Filename: "{app}\extension-guard-status.exe"
+Name: "{autodesktop}\Ward"; Filename: "{app}\extension-guard-status.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\extension-guard-status.exe"; Description: "Open the Extension Guard status window"; Flags: postinstall nowait skipifsilent
+Filename: "{app}\extension-guard-status.exe"; Description: "Open the Ward status window"; Flags: postinstall nowait skipifsilent
 
 [Code]
 var
@@ -149,7 +164,7 @@ begin
     'Set uninstall password',
     'Choose the password required to remove this protection',
     'Give this password to the parent or accountability partner - NOT the person being filtered. ' +
-    'It will be required to uninstall Extension Guard.');
+    'It will be required to uninstall Ward.');
   PwPage.Add('Password:', True);          { True = masked }
   PwPage.Add('Confirm password:', True);
 end;
@@ -346,7 +361,7 @@ begin
   Result := '';
   Form := CreateCustomForm(ScaleX(380), ScaleY(140), False, True);
   try
-    Form.Caption := 'Extension Guard';
+    Form.Caption := 'Ward';
 
     Lbl := TNewStaticText.Create(Form);
     Lbl.Parent := Form;

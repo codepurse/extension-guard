@@ -1,9 +1,9 @@
 #requires -version 5
 <#
-  Builds all Extension Guard release artifacts into release\:
+  Builds all Ward release artifacts into release\:
     - guard.exe                    (CLI + service + watchdog)
     - extension-guard-status.exe   (Wails status window)
-    - Extension-Guard-Setup.exe    (Inno Setup installer that bundles both)
+    - Ward-Setup.exe    (Inno Setup installer that bundles both)
     - manifest.json                (version + SHA-256, read by the in-app updater)
 
   Stages (so CI can code-sign between building and hashing/bundling):
@@ -98,18 +98,18 @@ if ($doInstaller) {
   Write-Host "== build installer (ISCC) ==" -ForegroundColor Cyan
   # Bundles guard.exe (repo root) + extension-guard-status.exe (statusui\build\bin).
   # In the signed CI flow those have already been signed by the time this runs.
-  & $iscc "/DAppVersion=$version" (Join-Path $root "installer\Extension-Guard.iss"); if ($LASTEXITCODE -ne 0) { throw "installer build failed" }
+  & $iscc "/DAppVersion=$version" (Join-Path $root "installer\Ward.iss"); if ($LASTEXITCODE -ne 0) { throw "installer build failed" }
 
   Write-Host "== collect release artifacts ==" -ForegroundColor Cyan
   if (Test-Path $release) { Remove-Item $release -Recurse -Force }
   New-Item -ItemType Directory -Path $release | Out-Null
   Copy-Item (Join-Path $root "guard.exe") $release
   Copy-Item (Join-Path $root "statusui\build\bin\extension-guard-status.exe") $release
-  Copy-Item (Join-Path $root "installer\output\Extension-Guard-Setup.exe") $release
+  Copy-Item (Join-Path $root "installer\output\Ward-Setup.exe") $release
   # Ship the *template* next to the binaries so they find a config without walking
   # the tree - never the repo's own extension-ids.json, which is a working config
   # with the developer's blocks and app rules in it. See the [Files] note in
-  # installer\Extension-Guard.iss.
+  # installer\Ward.iss.
   Copy-Item (Join-Path $root "extension-ids.default.json") (Join-Path $release "extension-ids.json")
 }
 

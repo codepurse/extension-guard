@@ -1,6 +1,6 @@
-# Contributing to Extension Guard
+# Contributing to Ward
 
-Thanks for your interest in contributing! Extension Guard is a native companion
+Thanks for your interest in contributing! Ward is a native companion
 that locks browser extensions in place via enterprise force-install policy, with
 a tamper-resistant service on **Windows** and **Linux**. This guide covers how
 to get set up, the conventions we follow, and how to submit changes.

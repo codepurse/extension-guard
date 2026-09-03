@@ -1,6 +1,6 @@
 # Code signing & antivirus false positives
 
-Extension Guard is a tamper-resistant service: it runs as `LocalSystem`, writes
+Ward is a tamper-resistant service: it runs as `LocalSystem`, writes
 browser enterprise policy, and a watchdog restarts it if it's killed. That
 "won't stay dead" behavior is the whole point — but at the heuristic/ML level it
 is *indistinguishable* from persistence malware. So on an **unsigned** build you
@@ -64,8 +64,8 @@ the in-app updater's integrity check will fail. (build.ps1's stages —
 > against the version you pin — SignPath has renamed them across releases
 > (e.g. `github-artifact-id`). Their onboarding gives an exact snippet.
 
-To also sign `Extension-Guard-Setup.exe`, repeat the SignPath step against
-`release\Extension-Guard-Setup.exe` after the installer stage and before the
+To also sign `Ward-Setup.exe`, repeat the SignPath step against
+`release\Ward-Setup.exe` after the installer stage and before the
 manifest stage.
 
 ## Reputation note

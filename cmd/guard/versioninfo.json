@@ -11,11 +11,11 @@
   },
   "StringFileInfo": {
     "CompanyName": "monolab",
-    "FileDescription": "Extension Guard - browser extension force-install enforcement service",
+    "FileDescription": "Ward - parental control and content blocking service",
     "InternalName": "guard",
     "LegalCopyright": "Copyright (c) monolab. MIT License. https://github.com/codepurse/extension-guard",
     "OriginalFilename": "guard.exe",
-    "ProductName": "Extension Guard",
+    "ProductName": "Ward",
     "ProductVersion": "1.1.0"
   },
   "VarFileInfo": {

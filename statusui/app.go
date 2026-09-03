@@ -1479,7 +1479,7 @@ func (a *App) ApplyUpdate() ActionResult {
 	if code != 0 {
 		return ActionResult{Message: fmt.Sprintf("The updater reported an error (exit code %d).", code)}
 	}
-	return ActionResult{OK: true, Message: "Update installed. Close and reopen Extension Guard to use the new version."}
+	return ActionResult{OK: true, Message: "Update installed. Close and reopen Ward to use the new version."}
 }
 
 // GetAnnouncement fetches the remote announcement shown as a dismissible banner.

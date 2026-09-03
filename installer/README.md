@@ -1,6 +1,6 @@
-# Extension Guard installer (Inno Setup)
+# Ward installer (Inno Setup)
 
-Builds `Extension-Guard-Setup.exe` - the double-click installer for the PC
+Builds `Ward-Setup.exe` - the double-click installer for the PC
 version. It shows a consent page, collects the uninstall password, installs +
 hardens + starts the guard service, and gates uninstall on that password.
 
@@ -12,20 +12,20 @@ hardens + starts the guard service, and gates uninstall on that password.
 ## Build
 
 ```sh
-ISCC.exe Extension-Guard.iss
+ISCC.exe Ward.iss
 ```
 
 (If `ISCC.exe` isn't on PATH it's usually at
 `C:\Program Files (x86)\Inno Setup 6\ISCC.exe`.)
 
-Output: `output\Extension-Guard-Setup.exe`.
+Output: `output\Ward-Setup.exe`.
 
 ## What the installer does
 
 1. Consent page (`consent.txt`) - must be accepted.
 2. Password page - sets the uninstall password (masked, confirmed, min 6 chars).
 3. **Select components** - which extensions to lock (BlockNSFW, Sieve, or both).
-4. Copies `guard.exe` + `extension-ids.json` to `C:\Program Files\Extension Guard`.
+4. Copies `guard.exe` + `extension-ids.json` to `C:\Program Files\Ward`.
 5. Runs `guard -extensions <chosen> select` to trim the installed config to the
    chosen extensions, then `guard install-service` (install + harden + start).
 6. Uninstall prompts for the password and runs `guard uninstall-service`; a wrong

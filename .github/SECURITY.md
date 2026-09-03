@@ -1,6 +1,6 @@
 # Security Policy
 
-Extension Guard is a security tool: it plants and defends an enterprise
+Ward is a security tool: it plants and defends an enterprise
 force-install policy so protected browser extensions cannot be removed from the
 browser UI, and it gates its own uninstall behind a password. Because of that,
 vulnerabilities here are especially sensitive — a bypass can silently defeat the
@@ -74,4 +74,4 @@ full "honest ceiling." Reports about them are not treated as vulnerabilities:
 - The two-process respawn (service + watchdog) pattern is expected to be flagged
   by some antivirus engines; code signing is the mitigation, not a security bug.
 
-Thank you for helping keep Extension Guard and its users safe.
+Thank you for helping keep Ward and its users safe.
