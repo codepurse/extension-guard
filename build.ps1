@@ -87,6 +87,17 @@ if ($doBinaries) {
   Write-Host "== build guard.exe ==" -ForegroundColor Cyan
   & $go -C $root build -ldflags $ldflags -o guard.exe ./cmd/guard; if ($LASTEXITCODE -ne 0) { throw "guard build failed" }
 
+  # No version-info step for this one, and not for want of trying. The built exe
+  # has an empty Properties -> Details tab - ProductName, FileDescription and
+  # FileVersion all read as empty - even though wails.json carries a full info
+  # block. Wails emits its own .rsrc from build/windows/info.json, regenerating
+  # that file on every build if it is missing, so the template cannot be fixed in
+  # place; correcting its language key from the default 0000 to 0409 changes
+  # nothing; and adding a second resource with goversioninfo the way guard.exe
+  # does fails the link with "too many .rsrc sections". Fixing it means patching
+  # Wails or rewriting the resource in the built exe. Verified against Wails
+  # v2.12.0. Cosmetic, so it is left alone - do not spend the afternoon on it
+  # again.
   Write-Host "== build status UI (wails) ==" -ForegroundColor Cyan
   Push-Location (Join-Path $root "statusui")
   try { & $wails build -ldflags $ldflags; if ($LASTEXITCODE -ne 0) { throw "wails build failed" } } finally { Pop-Location }
