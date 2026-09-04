@@ -112,42 +112,20 @@
              system-ui, -apple-system, sans-serif;
     --mono:  "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
 
-    /* ================================================================
-       What is left of the compatibility shim. Thirty-four names were pure
-       aliases and have been folded into the roles they pointed at - 157
-       var() references rewritten, so --line is --rule everywhere and there
-       is one vocabulary rather than two.
+    /* ---- three roles the components still need by name ----
+       The compatibility shim is gone. Forty-six of its forty-nine names were
+       aliases or tinted fills and have been folded into the roles they stood
+       for; these three are not aliases, so they live here as themselves.
 
-       These fifteen are not aliases: they are the tinted fills and hairlines
-       the older chrome still paints badges, notices and zero states with.
-       They go when those components are rebuilt as bordered rectangles the
-       way .ccost already is - a fill is not how this system says status.
-       ================================================================ */
-
-    --brand-soft: color-mix(in oklab, var(--action) 10%, transparent);
-    --brand-soft2:color-mix(in oklab, var(--action) 16%, transparent);
-    --brand-line: color-mix(in oklab, var(--action) 45%, transparent);
-    --on-brand:   #FEFDFB;
-
-    --ok-soft:   color-mix(in oklab, var(--accent) 10%, transparent);
-    --ok-line:   color-mix(in oklab, var(--accent) 45%, transparent);
-
-    --warn-soft: color-mix(in oklab, var(--warn) 10%, transparent);
-    --warn-line: color-mix(in oklab, var(--warn) 45%, transparent);
-
-    --bad-soft:  color-mix(in oklab, var(--critical) 10%, transparent);
-    --bad-line:  color-mix(in oklab, var(--critical) 45%, transparent);
-
-    --info-soft: color-mix(in oklab, var(--action) 10%, transparent);
-    --info-line: color-mix(in oklab, var(--action) 45%, transparent);
-
-    --violet-soft: color-mix(in oklab, var(--s5) 12%, transparent);
-
-    --danger-hi: #7F241F;
-
-
-
-    --backdrop:     color-mix(in oklab, #1A1A16 34%, transparent);
+       A fill is not how this system says status, which is why the chips have
+       none: pill, count and badge are bordered rectangles now, the same
+       treatment .ccost has always had. Where a tint survives - a notice band,
+       a switch that is on, the small tile a mark sits in - the component
+       mixes it from its own role inline, so there is no second scale to drift
+       from the first. */
+    --on-brand: #FEFDFB;   /* text on a filled --action */
+    --backdrop: color-mix(in oklab, #1A1A16 34%, transparent);
+    --danger-hi: #7F241F;  /* the destructive button, held */
   }
 
   /* Dark is DESIGNED, not inverted. It is a selected set of steps against
@@ -181,8 +159,10 @@
     --s1: #2F9E78; --s2: #B58E14; --s3: #4A86D8;
     --s4: #DC5A52; --s5: #8A72D8; --s6: #DD5F93;
 
-    /* shim, dark. Same mappings; only the two that must invert are
-       restated - text on a filled action, and the dark end of danger. */
+    /* The two that genuinely invert rather than re-step: text on a filled
+       action goes from paper to ink, and "held" on the destructive button is
+       lighter than its base here where it was darker on paper. --backdrop is
+       not restated - a scrim over either ground is the same dark. */
     --on-brand:  #0F1211;
     --danger-hi: #EE9089;
   }
@@ -215,7 +195,10 @@
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--track); border-radius: 2px; border: 3px solid transparent; background-clip: content-box; }
   ::-webkit-scrollbar-thumb:hover { background: var(--rule-2); background-clip: content-box; }
-  :focus-visible { outline: 2px solid var(--action); outline-offset: 2px; border-radius: 5px; }
+  :focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
+  /* One treatment, and no radius of its own: setting one here reshaped the
+     element on focus, and a state is a token change, never a shape change.
+     The outline follows the corners the element already has. */
 
   /* Held for the two frames either side of a theme swap. Every control in the
      window animates its background, which is right when one of them is hovered
@@ -239,7 +222,7 @@
     min-width: 0; z-index: 40;
   }
   .brand { display: flex; align-items: center; gap: 10px; flex: none; }
-  .brand img { border-radius: 7px; }
+  .brand img { border-radius: 2px; }
   .brand .bn { font-size: 16px; font-weight: 600; letter-spacing: -0.025em; }
 
   /* Pill navigation: the open page is a filled lozenge and the rest are quiet
@@ -266,12 +249,12 @@
     font-size: 11px; font-weight: 600; padding: 0 6px; min-width: 20px; text-align: center;
     border-radius: 2px; background: var(--hover); color: var(--text-3);
   }
-  .navitem.is-on .navcount { background: var(--brand-soft); color: var(--action); }
+  .navitem.is-on .navcount { background: transparent; color: var(--action); border-color: color-mix(in oklab, var(--action) 45%, transparent); }
   /* A dot, not a number: it says "something here wants you", and the count is
      on the page itself. */
   .navdot {
     position: absolute; top: 4px; right: 5px; width: 7px; height: 7px;
-    border-radius: 50%; background: var(--warn); box-shadow: 0 0 0 2px var(--surface);
+    border-radius: 2px; background: var(--warn); box-shadow: 0 0 0 2px var(--surface);
   }
   .navdot.bad { background: var(--critical); }
 
@@ -283,16 +266,16 @@
     border-radius: 2px; font-size: 12.5px; font-weight: 500;
     border: 1px solid transparent; white-space: nowrap;
   }
-  .pill::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
-  .pill.active   { color: var(--accent);   background: var(--ok-soft);   border-color: var(--ok-line); }
-  .pill.inactive { color: var(--critical);  background: var(--bad-soft);  border-color: var(--bad-line); }
-  .pill.paused   { color: var(--warn); background: var(--warn-soft); border-color: var(--warn-line); }
+  .pill::before { content: ''; width: 7px; height: 7px; border-radius: 2px; background: currentColor; flex: none; }
+  .pill.active   { color: var(--accent);   border-color: color-mix(in oklab, var(--accent) 45%, transparent); }
+  .pill.inactive { color: var(--critical); border-color: color-mix(in oklab, var(--critical) 45%, transparent); }
+  .pill.paused   { color: var(--warn);    border-color: color-mix(in oklab, var(--warn) 45%, transparent); }
   .pill.active::before { animation: pulse 2.4s ease-in-out infinite; }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .28; } }
 
   .iconbtn {
     position: relative; background: var(--surface); border: 1px solid var(--rule); color: var(--text-2);
-    width: 32px; height: 32px; border-radius: 9px; padding: 0;
+    width: 32px; height: 32px; border-radius: 2px; padding: 0;
     display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
     transition: background .14s ease, color .14s ease, border-color .14s ease;
   }
@@ -349,7 +332,7 @@
   .filterbox input { width: 232px; padding-left: 33px; height: 34px; }
   .filterbox .fkey {
     position: absolute; right: 9px; font-size: 11px; color: var(--text-3);
-    border: 1px solid var(--rule); border-radius: 4px; padding: 0 5px; pointer-events: none;
+    border: 1px solid var(--rule); border-radius: 2px; padding: 0 5px; pointer-events: none;
   }
   .filterbox input:focus + .fkey, .filterbox input:not(:placeholder-shown) + .fkey { display: none; }
 
@@ -408,11 +391,11 @@
   .chead .grow { flex: 1; min-width: 0; }
   .chead .note { font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cnt {
-    font-size: 11.5px; font-weight: 600; color: var(--text-2); background: var(--hover);
+    font-size: 11.5px; font-weight: 600; color: var(--text-2); background: transparent;
     border: 1px solid var(--rule); padding: 1px 8px; border-radius: 2px; flex: none;
   }
-  .cnt.warn { color: var(--warn); background: var(--warn-soft); border-color: var(--warn-line); }
-  .cnt.ok   { color: var(--accent);   background: var(--ok-soft);   border-color: var(--ok-line); }
+  .cnt.warn { color: var(--warn);   border-color: color-mix(in oklab, var(--warn) 45%, transparent); }
+  .cnt.ok   { color: var(--accent); border-color: color-mix(in oklab, var(--accent) 45%, transparent); }
 
   .ctools { flex: none; display: flex; gap: 8px; padding: 0 16px 12px; }
   .ctools.wrap { flex-wrap: wrap; }
@@ -429,12 +412,12 @@
   /* The long explanations the old window printed under every heading are all
      here, one click away, in the same words. */
   .help {
-    width: 19px; height: 19px; padding: 0; flex: none; border-radius: 50%;
+    width: 19px; height: 19px; padding: 0; flex: none; border-radius: 2px;
     background: var(--surface); border: 1px solid var(--rule); color: var(--text-3);
     font-size: 11px; font-weight: 600; line-height: 1; cursor: pointer;
     display: inline-flex; align-items: center; justify-content: center; font-family: inherit;
   }
-  .help:hover, .help.open { background: var(--brand-soft); border-color: var(--brand-line); color: var(--action); }
+  .help:hover, .help.open { background: color-mix(in oklab, var(--action) 12%, transparent); border-color: color-mix(in oklab, var(--action) 45%, transparent); color: var(--action); }
   .helpbubble {
     position: fixed; z-index: 80; width: 336px; max-width: calc(100vw - 24px);
     background: var(--hover); border: 1px solid var(--rule); border-radius: var(--r);
@@ -494,7 +477,7 @@
     border-radius: var(--r-lg); padding: 15px 16px 14px; box-shadow: none;
     min-width: 0; display: flex; flex-direction: column; gap: 2px;
     position: relative; overflow: hidden;
-    --kpi: var(--action); --kpi-wash: var(--brand-soft);
+    --kpi: var(--action); --kpi-wash: color-mix(in oklab, var(--action) 12%, transparent);
     /* Flat surface. The hue lives in the mark and the figure, never in the
        ground behind them: four tinted panels side by side read as decoration,
        and the reader has to look past the colour to find the number that is
@@ -503,11 +486,11 @@
     transition: border-color .16s ease;
   }
   .kpi:hover { border-color: var(--rule-2); }
-  .kpi[data-hue="ok"]     { --kpi: var(--accent);     --kpi-wash: var(--ok-soft); }
-  .kpi[data-hue="info"]   { --kpi: var(--action);   --kpi-wash: var(--info-soft); }
-  .kpi[data-hue="violet"] { --kpi: var(--s5); --kpi-wash: var(--violet-soft); }
-  .kpi[data-hue="warn"]   { --kpi: var(--warn);   --kpi-wash: var(--warn-soft); }
-  .kpi[data-hue="bad"]    { --kpi: var(--critical);    --kpi-wash: var(--bad-soft); }
+  .kpi[data-hue="ok"]     { --kpi: var(--accent);     --kpi-wash: color-mix(in oklab, var(--accent) 12%, transparent); }
+  .kpi[data-hue="info"]   { --kpi: var(--action);   --kpi-wash: color-mix(in oklab, var(--action) 12%, transparent); }
+  .kpi[data-hue="violet"] { --kpi: var(--s5); --kpi-wash: color-mix(in oklab, var(--s5) 12%, transparent); }
+  .kpi[data-hue="warn"]   { --kpi: var(--warn);   --kpi-wash: color-mix(in oklab, var(--warn) 12%, transparent); }
+  .kpi[data-hue="bad"]    { --kpi: var(--critical);    --kpi-wash: color-mix(in oklab, var(--critical) 12%, transparent); }
   .kpi .tile { background: var(--kpi-wash); color: var(--kpi); }
 
   .kpi-top { display: flex; align-items: flex-start; gap: 10px; }
@@ -517,16 +500,16 @@
      is, and colouring all three is how a list of forty rules turns into a
      colour field. Only a tile given an explicit tone departs from this. */
   .tile {
-    flex: none; width: 34px; height: 34px; border-radius: 10px;
+    flex: none; width: 34px; height: 34px; border-radius: 2px;
     display: inline-flex; align-items: center; justify-content: center;
     background: var(--hover); color: var(--text-3);
   }
   .tile svg { width: 17px; height: 17px; }
-  .tile.t-ok   { background: var(--ok-soft);   color: var(--accent); }
-  .tile.t-info { background: var(--info-soft); color: var(--action); }
-  .tile.t-warn { background: var(--warn-soft); color: var(--warn); }
-  .tile.t-bad  { background: var(--bad-soft);  color: var(--critical); }
-  .tile.sm { width: 28px; height: 28px; border-radius: 8px; }
+  .tile.t-ok   { background: color-mix(in oklab, var(--accent) 12%, transparent);   color: var(--accent); }
+  .tile.t-info { background: color-mix(in oklab, var(--action) 12%, transparent); color: var(--action); }
+  .tile.t-warn { background: color-mix(in oklab, var(--warn) 12%, transparent); color: var(--warn); }
+  .tile.t-bad  { background: color-mix(in oklab, var(--critical) 12%, transparent);  color: var(--critical); }
+  .tile.sm { width: 28px; height: 28px; border-radius: 2px; }
   .tile.sm svg { width: 14px; height: 14px; }
 
   .kpi-v { font-size: 27px; font-weight: 600; letter-spacing: -0.035em; line-height: 1.18; margin-top: 6px; }
@@ -569,9 +552,9 @@
     background: var(--surface);
   }
   .ins-tile {
-    flex: none; width: 38px; height: 38px; border-radius: 12px;
+    flex: none; width: 38px; height: 38px; border-radius: 2px;
     display: inline-flex; align-items: center; justify-content: center;
-    background: var(--brand-soft2); color: var(--action);
+    background: color-mix(in oklab, var(--action) 18%, transparent); color: var(--action);
   }
   .ins-tile svg { width: 19px; height: 19px; }
   .ins-b { flex: 1; min-width: 0; }
@@ -598,7 +581,7 @@
   .hit { fill: transparent; }
   .chart-tip {
     position: absolute; z-index: 20; pointer-events: none; min-width: 118px;
-    background: var(--hover); border: 1px solid var(--rule-2); border-radius: 10px;
+    background: var(--hover); border: 1px solid var(--rule-2); border-radius: 2px;
     padding: 8px 11px; box-shadow: var(--lift); transform: translate(-50%, -100%);
     opacity: 0; transition: opacity .12s ease;
   }
@@ -639,11 +622,11 @@
   .donutwrap.stacked { flex-direction: column; align-items: center; gap: 14px; }
   .donutwrap.stacked .legend { width: 100%; max-width: 320px; }
   .lrow {
-    display: flex; align-items: center; gap: 9px; padding: 6px 4px; border-radius: 7px;
+    display: flex; align-items: center; gap: 9px; padding: 6px 4px; border-radius: 2px;
     font-size: 13px; cursor: default;
   }
   .lrow:hover { background: var(--hover); }
-  .lrow .ld { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .lrow .ld { width: 9px; height: 9px; border-radius: 2px; flex: none; }
   .lrow .ln { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
   .legend-p { font-size: 12.5px; color: var(--text-3); width: 46px; text-align: right; flex: none; }
   .legend-n { font-size: 13px; font-weight: 500; width: 34px; text-align: right; flex: none; }
@@ -714,12 +697,12 @@
     font-size: 11.5px; font-weight: 500; padding: 3px 9px; flex: none;
     border-radius: 2px; border: 1px solid transparent; white-space: nowrap;
   }
-  .badge.locked   { color: var(--accent);     background: var(--ok-soft);   border-color: var(--ok-line); }
+  .badge.locked   { color: var(--accent);   border-color: color-mix(in oklab, var(--accent) 45%, transparent); }
   .badge.unlocked,
-  .badge.idle     { color: var(--text-3); background: var(--hover);  border-color: var(--rule); }
+  .badge.idle     { color: var(--text-3); border-color: var(--rule-2); }
   .badge.idlewin,
   .badge.reachable,
-  .badge.budget   { color: var(--warn);   background: var(--warn-soft); border-color: var(--warn-line); }
+  .badge.budget   { color: var(--warn);    border-color: color-mix(in oklab, var(--warn) 45%, transparent); }
   .push { margin-left: auto; }
 
   .schedtag {
@@ -735,11 +718,11 @@
     font-size: 11px; font-weight: 600; letter-spacing: .05em; border-radius: 2px;
     border: 1px solid transparent; text-transform: uppercase; padding: 0; font-family: inherit;
   }
-  .toggle.on  { background: var(--ok-soft);     color: var(--accent);     border-color: var(--ok-line); text-align: right; padding-right: 10px; }
+  .toggle.on  { background: color-mix(in oklab, var(--accent) 12%, transparent);     color: var(--accent);     border-color: color-mix(in oklab, var(--accent) 45%, transparent); text-align: right; padding-right: 10px; }
   .toggle.off { background: var(--hover);   color: var(--text-3); border-color: var(--rule); text-align: left;  padding-left: 10px; }
   .toggle::before {
     content: ''; position: absolute; top: 50%; transform: translateY(-50%);
-    width: 14px; height: 14px; border-radius: 50%; transition: left .16s ease, right .16s ease;
+    width: 14px; height: 14px; border-radius: 2px; transition: left .16s ease, right .16s ease;
   }
   .toggle.on::before  { left: 5px;  background: var(--accent); }
   .toggle.off::before { right: 5px; background: var(--text-3); }
@@ -754,8 +737,8 @@
      is the only other thing on the line. */
   .attrow { display: flex; align-items: flex-start; gap: 11px; padding: 11px 16px; border-top: 1px solid var(--rule); }
   .rows > .attrow:first-child { border-top: none; }
-  .attrow .atile { flex: none; width: 28px; height: 28px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; background: var(--warn-soft); color: var(--warn); }
-  .attrow.bad .atile { background: var(--bad-soft); color: var(--critical); }
+  .attrow .atile { flex: none; width: 28px; height: 28px; border-radius: 2px; display: inline-flex; align-items: center; justify-content: center; background: color-mix(in oklab, var(--warn) 12%, transparent); color: var(--warn); }
+  .attrow.bad .atile { background: color-mix(in oklab, var(--critical) 12%, transparent); color: var(--critical); }
   .attrow .atile svg { width: 15px; height: 15px; }
   .attrow .abody { flex: 1; min-width: 0; }
   .attrow .atext { font-size: 13.5px; font-weight: 500; }
@@ -778,7 +761,7 @@
   .act:first-child::before { top: 15px; }
   .act:last-child::before  { bottom: calc(100% - 15px); }
   .act .dot {
-    width: 9px; height: 9px; border-radius: 50%; margin-top: 5px; margin-left: 0; flex: none;
+    width: 9px; height: 9px; border-radius: 2px; margin-top: 5px; margin-left: 0; flex: none;
     background: var(--text-3); box-shadow: 0 0 0 3px var(--surface); z-index: 1;
   }
   .act.enforced .dot { background: var(--accent); }
@@ -801,7 +784,7 @@
     background: var(--hover); color: var(--text-3);
   }
   .zero .zt svg { width: 18px; height: 18px; }
-  .zero.good .zt { background: var(--ok-soft); color: var(--accent); }
+  .zero.good .zt { background: color-mix(in oklab, var(--accent) 12%, transparent); color: var(--accent); }
   .zero .zb { flex: 1; min-width: 0; }
   /* The one place the serif is spent. Instrument allows Newsreader for empty
      states, page titles and the occasional caption, and warns that a serif
@@ -816,7 +799,7 @@
      Buttons and inputs.
      ==================================================================== */
   button {
-    background: var(--action); color: var(--on-brand); border: 1px solid transparent; border-radius: 9px;
+    background: var(--action); color: var(--on-brand); border: 1px solid transparent; border-radius: 2px;
     padding: 7px 14px; font-size: 13px; font-weight: 500; cursor: pointer;
     font-family: inherit; line-height: 1.4; transition: background .14s ease, border-color .14s ease, color .14s ease;
   }
@@ -826,15 +809,15 @@
   button.danger { background: var(--critical); color: #fff; }
   button.danger:hover { background: var(--danger-hi); }
   button.link { background: none; border: none; color: var(--action); padding: 4px 6px; font-weight: 500; }
-  button.link:hover { background: var(--brand-soft); color: var(--action); }
+  button.link:hover { background: color-mix(in oklab, var(--action) 12%, transparent); color: var(--action); }
   button:disabled { opacity: .45; cursor: default; }
   button:disabled:hover { background: var(--surface); }
-  button.small { padding: 4px 11px; font-size: 12.5px; border-radius: 8px; }
-  button.big { padding: 10px 20px; font-size: 14px; border-radius: 10px; }
+  button.small { padding: 4px 11px; font-size: 12.5px; border-radius: 2px; }
+  button.big { padding: 10px 20px; font-size: 14px; border-radius: 2px; }
   .btnrow { display: flex; align-items: center; gap: 9px; }
 
   input[type=password], input[type=text] {
-    background: var(--surface); border: 1px solid var(--rule); border-radius: 9px;
+    background: var(--surface); border: 1px solid var(--rule); border-radius: 2px;
     color: var(--text); padding: 7px 11px; font-size: 13.5px; outline: none; font-family: inherit;
   }
   input::placeholder { color: var(--text-3); }
@@ -860,20 +843,20 @@
     background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r);
     padding: 13px 15px; position: relative;
   }
-  .notice .nt { flex: none; width: 30px; height: 30px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; background: var(--info-soft); color: var(--action); }
+  .notice .nt { flex: none; width: 30px; height: 30px; border-radius: 2px; display: inline-flex; align-items: center; justify-content: center; background: color-mix(in oklab, var(--action) 12%, transparent); color: var(--action); }
   .notice .nt svg { width: 16px; height: 16px; }
   .notice .nb { flex: 1; min-width: 0; }
   .notice .lbl { font-size: 13.5px; font-weight: 500; color: var(--text); }
   .notice .announce-msg { color: var(--text-2); font-size: 12.5px; margin-top: 3px; line-height: 1.48; }
-  .notice.info   { border-color: var(--info-line); background: var(--info-soft); }
-  .notice.warn   { border-color: var(--warn-line); background: var(--warn-soft); }
-  .notice.warn .nt { background: var(--warn-soft); color: var(--warn); }
+  .notice.info   { border-color: color-mix(in oklab, var(--action) 45%, transparent); background: color-mix(in oklab, var(--action) 12%, transparent); }
+  .notice.warn   { border-color: color-mix(in oklab, var(--warn) 45%, transparent); background: color-mix(in oklab, var(--warn) 12%, transparent); }
+  .notice.warn .nt { background: color-mix(in oklab, var(--warn) 12%, transparent); color: var(--warn); }
   .notice.warn .lbl { color: var(--warn); }
-  .notice.danger { border-color: var(--bad-line);  background: var(--bad-soft); }
-  .notice.danger .nt { background: var(--bad-soft); color: var(--critical); }
+  .notice.danger { border-color: color-mix(in oklab, var(--critical) 45%, transparent);  background: color-mix(in oklab, var(--critical) 12%, transparent); }
+  .notice.danger .nt { background: color-mix(in oklab, var(--critical) 12%, transparent); color: var(--critical); }
   .notice.danger .lbl { color: var(--critical); }
-  .notice.brand { border-color: var(--brand-line); background: var(--brand-soft); }
-  .notice.brand .nt { background: var(--brand-soft2); color: var(--action); }
+  .notice.brand { border-color: color-mix(in oklab, var(--action) 45%, transparent); background: color-mix(in oklab, var(--action) 12%, transparent); }
+  .notice.brand .nt { background: color-mix(in oklab, var(--action) 18%, transparent); color: var(--action); }
   /* Inside a card body, a notice is inset rather than edge to edge. */
   .cbody > .notice { margin: 12px 16px; }
   .announce-x {
