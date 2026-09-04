@@ -1148,6 +1148,10 @@
         <span class="navcount" id="nav-badge-schedule">0</span>
         <span class="navdot" id="nav-dot-schedule" style="display:none;"></span>
       </button>
+      <button class="navitem" data-pane="activity" title="Ctrl+5"
+              data-title="Activity" data-sub="What the guard did, and what was done to it">
+        <svg><use href="#i-pulse"/></svg><span class="navlabel">Activity</span>
+      </button>
     </nav>
 
     <div class="tb-right">
@@ -1236,105 +1240,19 @@
           </div>
         </section>
 
-        <!-- The figures. Each one is a count of rows on a page below, so the
-             strip and the pages cannot disagree about them. -->
-        <div class="kpi" id="kpi-cov" data-hue="ok">
-          <div class="kpi-top">
-            <div class="kpi-k">Safeguards on</div>
-            <span class="tile"><svg><use href="#i-shield"/></svg></span>
-          </div>
-          <div class="kpi-v"><span id="cov-num">—</span><small id="cov-den"></small></div>
-          <div class="kpi-foot"><span class="delta d-idle" id="cov-delta">…</span><span class="kpi-sub" id="cov-sub"></span></div>
-        </div>
+        <!-- Under the banner, one question and one figure.
 
-        <div class="kpi" data-hue="info">
-          <div class="kpi-top">
-            <div class="kpi-k">Browsers locked</div>
-            <span class="tile"><svg><use href="#i-browser"/></svg></span>
-          </div>
-          <div class="kpi-v" id="m-locked">—</div>
-          <div class="kpi-foot"><span class="delta d-idle" id="m-locked-delta">…</span><span class="kpi-sub" id="m-locked-sub"></span></div>
-        </div>
+             Nine blocks used to sit here. Three of the four figures counted
+             rows on the pages below them - "Sites blocked: 12" above a list of
+             twelve sites is the same fact said twice, and the nav already
+             carries those counts as badges. The donut charted the app's own
+             rule mix, which is a question nobody opens a blocker to ask. The
+             browser strip repeated the page it linked to, and Safeguards was
+             a third answer to the one the banner had already given.
 
-        <div class="kpi" data-hue="violet">
-          <div class="kpi-top">
-            <div class="kpi-k">Rules enforcing</div>
-            <span class="tile"><svg><use href="#i-block"/></svg></span>
-          </div>
-          <div class="kpi-v" id="m-rules">—</div>
-          <div class="kpi-foot"><span class="delta d-idle" id="m-rules-delta">…</span><span class="kpi-sub" id="m-rules-sub"></span></div>
-        </div>
-
-        <div class="kpi" data-hue="warn">
-          <div class="kpi-top">
-            <div class="kpi-k">Screen time today</div>
-            <span class="tile"><svg><use href="#i-timer"/></svg></span>
-          </div>
-          <div class="kpi-v" id="m-time">—</div>
-          <div class="kpi-foot"><span class="delta d-idle" id="m-time-delta">…</span><span class="kpi-sub" id="m-time-sub"></span></div>
-          <div class="kpi-spark" id="m-time-spark"></div>
-        </div>
-
-        <!-- One derived sentence about what the figures above actually say, or
-             nothing at all. Hidden rather than filled with a platitude: a strip
-             that always has something to announce is one nobody reads. -->
-        <section class="insight" id="insight-strip" style="display:none;">
-          <span class="ins-tile"><svg><use href="#i-bulb"/></svg></span>
-          <div class="ins-b">
-            <div class="ins-h">Insight</div>
-            <div class="ins-t" id="insight-text"></div>
-          </div>
-          <button class="ghost small" id="insight-go" style="display:none;"></button>
-        </section>
-
-        <!-- Screen time, charted. The one series in this app that is a series:
-             seven days of how long a blocked application was open. -->
-        <section class="card span8" id="card-trend">
-          <div class="chead">
-            <h2>Screen time trend</h2>
-            <span class="note" id="trend-note"></span>
-            <div class="grow"></div>
-            <div class="seg" id="trend-range">
-              <button type="button" data-days="3">3D</button>
-              <button type="button" data-days="7" class="sel">7D</button>
-            </div>
-            <button class="help" data-help="How long any blocked application was open, per day, for the last seven days. Counted while it is running, not only while you are looking at it, and kept on this PC only.|Sites and extensions cannot be measured: the guard hands the browser a policy and gets nothing back." aria-label="About this chart">?</button>
-          </div>
-          <div class="cbody" style="max-height:none; overflow:visible;">
-            <div class="chart" id="trend-chart"></div>
-          </div>
-          <div class="cfoot" id="trend-foot"></div>
-        </section>
-
-        <!-- What the protection is made of. The donut is the honest shape for
-             this: five kinds of rule, and the question is the mix. -->
-        <section class="card span4" id="card-mix">
-          <div class="chead">
-            <h2>What is enforced</h2>
-            <div class="grow"></div>
-            <button class="help" data-help="Every rule that is switched on right now, by kind: locked extensions, pinned browser settings, blocked sites, blocked applications, and allowed-only sites.|It counts rules, not effectiveness. A category that added nineteen application rules shows as nineteen." aria-label="About this chart">?</button>
-          </div>
-          <div class="cbody" style="max-height:none; overflow:visible;">
-            <div class="donutwrap">
-              <div class="donut" id="mix-donut"></div>
-              <div class="legend" id="mix-legend"></div>
-            </div>
-          </div>
-        </section>
-
-        <!-- The browsers, as a strip. One tile each, with the state that
-             matters on it - the reference's watch row, carrying browsers. -->
-        <section class="card span12" id="card-watch">
-          <div class="chead">
-            <h2>Browser coverage</h2>
-            <span class="cnt" id="watch-count">—</span>
-            <div class="grow"></div>
-            <button class="link small" data-goto="browsers">Open browsers<svg style="width:13px;height:13px;vertical-align:-2px;margin-left:4px;"><use href="#i-right"/></svg></button>
-          </div>
-          <div class="watch" id="watch-rows"></div>
-        </section>
-
-        <section class="card span4" id="card-attention">
+             What is left is the shape someone actually arrives with: is it on,
+             what would stop it being on, and how long was I in there. -->
+        <section class="card span8" id="card-attention">
           <div class="chead">
             <h2>Needs attention</h2>
             <span class="cnt warn" id="att-count" style="display:none;"></span>
@@ -1353,18 +1271,25 @@
           </div>
         </section>
 
-        <section class="card span4" id="card-safeguards">
-          <div class="chead">
-            <h2>Safeguards</h2>
-            <span class="cnt" id="sg-count">—</span>
-            <div class="grow"></div>
-            <button class="help" data-help="Everything the window can see the state of: the service, each protected extension, each pinned browser setting, the password, and whether any browser here is left neither filtered nor blocked.|It is a count of what is on, not a score." aria-label="About this pane">?</button>
+        <!-- The one figure on this page about the person rather than the
+             configuration, which is why it is the one that stayed. -->
+        <div class="kpi span4" data-hue="warn">
+          <div class="kpi-top">
+            <div class="kpi-k">Screen time today</div>
+            <span class="tile"><svg><use href="#i-timer"/></svg></span>
           </div>
-          <div class="cbody"><div class="rows" id="sg-rows"></div></div>
-          <div class="cfoot" id="sg-foot"></div>
-        </section>
+          <div class="kpi-v" id="m-time">—</div>
+          <div class="kpi-foot"><span class="delta d-idle" id="m-time-delta">…</span><span class="kpi-sub" id="m-time-sub"></span></div>
+          <div class="kpi-spark" id="m-time-spark"></div>
+        </div>
+      </div>
 
-        <section class="card span4" id="card-activity">
+      <!-- ==================== ACTIVITY ====================
+           An audit trail is a destination, not a summary. It sat on the
+           Overview as a third of a row that could show four entries; here it
+           has the page it needs, and the Overview is not asked to be a log. -->
+      <div class="pane" id="pane-activity">
+        <section class="card span12" id="card-activity">
           <div class="chead">
             <h2>Recent activity</h2>
             <div class="grow"></div>
@@ -2913,9 +2838,11 @@
     const list = s.browsers || [];
     const installed = list.filter(function (b) { return b.installed; });
     const rows = document.getElementById('rows');
+    // The Overview's copy of this strip is gone; the tiles are still built so
+    // the loop stays one pass, and land nowhere when nothing is listening.
     const watch = document.getElementById('watch-rows');
     rows.innerHTML = '';
-    watch.innerHTML = '';
+    if (watch) { watch.innerHTML = ''; }
 
     text('brw-count', s.lockedCount + ' / ' + installed.length);
     text('watch-count', s.lockedCount + ' of ' + installed.length + ' locked');
@@ -2939,7 +2866,7 @@
       body.appendChild(el('div', 'ws', b.installed ? (b.locked ? 'Locked' : b.detail) : 'Not installed'));
       t.appendChild(body);
       if (b.locked) { t.appendChild(icon('tick', 'wok')); }
-      watch.appendChild(t);
+      if (watch) { watch.appendChild(t); }
     });
   }
 
@@ -3326,42 +3253,24 @@
     const days = u.days || [];
     const measured = u.measured && !u.unreadable && days.length > 0;
 
-    const trend = document.getElementById('trend-chart');
+    // One chart, not two. The Overview's "Screen time trend" and this page's
+    // "By day" drew the same days array - an area chart and a column chart of
+    // one series, on two pages - so the Overview's copy is gone rather than
+    // moved. This page is where someone arrives already asking a time
+    // question, and usage-days-empty below says why the chart is missing.
     const byday = document.getElementById('byday-chart');
-    const tfoot = document.getElementById('trend-foot');
     const bfoot = document.getElementById('byday-foot');
+    if (!byday) { return; }
 
     show('usage-days-empty', !measured);
     show(byday, measured);
     show(bfoot, measured);
-    show(tfoot, measured);
-    show('trend-range', measured);
 
     if (!measured) {
-      trend.innerHTML = '';
       byday.innerHTML = '';
-      // Said once. The strip below carries both the reason and the way out of
-      // it, so repeating it in the header would be the card saying the same
-      // sentence twice at two sizes.
-      text('trend-note', '');
-      // The Overview's chart card is the one place a zero state would leave a
-      // hole the size of a chart, so it says which of the two reasons it is.
-      const zero = el('div', 'zero');
-      zero.appendChild((function () { const t = el('span', 'zt'); t.appendChild(icon('chart')); return t; })());
-      const zb = el('div', 'zb');
-      zb.appendChild(el('div', 'zh', u.measured ? 'No history yet' : 'Nothing blocked to measure'));
-      zb.appendChild(el('div', 'zs', u.measured
-        ? 'A day appears here once a blocked application has run. The record is kept on this PC only.'
-        : 'Block an application on the Blocking page and the time it runs is counted here.'));
-      zero.appendChild(zb);
-      const go = el('button', 'ghost small', u.measured ? 'Open schedule' : 'Block an app');
-      go.addEventListener('click', function () { showPane(u.measured ? 'schedule' : 'blocking'); });
-      zero.appendChild(go);
-      trend.appendChild(zero);
       return;
     }
 
-    text('trend-note', 'any blocked application, per day');
     const all = days.map(function (d) {
       return {
         label: d.label,
@@ -3371,8 +3280,6 @@
         hint: 'any blocked application open'
       };
     });
-    const shown = all.slice(Math.max(0, all.length - trendDays));
-    areaChart(trend, shown, { height: 216 });
     columnChart(byday, all, { height: 236 });
 
     // Both feet say the same two things a person reads a week chart for: how it
@@ -3398,7 +3305,6 @@
       right.appendChild(el('b', null, peak.label + ' · ' + peak.display));
       host.appendChild(right);
     }
-    fill(tfoot);
     fill(bfoot);
   }
 
@@ -4395,6 +4301,7 @@
   function paintDonut(donutId, legendId, segs, centerLabel, zero) {
     const d = document.getElementById(donutId);
     const lg = document.getElementById(legendId);
+    if (!d || !lg) { return; }
     const total = segs.reduce(function (a, x) { return a + x.value; }, 0);
     lg.innerHTML = '';
     if (!total) {
@@ -4419,40 +4326,16 @@
     const gaps = checks.length - on;
     const pct = checks.length ? Math.round((on / checks.length) * 100) : 0;
 
-    text('cov-num', on);
-    text('cov-den', ' / ' + checks.length);
-    text('cov-sub', gaps ? (gaps === 1 ? 'one protection is off' : gaps + ' protections are off') : 'every protection is on');
-    const covD = document.getElementById('cov-delta');
-    covD.className = 'delta ' + (gaps ? 'd-warn' : 'd-ok');
-    covD.textContent = '';
-    covD.appendChild(icon(gaps ? 'alert' : 'up'));
-    covD.appendChild(document.createTextNode(pct + '%'));
-    // The card's hue is the card's, not the tile's: the tile, the wash behind
-    // it and the figure all read one custom property, so a KPI changes colour
-    // in one place.
-    document.getElementById('kpi-cov').setAttribute('data-hue', gaps ? 'warn' : 'ok');
-
-    const sgCount = document.getElementById('sg-count');
-    sgCount.textContent = on + ' / ' + checks.length;
-    sgCount.className = 'cnt' + (gaps ? ' warn' : ' ok');
-
-    // The list that count is the sum of. It used to exist only as a row of
-    // fourteen tooltips on a bar nobody hovers, which is a way of not saying it.
-    const sg = document.getElementById('sg-rows');
-    sg.innerHTML = '';
-    checks.forEach(function (c) {
-      const row = el('div', 'sg' + (c.on ? '' : ' off'));
-      row.appendChild(icon(c.on ? 'check' : 'dash', 'sgi'));
-      row.appendChild(el('div', 'sgt', c.label));
-      sg.appendChild(row);
-    });
-    const sgFoot = document.getElementById('sg-foot');
-    sgFoot.textContent = '';
-    sgFoot.appendChild(meter(on / Math.max(1, checks.length), gaps ? 'warn' : 'ok'));
-    const sgT = el('span');
-    sgT.appendChild(el('b', null, pct + '%'));
-    sgT.appendChild(document.createTextNode(' of what this window can see is on'));
-    sgFoot.appendChild(sgT);
+    // The safeguards count folds into the banner rather than standing as its
+    // own card. It used to be said three times on one screen - the hero, the
+    // Safeguards-on figure, and the Safeguards list - and three overlapping
+    // answers to "is it on" mean you have to read all of them to trust any.
+    // The list itself is not lost: every row in it is an extension, a pinned
+    // setting or a browser, and each of those has a page that owns it.
+    if (!shellState) {
+      text('hero-sub', on + ' of ' + checks.length + ' safeguards on'
+        + (gaps ? ' · ' + (gaps === 1 ? 'one is off' : gaps + ' are off') : ' · nothing needs attention'));
+    }
 
     // The banner, and the ring on it. Set by render() just above; this is the
     // one thing in the window allowed to be coloured by the overall state.
@@ -4592,9 +4475,9 @@
     /* ---- the insight ---- */
     const ins = insight(s);
     show('insight-strip', !!ins);
-    if (ins) {
+    const go = document.getElementById('insight-go');
+    if (ins && go) {
       text('insight-text', ins.text);
-      const go = document.getElementById('insight-go');
       show(go, !!ins.action);
       go.textContent = ins.action || '';
       go.onclick = function () { showPane(ins.pane); };
@@ -4662,7 +4545,7 @@
   /* ---- pages ----------------------------------------------------------- */
 
   const NAV = Array.prototype.slice.call(document.querySelectorAll('.navitem'));
-  const PANES = ['overview', 'browsers', 'blocking', 'schedule'];
+  const PANES = ['overview', 'browsers', 'blocking', 'schedule', 'activity'];
 
   // showPane swaps the visible page and the controls that act on it. Every pane
   // stays in the document either way - the renderers above write into all of
@@ -4703,7 +4586,7 @@
 
   /* ---- keyboard --------------------------------------------------------
      A desktop window is driven from the keyboard by anyone who uses it daily.
-     Ctrl+1..4 are the pages, Ctrl+R re-reads the state, and "/" jumps to the
+     Ctrl+1..5 are the pages, Ctrl+R re-reads the state, and "/" jumps to the
      filter - all ignored while a prompt is open, because a modal has the floor.
      -------------------------------------------------------------------- */
   function modalOpen() {
@@ -4909,11 +4792,10 @@
   //           row - an attention entry is a heading and a paragraph, and a
   //           safeguard is four words
   const LAYOUT = {
-    'card-trend':      { grp: 'ovT', min: 4, weight: 9 },
-    'card-mix':        { grp: 'ovT', min: 4 },
-    'card-attention':  { grp: 'ov',  min: 3, rw: 2.4 },
-    'card-safeguards': { grp: 'ov',  min: 3, rw: 0.8 },
-    'card-activity':   { grp: 'ov',  min: 3, rw: 1.3 },
+    // The Overview is not in this table any more. Balancing columns is for a
+    // row of cards competing for width; it now has one card and one figure on
+    // a fixed 8/4, and Activity has a page to itself. The engine still runs
+    // the three pages that do have rows of cards.
     'card-browsers':   { grp: 'brA', min: 4 },
     'card-ext':        { grp: 'brA', min: 4 },
     'card-hardening':  { grp: 'brB', min: 4, rw: 1.4 },
@@ -4991,16 +4873,9 @@
     document.getElementById('lock-custom').value = btn.getAttribute('data-value');
   });
 
-  // The trend's range. Three days or seven, of the same seven the backend
-  // keeps: it is a window onto the record, not a second request for it.
-  document.getElementById('trend-range').addEventListener('click', function (e) {
-    const btn = e.target.closest('button[data-days]');
-    if (!btn) { return; }
-    Array.prototype.forEach.call(this.children, function (c) { c.classList.remove('sel'); });
-    btn.classList.add('sel');
-    trendDays = Number(btn.getAttribute('data-days'));
-    renderTimeCharts(current);
-  });
+  // The trend's 3D/7D range control went with the trend chart. By day shows
+  // the whole record the backend keeps, which is what the one remaining chart
+  // was always a window onto.
 
   document.getElementById('protection-btn').addEventListener('click', toggleProtection);
   document.getElementById('refresh').addEventListener('click', refresh);
