@@ -22,8 +22,8 @@ var assets embed.FS
 // is the whole reason the preference is stored where Go can read it rather
 // than only in the page's localStorage.
 var (
-	darkGround  = options.RGBA{R: 8, G: 11, B: 18, A: 255}
-	lightGround = options.RGBA{R: 238, G: 241, B: 247, A: 255}
+	darkGround  = options.RGBA{R: 0x0F, G: 0x12, B: 0x11, A: 255} // --bg #0F1211
+	lightGround = options.RGBA{R: 0xF4, G: 0xF1, B: 0xE9, A: 255} // --bg #F4F1E9
 )
 
 func main() {

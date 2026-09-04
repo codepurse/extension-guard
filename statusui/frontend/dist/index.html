@@ -6,233 +6,244 @@
 <title>Ward</title>
 <style>
   /* ========================================================================
-     WARD — console design system.
+     WARD — Instrument, the monolab app design system.
 
-     Colour carries meaning here; it is not decoration, and no hue does more
-     than one job. That rule is the whole reason there are six of them rather
-     than one accent used everywhere - a window where the brand, every switch,
-     every icon and every chart are the same green stops telling you anything
-     and just reads as a wash.
+     Sibling of the site's Threshold. Paper, ink, one evergreen, inherited
+     whole: an app screen and a site page sit beside each other without a
+     seam. What does not carry over is the site's ink, which was tuned
+     against flat paper. A dashboard puts the same 11px mono labels on
+     striped and hovered rows, so every ink here clears 4.5:1 on the
+     DARKEST ground it can ever sit on - canvas, surface, raised, hover and
+     track - in both themes. The worst ratio is written beside each step.
+     When you add a colour, measure it the same way and record it here.
 
-       indigo   the brand: the thing you are about to press, and where you are
-       emerald  protection holding - a switch that is on, a state that is good
-       amber    a gap worth looking at
-       rose     protection off, or an action that removes it
-       sky      measurement: every chart of something counted rather than judged
-       violet   a set or a commitment: a category, a locked block, a series
+     Grounds are named by ROLE, not by lightness, so a token means the same
+     thing in both themes. --track is darker than the surface in light and
+     darker still in dark, but it is always the thing a meter sits in.
 
-     So a row's icon says WHAT it is and stays neutral; its badge and its switch
-     say HOW it is, and those are the only two things on the line allowed a
-     colour. A figure gets its hue from what it counts, once, on its own card.
+     Two rules this file exists to hold:
+       - Every rule is 1px and one colour. Radii are 0 or 2px. Nothing is
+         a pill. A dense app is where that restraint earns the most: it is
+         what stops a table of chips reading as a template.
+       - Status is never colour alone. Every verdict carries a mark and a
+         word, so it survives greyscale, colour-blindness and a printout.
 
-     Surfaces are roles rather than shades: --surface is "the card", which is
-     lighter than the ground in the dark theme and white in the light one.
-     Nothing below the token blocks names a colour, so the light theme is these
-     values again rather than a second stylesheet that drifts.
-
-     The workspace scrolls and every card is sized by its own content, capped.
-     A card with two rows in it is two rows tall. That is the whole answer to
-     the empty half-panels the docked layout used to leave behind.
-     ===================================================================== */
-  :root {
-    color-scheme: dark;
-
-    /* ---- ground and surfaces ---- */
-    --bg:        #080B12;
-    --bg-glow:   rgba(99,102,241,.10);
-    --surface:   #111621;
-    --surface-2: #151B29;
-    --surface-3: #1A2131;
-    --surface-4: #222C3E;
-    --line:      #1E2636;
-    --line-soft: #171E2C;
-    --line-hi:   #2C374B;
-
-    /* ---- type ---- */
-    --text:   #E6EAF2;
-    --text-2: #97A1B4;
-    --text-3: #6B7688;
-    --text-4: #4E5768;
-
-    /* ---- brand ---- */
-    --brand:      #6366F1;
-    --brand-hi:   #7C82FF;
-    --brand-dim:  #4F46E5;
-    --brand-soft: rgba(99,102,241,.14);
-    --brand-soft2:rgba(99,102,241,.22);
-    --brand-line: rgba(99,102,241,.34);
-    --brand-tx:   #A9B2FF;
-    --on-brand:   #FFFFFF;
-
-    /* ---- state ---- */
-    --ok:        #22C55E;
-    --ok-soft:   rgba(34,197,94,.13);
-    --ok-line:   rgba(34,197,94,.30);
-    --ok-tx:     #5EE293;
-
-    --warn:      #F5A524;
-    --warn-soft: rgba(245,165,36,.13);
-    --warn-line: rgba(245,165,36,.32);
-    --warn-tx:   #F7C46C;
-
-    --bad:       #F4496D;
-    --bad-soft:  rgba(244,73,109,.13);
-    --bad-line:  rgba(244,73,109,.32);
-    --bad-tx:    #FF8CA6;
-
-    --info:      #3B9EFF;
-    --info-soft: rgba(59,158,255,.14);
-    --info-line: rgba(59,158,255,.32);
-    --info-tx:   #8CC6FF;
-
-    --violet:      #7C5CFF;
-    --violet-soft: rgba(124,92,255,.15);
-
-    --danger:    #B32340;
-    --danger-hi: #C92A4B;
-
-    /* ---- categorical series ---- */
-    --s1: #7C5CFF;
-    --s2: #22C55E;
-    --s3: #3B9EFF;
-    --s4: #F5A524;
-    --s5: #94A3B8;
-    --s6: #2DD4BF;
-
-    /* ---- controls ---- */
-    --ctl:        #171E2B;
-    --ctl-hi:     #1E2637;
-    --ctl-line:   #273144;
-    --ctl-line-hi:#35415A;
-    --field:      #0C111B;
-    --field-hi:   #0E1420;
-    --track:      #1E2636;
-    --knob-off:   #4B5568;
-    --icon-off:   #3E475A;
-
-    --scroll:    #273144;
-    --scroll-hi: #37435A;
-
-    --backdrop:     rgba(3,6,12,.72);
-    --shadow-card:  0 1px 2px rgba(0,0,0,.34);
-    --shadow-pop:   0 20px 48px -16px rgba(0,0,0,.86);
-    --shadow-modal: 0 34px 78px -22px rgba(0,0,0,.92);
-
-    /* ---- metrics ---- */
-    --top-h:  56px;
-    --sb-h:   30px;
-    --gap:    14px;
-    --r-sm:   8px;
-    --r:      12px;
-    --r-lg:   16px;
-    --cap:    348px;
-  }
-
-  /* Light. The roles hold: --surface is still the card, so it goes white while
-     the ground goes to a cool off-white rather than the two swapping places.
-     Every hue is darkened, because #6366F1 and #22C55E on white are labels
-     nobody can read, and the state colours are pulled to their text-safe end. */
+     The window always stamps data-theme explicitly before first paint (see
+     the bootstrap script below), so both stamps carry a complete set and
+     bare :root is the safety net rather than a third state.
+     ======================================================================== */
+  :root,
   :root[data-theme="light"] {
     color-scheme: light;
 
-    --bg:        #EEF1F7;
-    --bg-glow:   rgba(79,70,229,.07);
-    --surface:   #FFFFFF;
-    --surface-2: #F7F9FC;
-    --surface-3: #EFF2F8;
-    --surface-4: #E4E9F2;
-    --line:      #DFE4EE;
-    --line-soft: #EBEEF5;
-    --line-hi:   #C7CFDE;
+    /* ---- grounds, by role ---- */
+    --bg:      #F4F1E9;   /* app canvas */
+    --surface: #FBF9F4;   /* panel, card, table body */
+    --raised:  #FEFDFB;   /* menu, popover, modal */
+    --hover:   #EBE6DA;   /* row hover, zebra stripe */
+    --track:   #DDD7C7;   /* meter track, inset */
 
-    --text:   #0F1420;
-    --text-2: #576074;
-    --text-3: #7B8598;
-    --text-4: #99A2B3;
+    /* ---- ink, worst ratio across all five grounds ---- */
+    --text:   #1A1A16;    /* 12.15  values, headings */
+    --text-2: #4F4E45;    /*  5.83  body, cells */
+    --text-3: #5A5950;    /*  4.91  labels, axes */
 
-    --brand:      #4F46E5;
-    --brand-hi:   #4338CA;
-    --brand-dim:  #4338CA;
-    --brand-soft: rgba(79,70,229,.10);
-    --brand-soft2:rgba(79,70,229,.16);
-    --brand-line: rgba(79,70,229,.28);
-    --brand-tx:   #3B34B8;
-    --on-brand:   #FFFFFF;
+    /* ---- brand and status ----
+       --accent is pine and means held / protected / good. There is no
+       separate success colour: in this product a held request IS the good
+       outcome, and the semantics and the brand happen to agree.
 
-    --ok:        #12874A;
-    --ok-soft:   rgba(18,135,74,.10);
-    --ok-line:   rgba(18,135,74,.26);
-    --ok-tx:     #0B6537;
+       --action is the departure from the parent system, and it is
+       deliberate. Instrument gives --accent both jobs. Ward cannot: on a
+       commitment row "this is holding" and "press this to stop it
+       holding" sit inches apart, and one hue for both is exactly the
+       undifferentiated wash the navy palette was built to fix. Pine says
+       what is true; the blue says what you can press. */
+    --accent:   #1C5F4F;  /*  5.22  held, protected, good */
+    --action:   #1E4D7B;  /*  6.98  press this, where you are */
+    --warn:     #775410;  /*  4.78  needs review, waiting */
+    --serious:  #8C4614;  /*  4.87  degraded, a gap */
+    --critical: #992C26;  /*  5.33  failed, destructive */
+    --brass:    #8A6218;  /*  4.84  marks and numerals only, never text */
 
-    --warn:      #9A6206;
-    --warn-soft: rgba(191,124,10,.13);
-    --warn-line: rgba(191,124,10,.32);
-    --warn-tx:   #7A4E05;
+    /* ---- hairlines ---- */
+    --rule:   color-mix(in oklab, #1A1A16 15%, transparent);
+    --rule-2: color-mix(in oklab, #1A1A16 27%, transparent);
 
-    --bad:       #C62B4D;
-    --bad-soft:  rgba(198,43,77,.09);
-    --bad-line:  rgba(198,43,77,.26);
-    --bad-tx:    #94162F;
+    /* ---- the one elevation value ----
+       A hard offset shelf with a blur radius of zero, the way a printed
+       card sits on a page. It is the single deliberate exception to the
+       parent's "one shadow value and it is none", and there is exactly one
+       of it. If a second seems necessary the layering is wrong. */
+    --lift: 2px 2px 0 var(--track);
 
-    --info:      #1D6FD0;
-    --info-soft: rgba(29,111,208,.10);
-    --info-line: rgba(29,111,208,.26);
-    --info-tx:   #185CAE;
+    /* ---- series, fixed order, never cycled ----
+       Light carries five separable at once, dark three. Ward draws one
+       real series (screen time per day); the rest are held for when a
+       second actually exists. In dark, facet into small multiples rather
+       than adding a fourth. */
+    --s1: #0F7A5A; --s2: #AD7F00; --s3: #1F7FC4;
+    --s4: #BF3B33; --s5: #7B3FA0; --s6: #C2508F;
 
-    --violet:      #6D3FE0;
-    --violet-soft: rgba(109,63,224,.11);
+    /* ---- density: the only spacing knob ----
+       Not a media query. A table does not get roomier because the window
+       is wide, it gets roomier because someone asked. Everything below is
+       a multiple of 4 so the knob never lands on a half-pixel. */
+    --row-h: 34px; --pad-y: 7px; --pad-x: 10px;
+    --gap:   16px;
+    --top-h: 56px; --sb-h: 30px; --cap: 348px;
 
-    --danger:    #B02231;
-    --danger-hi: #971A27;
+    /* ---- radii: 0 or 2px, and nothing is a pill ---- */
+    --r-sm: 2px; --r: 2px; --r-lg: 2px;
 
-    --s1: #6D3FE0;
-    --s2: #12874A;
-    --s3: #1D6FD0;
-    --s4: #B07407;
-    --s5: #7B8598;
-    --s6: #0D9488;
+    /* ---- the three faces ----
+       Newsreader carries empty states and page titles, and is spent
+       sparingly: an app is not a document, and a serif headline over a
+       table is a costume. Instrument Sans takes every control and every
+       sentence. JetBrains Mono takes ALL figures, always, with
+       tabular-nums so columns align - and labels, timestamps and IDs.
 
-    --ctl:        #F3F5FA;
-    --ctl-hi:     #E9EDF5;
-    --ctl-line:   #DCE2ED;
-    --ctl-line-hi:#C2CADA;
-    --field:      #FFFFFF;
-    --field-hi:   #FFFFFF;
-    --track:      #E3E8F1;
-    --knob-off:   #9AA3B4;
-    --icon-off:   #A8B0C0;
+       The stacks fall back to the system faces the window shipped with,
+       so nothing depends on the files being present. Scale, used whole:
+       11 mono labels / 12 hints / 13 cells and controls / 14 body /
+       16 panel titles / 20 section heads / 30 figures. */
+    --serif: "Newsreader", Georgia, "Times New Roman", serif;
+    --sans:  "Instrument Sans", "Segoe UI Variable Text", "Segoe UI",
+             system-ui, -apple-system, sans-serif;
+    --mono:  "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
 
-    --scroll:    #C9D0DE;
-    --scroll-hi: #ACB5C6;
+    /* ================================================================
+       Compatibility shim. The panes below still name the navy system's
+       tokens; each maps onto a role above so the window stays runnable
+       while they are converted one at a time. Every line here is a
+       deletion waiting to happen - when a name has no callers left,
+       remove it rather than keeping it alive.
+       ================================================================ */
+    --bg-glow:    transparent;          /* no glow, no glass */
+    --surface-2:  var(--hover);
+    --surface-3:  var(--hover);
+    --surface-4:  var(--track);
+    --line:       var(--rule);
+    --line-soft:  var(--rule);
+    --line-hi:    var(--rule-2);
+    --text-4:     var(--text-3);
 
-    --backdrop:     rgba(16,22,36,.34);
-    --shadow-card:  0 1px 2px rgba(16,24,40,.05);
-    --shadow-pop:   0 16px 38px -14px rgba(16,24,40,.26);
-    --shadow-modal: 0 28px 64px -20px rgba(16,24,40,.32);
+    --brand:      var(--action);
+    --brand-hi:   var(--action);
+    --brand-dim:  var(--action);
+    --brand-tx:   var(--action);
+    --brand-soft: color-mix(in oklab, var(--action) 10%, transparent);
+    --brand-soft2:color-mix(in oklab, var(--action) 16%, transparent);
+    --brand-line: color-mix(in oklab, var(--action) 45%, transparent);
+    --on-brand:   #FEFDFB;
+
+    --ok:        var(--accent);
+    --ok-tx:     var(--accent);
+    --ok-soft:   color-mix(in oklab, var(--accent) 10%, transparent);
+    --ok-line:   color-mix(in oklab, var(--accent) 45%, transparent);
+
+    --warn-tx:   var(--warn);
+    --warn-soft: color-mix(in oklab, var(--warn) 10%, transparent);
+    --warn-line: color-mix(in oklab, var(--warn) 45%, transparent);
+
+    --bad:       var(--critical);
+    --bad-tx:    var(--critical);
+    --bad-soft:  color-mix(in oklab, var(--critical) 10%, transparent);
+    --bad-line:  color-mix(in oklab, var(--critical) 45%, transparent);
+
+    --info:      var(--action);
+    --info-tx:   var(--action);
+    --info-soft: color-mix(in oklab, var(--action) 10%, transparent);
+    --info-line: color-mix(in oklab, var(--action) 45%, transparent);
+
+    --violet:      var(--s5);
+    --violet-soft: color-mix(in oklab, var(--s5) 12%, transparent);
+
+    --danger:    var(--critical);
+    --danger-hi: #7F241F;
+
+    --ctl:        var(--surface);
+    --ctl-hi:     var(--hover);
+    --ctl-line:   var(--rule);
+    --ctl-line-hi:var(--rule-2);
+    --field:      var(--surface);
+    --field-hi:   var(--raised);
+    --knob-off:   var(--text-3);
+    --icon-off:   var(--text-3);
+
+    --scroll:    var(--track);
+    --scroll-hi: var(--rule-2);
+
+    --backdrop:     color-mix(in oklab, #1A1A16 34%, transparent);
+    --shadow-card:  none;
+    --shadow-pop:   var(--lift);
+    --shadow-modal: var(--lift);
   }
 
+  /* Dark is DESIGNED, not inverted. It is a selected set of steps against
+     dark grounds, checked separately against the same five-ground rule.
+     Nothing here is a filter or a flip. */
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+
+    --bg:      #0F1211;
+    --surface: #161A18;
+    --raised:  #222825;
+    --hover:   #1C211E;
+    --track:   #0A0D0C;
+
+    --text:   #EEECE4;    /* 12.70 */
+    --text-2: #B4B8AD;    /*  7.44 */
+    --text-3: #9C9C91;    /*  5.42 */
+
+    --accent:   #57B295;  /*  5.87 */
+    --action:   #7AA9DC;  /*  7.93 */
+    --warn:     #C99A3A;  /*  5.84 */
+    --serious:  #D97F4A;  /*  5.07 */
+    --critical: #E0736A;  /*  4.88 */
+    --brass:    #C99A3A;
+
+    --rule:   color-mix(in oklab, #FFFFFF 15%, transparent);
+    --rule-2: color-mix(in oklab, #FFFFFF 28%, transparent);
+
+    --lift: 2px 2px 0 #000;
+
+    --s1: #2F9E78; --s2: #B58E14; --s3: #4A86D8;
+    --s4: #DC5A52; --s5: #8A72D8; --s6: #DD5F93;
+
+    /* shim, dark. Same mappings; only the two that must invert are
+       restated - text on a filled action, and the dark end of danger. */
+    --on-brand:  #0F1211;
+    --danger-hi: #EE9089;
+  }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; }
   body {
-    background: var(--bg); color: var(--text);
-    font-family: "Segoe UI Variable Text", "Segoe UI", Inter, system-ui, -apple-system, sans-serif;
-    font-size: 14px; line-height: 1.45; overflow: hidden;
+    background: var(--bg); color: var(--text-2);
+    font-family: var(--sans);
+    /* 13/1.5 is the data row. The site's 17/1.7 is reading typography and
+       does not belong on a screen that is scanned rather than read. */
+    font-size: 13px; line-height: 1.5; overflow: hidden;
     -webkit-user-select: none; user-select: none;
     -webkit-font-smoothing: antialiased;
   }
-  /* Numbers are compared down a column, so they get fixed-width digits: a
-     figure that reflows its own width as it ticks reads as a glitch. */
+  /* All figures wear the mono face with fixed-width digits. Two reasons,
+     and only the first was true before: a figure that reflows its own
+     width as it ticks reads as a glitch, and a column of numbers that do
+     not align is a column nobody can compare down. */
   .kpi-v, .stat-v, .cnt, .navcount, .donut-v, .legend-n, .legend-p,
-  .usenum, .udnum, .barnum, .tick { font-variant-numeric: tabular-nums; }
+  .usenum, .udnum, .barnum, .tick {
+    font-family: var(--mono); font-variant-numeric: tabular-nums;
+  }
 
   /* A path or a rule value is what people copy out of this window. It is the
      only text worth selecting, so it is the only text that can be. */
   .aname, .anote, .dname, .mono, #act-path { -webkit-user-select: text; user-select: text; }
-  .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 12px; }
+  .mono { font-family: var(--mono); font-size: 12px; }
 
   ::-webkit-scrollbar { width: 10px; height: 10px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: 999px; border: 3px solid transparent; background-clip: content-box; }
+  ::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: 2px; border: 3px solid transparent; background-clip: content-box; }
   ::-webkit-scrollbar-thumb:hover { background: var(--scroll-hi); background-clip: content-box; }
   :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 5px; }
 
@@ -248,9 +259,7 @@
   .app {
     display: grid; grid-template-rows: var(--top-h) minmax(0, 1fr) var(--sb-h);
     height: 100vh;
-    background:
-      radial-gradient(1100px 460px at 20% -14%, var(--bg-glow), transparent 62%),
-      var(--bg);
+    background: var(--bg);
   }
 
   /* ---- top bar -------------------------------------------------------- */
@@ -261,16 +270,16 @@
   }
   .brand { display: flex; align-items: center; gap: 10px; flex: none; }
   .brand img { border-radius: 7px; }
-  .brand .bn { font-size: 16px; font-weight: 700; letter-spacing: -0.025em; }
+  .brand .bn { font-size: 16px; font-weight: 600; letter-spacing: -0.025em; }
 
   /* Pill navigation: the open page is a filled lozenge and the rest are quiet
      labels, which is the reference's shape and reads faster than a rail. */
   .nav { display: flex; align-items: center; gap: 2px; min-width: 0; }
   .navitem {
     position: relative; display: flex; align-items: center; gap: 8px;
-    height: 34px; padding: 0 13px; border-radius: 999px; border: none;
+    height: 34px; padding: 0 13px; border-radius: 2px; border: none;
     background: transparent; color: var(--text-2);
-    font-size: 13.5px; font-weight: 600; font-family: inherit;
+    font-size: 13.5px; font-weight: 500; font-family: inherit;
     cursor: pointer; white-space: nowrap; transition: background .14s ease, color .14s ease;
   }
   .navitem svg { width: 16px; height: 16px; flex: none; opacity: .85; }
@@ -284,8 +293,8 @@
   }
   .navitem.is-on svg { opacity: 1; color: var(--brand-tx); }
   .navcount {
-    font-size: 11px; font-weight: 700; padding: 0 6px; min-width: 20px; text-align: center;
-    border-radius: 999px; background: var(--surface-3); color: var(--text-3);
+    font-size: 11px; font-weight: 600; padding: 0 6px; min-width: 20px; text-align: center;
+    border-radius: 2px; background: var(--surface-3); color: var(--text-3);
   }
   .navitem.is-on .navcount { background: var(--brand-soft); color: var(--brand-tx); }
   /* A dot, not a number: it says "something here wants you", and the count is
@@ -301,7 +310,7 @@
   /* Live, and saying so. The only animation that runs on its own. */
   .pill {
     display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px 0 10px;
-    border-radius: 999px; font-size: 12.5px; font-weight: 650;
+    border-radius: 2px; font-size: 12.5px; font-weight: 500;
     border: 1px solid transparent; white-space: nowrap;
   }
   .pill::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
@@ -322,7 +331,7 @@
   .iconbtn.spin svg { animation: spin .7s linear infinite; }
   .iconbtn .nub {
     position: absolute; top: -4px; right: -4px; min-width: 16px; height: 16px; padding: 0 4px;
-    border-radius: 999px; background: var(--bad); color: #fff; font-size: 10px; font-weight: 700;
+    border-radius: 2px; background: var(--bad); color: #fff; font-size: 10px; font-weight: 600;
     line-height: 15px; text-align: center; border: 2px solid var(--surface);
   }
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -338,7 +347,7 @@
   .thememenu button {
     display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
     background: transparent; border: none; color: var(--text-2);
-    padding: 8px 9px; border-radius: var(--r-sm); font-size: 13px; font-weight: 550; cursor: pointer;
+    padding: 8px 9px; border-radius: var(--r-sm); font-size: 13px; font-weight: 500; cursor: pointer;
   }
   .thememenu button:hover { background: var(--surface-3); color: var(--text); }
   .thememenu button .mi { width: 15px; height: 15px; flex: none; opacity: .85; }
@@ -359,7 +368,7 @@
   .content { overflow-y: auto; overflow-x: hidden; padding: 16px 18px 24px; min-height: 0; }
 
   .pagehead { display: flex; align-items: flex-end; gap: 16px; margin: 2px 2px 16px; min-width: 0; }
-  .pagehead h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.028em; }
+  .pagehead h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.028em; }
   .pagehead p { margin: 3px 0 0; font-size: 13.5px; color: var(--text-3); }
   .ph-right { margin-left: auto; display: flex; align-items: center; gap: 9px; flex: none; }
   .tbgroup { display: none; align-items: center; gap: 9px; }
@@ -396,12 +405,12 @@
   .card.is-zero { align-self: start; }
 
   .chead { display: flex; align-items: center; gap: 9px; flex: none; padding: 14px 16px 11px; }
-  .chead h2 { margin: 0; font-size: 14.5px; font-weight: 650; letter-spacing: -0.012em; white-space: nowrap; }
+  .chead h2 { margin: 0; font-size: 14.5px; font-weight: 500; letter-spacing: -0.012em; white-space: nowrap; }
   .chead .grow { flex: 1; min-width: 0; }
   .chead .note { font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cnt {
-    font-size: 11.5px; font-weight: 700; color: var(--text-2); background: var(--surface-3);
-    border: 1px solid var(--line); padding: 1px 8px; border-radius: 999px; flex: none;
+    font-size: 11.5px; font-weight: 600; color: var(--text-2); background: var(--surface-3);
+    border: 1px solid var(--line); padding: 1px 8px; border-radius: 2px; flex: none;
   }
   .cnt.warn { color: var(--warn); background: var(--warn-soft); border-color: var(--warn-line); }
   .cnt.ok   { color: var(--ok);   background: var(--ok-soft);   border-color: var(--ok-line); }
@@ -416,14 +425,14 @@
     background: var(--surface-2); font-size: 12.5px; color: var(--text-3);
     display: flex; align-items: center; gap: 10px;
   }
-  .cfoot b { color: var(--text-2); font-weight: 650; }
+  .cfoot b { color: var(--text-2); font-weight: 500; }
 
   /* The long explanations the old window printed under every heading are all
      here, one click away, in the same words. */
   .help {
     width: 19px; height: 19px; padding: 0; flex: none; border-radius: 50%;
     background: var(--ctl); border: 1px solid var(--ctl-line); color: var(--text-3);
-    font-size: 11px; font-weight: 700; line-height: 1; cursor: pointer;
+    font-size: 11px; font-weight: 600; line-height: 1; cursor: pointer;
     display: inline-flex; align-items: center; justify-content: center; font-family: inherit;
   }
   .help:hover, .help.open { background: var(--brand-soft); border-color: var(--brand-line); color: var(--brand-tx); }
@@ -443,26 +452,25 @@
   .statecard {
     grid-column: span 12; display: flex; align-items: center; gap: 18px;
     padding: 16px 18px; border-radius: var(--r-lg);
-    background:
-      linear-gradient(100deg, var(--ok-soft), transparent 46%),
-      var(--surface);
+    /* Flat. The state is said by the bar, the ring and the word - a wash
+       behind them is a fourth telling of the same fact, and washes are what
+       turn a panel into a colour field. */
+    background: var(--surface);
     border: 1px solid var(--line); box-shadow: var(--shadow-card);
     position: relative; overflow: hidden;
   }
   .statecard::before {
     content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--ok);
   }
-  .statecard.s-off    { background: linear-gradient(100deg, var(--bad-soft), transparent 46%), var(--surface); }
   .statecard.s-off::before { background: var(--bad); }
-  .statecard.s-paused { background: linear-gradient(100deg, var(--warn-soft), transparent 46%), var(--surface); }
   .statecard.s-paused::before { background: var(--warn); }
   .statecard .sring { flex: none; width: 62px; height: 62px; position: relative; }
   .statecard .sring .rt {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-    font-size: 14px; font-weight: 700; letter-spacing: -0.02em;
+    font-size: 14px; font-weight: 600; letter-spacing: -0.02em;
   }
   .statecard .sbody { min-width: 0; flex: 1; }
-  .statecard h1 { margin: 0; font-size: 20px; font-weight: 680; letter-spacing: -0.024em; }
+  .statecard h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.024em; }
   .statecard.s-off h1    { color: var(--bad-tx); }
   .statecard.s-paused h1 { color: var(--warn-tx); }
   .statecard p { margin: 3px 0 0; font-size: 13.5px; color: var(--text-2); max-width: 92ch; }
@@ -488,15 +496,11 @@
     min-width: 0; display: flex; flex-direction: column; gap: 2px;
     position: relative; overflow: hidden;
     --kpi: var(--brand); --kpi-wash: var(--brand-soft);
-    /* The same wash twice, with different reaches. One pass at the alpha the
-       state tokens already carry is too faint to read as a hue; stacking two
-       doubles it in the corner and leaves it subtle at the edge, which keeps
-       the whole thing derived from one token per theme instead of a second set
-       of hand-tuned rgba values that would drift from it. */
-    background:
-      radial-gradient(118% 98% at 0% 0%, var(--kpi-wash), transparent 62%),
-      radial-gradient(118% 98% at 0% 0%, var(--kpi-wash), transparent 42%),
-      var(--surface);
+    /* Flat surface. The hue lives in the mark and the figure, never in the
+       ground behind them: four tinted panels side by side read as decoration,
+       and the reader has to look past the colour to find the number that is
+       the point of the tile. */
+    background: var(--surface);
     transition: border-color .16s ease;
   }
   .kpi:hover { border-color: var(--line-hi); }
@@ -508,7 +512,7 @@
   .kpi .tile { background: var(--kpi-wash); color: var(--kpi); }
 
   .kpi-top { display: flex; align-items: flex-start; gap: 10px; }
-  .kpi-k { font-size: 12.5px; font-weight: 600; color: var(--text-3); flex: 1; min-width: 0; }
+  .kpi-k { font-size: 12.5px; font-weight: 500; color: var(--text-3); flex: 1; min-width: 0; }
   /* A row's icon says what the row IS - a site, a folder, a Store app - and
      stays neutral. The switch and the badge on the same line already say how it
      is, and colouring all three is how a list of forty rules turns into a
@@ -526,8 +530,8 @@
   .tile.sm { width: 28px; height: 28px; border-radius: 8px; }
   .tile.sm svg { width: 14px; height: 14px; }
 
-  .kpi-v { font-size: 27px; font-weight: 700; letter-spacing: -0.035em; line-height: 1.18; margin-top: 6px; }
-  .kpi-v small { font-size: 16px; font-weight: 600; color: var(--text-3); letter-spacing: 0; }
+  .kpi-v { font-size: 27px; font-weight: 600; letter-spacing: -0.035em; line-height: 1.18; margin-top: 6px; }
+  .kpi-v small { font-size: 16px; font-weight: 500; color: var(--text-3); letter-spacing: 0; }
   /* Pushed to the floor of the card. Only one of the four has a sparkline, so
      without this the other three would carry its height as empty space - and
      with it, all four deltas line up across the row. */
@@ -541,7 +545,7 @@
      up a number the pages below cannot back up. */
   .delta {
     display: inline-flex; align-items: center; gap: 3px; flex: none;
-    font-size: 12px; font-weight: 700; color: var(--ok);
+    font-size: 12px; font-weight: 600; color: var(--ok);
   }
   .delta svg { width: 12px; height: 12px; }
   .delta.d-warn { color: var(--warn); }
@@ -563,7 +567,7 @@
   .insight {
     grid-column: span 12; display: flex; align-items: center; gap: 14px;
     padding: 14px 18px; border: 1px solid var(--line); border-radius: var(--r-lg);
-    background: radial-gradient(120% 180% at 0% 0%, var(--brand-soft), transparent 58%), var(--surface);
+    background: var(--surface);
   }
   .ins-tile {
     flex: none; width: 38px; height: 38px; border-radius: 12px;
@@ -572,9 +576,9 @@
   }
   .ins-tile svg { width: 19px; height: 19px; }
   .ins-b { flex: 1; min-width: 0; }
-  .ins-h { font-size: 10.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); }
+  .ins-h { font-size: 10.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); }
   .ins-t { font-size: 13.5px; color: var(--text-2); margin-top: 3px; line-height: 1.5; }
-  .ins-t b { color: var(--text); font-weight: 640; }
+  .ins-t b { color: var(--text); font-weight: 500; }
 
   /* =======================================================================
      Charts. Drawn here, from the same Status the lists read, at the size the
@@ -601,14 +605,14 @@
   }
   .chart-tip.on { opacity: 1; }
   .chart-tip .tt-k { font-size: 11.5px; color: var(--text-3); }
-  .chart-tip .tt-v { font-size: 15px; font-weight: 700; letter-spacing: -0.02em; margin-top: 1px; }
+  .chart-tip .tt-v { font-size: 15px; font-weight: 600; letter-spacing: -0.02em; margin-top: 1px; }
   .chart-tip .tt-s { font-size: 11.5px; color: var(--text-3); margin-top: 2px; }
 
   /* Segmented range control, the reference's 1D / 1W / 1M row. */
-  .seg { display: flex; gap: 2px; padding: 3px; background: var(--surface-3); border-radius: 999px; flex: none; }
+  .seg { display: flex; gap: 2px; padding: 3px; background: var(--surface-3); border-radius: 2px; flex: none; }
   .seg button {
     background: transparent; border: none; color: var(--text-3);
-    font-size: 12px; font-weight: 650; padding: 4px 11px; border-radius: 999px;
+    font-size: 12px; font-weight: 500; padding: 4px 11px; border-radius: 2px;
     cursor: pointer; font-family: inherit;
   }
   .seg button:hover { color: var(--text); }
@@ -624,7 +628,7 @@
     position: absolute; inset: 0; display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 1px;
   }
-  .donut-v { font-size: 21px; font-weight: 700; letter-spacing: -0.03em; }
+  .donut-v { font-size: 21px; font-weight: 600; letter-spacing: -0.03em; }
   .donut-k { font-size: 11px; color: var(--text-3); }
   .donut-seg { transition: opacity .14s ease, stroke-width .14s ease; cursor: default; }
   .donut.dim .donut-seg { opacity: .34; }
@@ -643,7 +647,7 @@
   .lrow .ld { width: 9px; height: 9px; border-radius: 50%; flex: none; }
   .lrow .ln { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
   .legend-p { font-size: 12.5px; color: var(--text-3); width: 46px; text-align: right; flex: none; }
-  .legend-n { font-size: 13px; font-weight: 650; width: 34px; text-align: right; flex: none; }
+  .legend-n { font-size: 13px; font-weight: 500; width: 34px; text-align: right; flex: none; }
 
   /* The horizontal watch strip. One tile per browser, the reference's Market
      Watch shape with a payload this app can prove. */
@@ -654,7 +658,7 @@
     background: var(--surface-2);
   }
   .wtile.absent { opacity: .5; }
-  .wtile .wn { font-size: 13.5px; font-weight: 620; text-transform: capitalize; }
+  .wtile .wn { font-size: 13.5px; font-weight: 500; text-transform: capitalize; }
   .wtile .ws { font-size: 11.5px; color: var(--text-3); margin-top: 1px; }
   .wtile .wb { min-width: 0; flex: 1; }
   .wtile .wok { width: 16px; height: 16px; flex: none; color: var(--ok); }
@@ -665,10 +669,10 @@
   .bar:hover { background: var(--surface-2); }
   .bar .bb { flex: 1; min-width: 0; }
   .bar .bn { font-size: 13.5px; display: flex; align-items: center; gap: 7px; }
-  .bar .bt { height: 6px; border-radius: 999px; background: var(--track); margin-top: 7px; overflow: hidden; }
-  .bar .bt > span { display: block; height: 100%; border-radius: 999px; background: var(--info); }
+  .bar .bt { height: 6px; border-radius: 2px; background: var(--track); margin-top: 7px; overflow: hidden; }
+  .bar .bt > span { display: block; height: 100%; border-radius: 2px; background: var(--info); }
   .barnum { flex: none; text-align: right; font-size: 12px; color: var(--text-3); line-height: 1.35; }
-  .barnum b { display: block; font-size: 15px; font-weight: 680; color: var(--text); letter-spacing: -0.02em; }
+  .barnum b { display: block; font-size: 15px; font-weight: 600; color: var(--text); letter-spacing: -0.02em; }
 
   /* How wide a card wants to be, out of twelve. Last in the file on purpose:
      every block above sets a default grid-column for its own kind of card, and
@@ -702,14 +706,14 @@
 
   .grouphead {
     display: flex; align-items: center; gap: 8px;
-    font-size: 11px; font-weight: 700; color: var(--text-3); text-transform: uppercase;
+    font-size: 11px; font-weight: 600; color: var(--text-3); text-transform: uppercase;
     letter-spacing: .07em; padding: 9px 16px 7px; background: var(--surface-2);
     border-top: 1px solid var(--line-soft); position: sticky; top: 0; z-index: 1;
   }
 
   .badge {
-    font-size: 11.5px; font-weight: 650; padding: 3px 9px; flex: none;
-    border-radius: 999px; border: 1px solid transparent; white-space: nowrap;
+    font-size: 11.5px; font-weight: 500; padding: 3px 9px; flex: none;
+    border-radius: 2px; border: 1px solid transparent; white-space: nowrap;
   }
   .badge.locked   { color: var(--ok);     background: var(--ok-soft);   border-color: var(--ok-line); }
   .badge.unlocked,
@@ -722,15 +726,15 @@
 
   .schedtag {
     margin-left: 7px; font-size: 10.5px; color: var(--text-3); background: var(--surface-3);
-    border: 1px solid var(--line); padding: 0 6px; border-radius: 999px;
-    vertical-align: middle; font-weight: 600;
+    border: 1px solid var(--line); padding: 0 6px; border-radius: 2px;
+    vertical-align: middle; font-weight: 500;
   }
 
   /* On/off is the most-pressed control here, so it is a switch shape - a
      lozenge with a travelling knob - rather than a word in a pill. */
   .toggle {
     flex: none; position: relative; width: 58px; height: 26px; cursor: pointer;
-    font-size: 11px; font-weight: 750; letter-spacing: .05em; border-radius: 999px;
+    font-size: 11px; font-weight: 600; letter-spacing: .05em; border-radius: 2px;
     border: 1px solid transparent; text-transform: uppercase; padding: 0; font-family: inherit;
   }
   .toggle.on  { background: var(--ok-soft);     color: var(--ok);     border-color: var(--ok-line); text-align: right; padding-right: 10px; }
@@ -751,7 +755,7 @@
   .attrow.bad .atile { background: var(--bad-soft); color: var(--bad); }
   .attrow .atile svg { width: 15px; height: 15px; }
   .attrow .abody { flex: 1; min-width: 0; }
-  .attrow .atext { font-size: 13.5px; font-weight: 620; }
+  .attrow .atext { font-size: 13.5px; font-weight: 500; }
   .attrow.bad .atext { color: var(--bad-tx); }
   .attrow .asub { font-size: 12.5px; color: var(--text-2); margin-top: 2px; line-height: 1.45; }
   .attrow button { flex: none; }
@@ -796,7 +800,7 @@
   .zero .zt svg { width: 18px; height: 18px; }
   .zero.good .zt { background: var(--ok-soft); color: var(--ok); }
   .zero .zb { flex: 1; min-width: 0; }
-  .zero .zh { font-size: 13.5px; font-weight: 620; }
+  .zero .zh { font-size: 13.5px; font-weight: 500; }
   .zero.good .zh { color: var(--ok-tx); }
   .zero .zs { font-size: 12.5px; color: var(--text-3); margin-top: 2px; line-height: 1.45; }
   .zero button { flex: none; }
@@ -806,7 +810,7 @@
      ==================================================================== */
   button {
     background: var(--brand); color: var(--on-brand); border: 1px solid transparent; border-radius: 9px;
-    padding: 7px 14px; font-size: 13px; font-weight: 650; cursor: pointer;
+    padding: 7px 14px; font-size: 13px; font-weight: 500; cursor: pointer;
     font-family: inherit; line-height: 1.4; transition: background .14s ease, border-color .14s ease, color .14s ease;
   }
   button:hover { background: var(--brand-hi); }
@@ -814,7 +818,7 @@
   button.ghost:hover { background: var(--ctl-hi); color: var(--text); border-color: var(--ctl-line-hi); }
   button.danger { background: var(--danger); color: #fff; }
   button.danger:hover { background: var(--danger-hi); }
-  button.link { background: none; border: none; color: var(--brand-tx); padding: 4px 6px; font-weight: 650; }
+  button.link { background: none; border: none; color: var(--brand-tx); padding: 4px 6px; font-weight: 500; }
   button.link:hover { background: var(--brand-soft); color: var(--brand-hi); }
   button:disabled { opacity: .45; cursor: default; }
   button:disabled:hover { background: var(--ctl); }
@@ -834,7 +838,7 @@
 
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
   .chips button, .lock-choices button {
-    padding: 6px 12px; font-size: 12.5px; font-weight: 650; border-radius: 999px;
+    padding: 6px 12px; font-size: 12.5px; font-weight: 500; border-radius: 2px;
     background: var(--ctl); border: 1px solid var(--ctl-line); color: var(--text-2);
   }
   .chips button.sel, .chips button:hover,
@@ -852,7 +856,7 @@
   .notice .nt { flex: none; width: 30px; height: 30px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; background: var(--info-soft); color: var(--info); }
   .notice .nt svg { width: 16px; height: 16px; }
   .notice .nb { flex: 1; min-width: 0; }
-  .notice .lbl { font-size: 13.5px; font-weight: 640; color: var(--text); }
+  .notice .lbl { font-size: 13.5px; font-weight: 500; color: var(--text); }
   .notice .announce-msg { color: var(--text-2); font-size: 12.5px; margin-top: 3px; line-height: 1.48; }
   .notice.info   { border-color: var(--info-line); background: var(--info-soft); }
   .notice.warn   { border-color: var(--warn-line); background: var(--warn-soft); }
@@ -907,7 +911,7 @@
   }
   .modal.wide { width: 496px; }
   .modal .modal-title {
-    flex: none; font-size: 14.5px; font-weight: 650; padding: 14px 18px;
+    flex: none; font-size: 14.5px; font-weight: 500; padding: 14px 18px;
     background: var(--surface-2); border-bottom: 1px solid var(--line);
   }
   .modal-body { padding: 18px; overflow-y: auto; }
@@ -922,7 +926,7 @@
   .picker { max-height: 258px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; margin-top: 10px; }
   .picker button {
     width: 100%; text-align: left; background: var(--surface-2); border-color: var(--line);
-    color: var(--text); font-weight: 450; font-size: 13px; padding: 8px 11px;
+    color: var(--text); font-weight: 400; font-size: 13px; padding: 8px 11px;
   }
   .picker button:hover { background: var(--brand); border-color: transparent; color: var(--on-brand); }
   .picker .none { font-size: 13px; color: var(--text-2); padding: 7px 2px; }
@@ -944,7 +948,7 @@
   .catnote { font-size: 12.5px; color: var(--text-2); margin-top: 8px; line-height: 1.45; }
   .catmore {
     background: none; border: none; color: var(--brand-tx); padding: 6px 0 0;
-    font-size: 12.5px; font-weight: 650; cursor: pointer;
+    font-size: 12.5px; font-weight: 500; cursor: pointer;
   }
   .catmore:hover { background: none; color: var(--brand-hi); text-decoration: underline; }
   .catlist {
@@ -964,10 +968,10 @@
      promise the app makes, so it is the one row allowed a coloured edge. */
   .blockrow.islocked { box-shadow: inset 3px 0 0 var(--violet); }
   .blockrow .binfo { min-width: 0; flex: 1; }
-  .blockrow .btitle { font-size: 13.5px; font-weight: 620; }
+  .blockrow .btitle { font-size: 13.5px; font-weight: 500; }
   .blockrow .bmeta { font-size: 12px; color: var(--text-3); margin-top: 2px; }
   .blockrow .bright { margin-left: auto; display: flex; align-items: center; gap: 7px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
-  .lockbtn { padding: 4px 11px; font-size: 12px; font-weight: 620; border-radius: 8px; background: var(--ctl); border: 1px solid var(--ctl-line); color: var(--text-2); }
+  .lockbtn { padding: 4px 11px; font-size: 12px; font-weight: 500; border-radius: 8px; background: var(--ctl); border: 1px solid var(--ctl-line); color: var(--text-2); }
   .lockbtn:hover { background: var(--brand); border-color: transparent; color: var(--on-brand); }
 
 
@@ -977,7 +981,7 @@
     background: var(--surface); border-top: 1px solid var(--line);
     font-size: 12px; color: var(--text-3); min-width: 0;
   }
-  .statusbar b { color: var(--text-2); font-weight: 620; }
+  .statusbar b { color: var(--text-2); font-weight: 500; }
   .statusbar .sep { width: 1px; height: 12px; background: var(--line); flex: none; }
   .statusbar .grow { flex: 1; }
   .statusbar .sb { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -3174,9 +3178,9 @@
   // a sentence in it is a caption, and a foot with a bar in it is a reading.
   function meter(frac, tone) {
     const box = el('span');
-    box.style.cssText = 'flex:none; width:64px; height:6px; border-radius:999px; background:var(--track); overflow:hidden;';
+    box.style.cssText = 'flex:none; width:64px; height:6px; border-radius:2px; background:var(--track); overflow:hidden;';
     const fill = el('span');
-    fill.style.cssText = 'display:block; height:100%; border-radius:999px; background:var(--' + (tone || 'brand') +
+    fill.style.cssText = 'display:block; height:100%; border-radius:2px; background:var(--' + (tone || 'brand') +
       '); width:' + Math.round(Math.max(0, Math.min(1, frac || 0)) * 100) + '%;';
     box.appendChild(fill);
     return box;
