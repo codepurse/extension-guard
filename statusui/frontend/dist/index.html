@@ -376,6 +376,9 @@
      Inside a two-track row those would claim eight and four tracks and spill
      into implicit columns, which is why the two were stacking. */
   #pane-overview .ovrow > * { grid-column: auto; }
+  /* Nothing needs attention, so that card is not rendered and the figure has
+     the row to itself rather than sitting in a third of it beside a hole. */
+  #pane-overview .ovrow.solo { grid-template-columns: 1fr; }
   #card-holding { flex: 1; min-height: 240px; }
   /* It is the page's body, so it is not capped at --cap like a card sharing a
      row with three others - it grows to the window and scrolls inside itself.
@@ -2267,9 +2270,30 @@
   // status, and a chart that only redrew on refresh would be wrong for as
   // long as the window stayed the size it had just been dragged to.
   const REDRAW = [];
+  // A window resize is not the only thing that changes a chart's width. A card
+  // can be re-sized by the layout around it - the Overview drops the attention
+  // card when there is nothing wrong, and the figure beside it goes from a
+  // third of the row to all of it - and a chart drawn at the old width is
+  // measured once and then stretched by its own viewBox, which centres the
+  // drawing and leaves air on both sides. Observing the host catches every
+  // such case, including ones nobody has thought of yet.
+  const RO = window.ResizeObserver ? new window.ResizeObserver(function (entries) {
+    entries.forEach(function (e) {
+      const h = e.target;
+      // Width only, and only on a real change: the callback redraws the thing
+      // it is watching, so comparing first is what keeps that from looping.
+      if (!h.isConnected || !h.clientWidth || !h.__draw) { return; }
+      if (h.__w === h.clientWidth) { return; }
+      h.__w = h.clientWidth;
+      h.__draw();
+    });
+  }) : null;
   function onResize(host, fn) {
     host.__draw = fn;
-    if (REDRAW.indexOf(host) === -1) { REDRAW.push(host); }
+    if (REDRAW.indexOf(host) === -1) {
+      REDRAW.push(host);
+      if (RO) { RO.observe(host); }
+    }
   }
   let resizeTimer = 0;
   window.addEventListener('resize', function () {
@@ -4849,8 +4873,12 @@
     // The list itself is not lost: every row in it is an extension, a pinned
     // setting or a browser, and each of those has a page that owns it.
     if (!shellState) {
+      // "Switched off" rather than "off", because these are choices and the
+      // sentence used to read as a fault sitting directly above a card saying
+      // nothing was wrong. A protection someone turned off is not a gap; the
+      // gaps have their own card, and it only appears when there are some.
       text('hero-sub', on + ' of ' + checks.length + ' safeguards on'
-        + (gaps ? ' · ' + (gaps === 1 ? 'one is off' : gaps + ' are off') : ' · nothing needs attention'));
+        + (gaps ? ' · ' + gaps + ' switched off' : ''));
     }
 
     // The banner, and the ring on it. Set by render() just above; this is the
@@ -5011,6 +5039,16 @@
     show('att-clear', !list.length);
     show(attCount, list.length > 0);
     attCount.textContent = list.length;
+
+    // With nothing wrong the card goes entirely, rather than standing as a
+    // panel whose whole content is the word "nothing". Two reasons: the
+    // banner above has already said protection is holding, and an empty card
+    // beside a taller one leaves exactly the hole in the page that the
+    // is-zero rule creates by design - it stops stretching and becomes a
+    // strip. The row then gives its width to the figure instead.
+    show('card-attention', list.length > 0);
+    const ovrow = document.querySelector('#pane-overview .ovrow');
+    if (ovrow) { ovrow.classList.toggle('solo', !list.length); }
 
     list.forEach(function (a) {
       const row = el('div', 'attrow' + (a.sev === 'bad' ? ' bad' : ''));
