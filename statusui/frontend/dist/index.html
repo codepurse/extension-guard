@@ -1015,6 +1015,120 @@
     .statecard h1 { font-size: 18px; }
     .kpi-v { font-size: 24px; }
   }
+
+  /* ======================================================================
+     The commitment row.
+
+     This window repeats one object, and it is not a verdict: Ward has no
+     score and no classifier, and every decision it makes is an exact match
+     against a list. What it repeats is a COMMITMENT - a subject, the
+     protection on it, whether that protection is in force right now, and
+     what it costs to undo.
+
+     The fourth field is the one nothing else here had. The guard has a whole
+     theory of it - HardenWeakens, AllowNarrows, Block.Narrows, each called
+     "the one place that decides" in its own source, and fourteen
+     requirePassword sites that each name their price in plain English - and
+     until now none of it was a column. It was prose, repeated eight times
+     across the help bubbles, and a person found out what a button cost by
+     pressing it.
+
+     One anatomy, three zooms: a line here, a tile when the same fields are
+     aggregated, a grouped table for a category's whole yield. Learn the row
+     once and the window is learned.
+     ====================================================================== */
+  .crow {
+    display: grid;
+    grid-template-columns: minmax(150px, 1.6fr) minmax(120px, 1.5fr) 116px auto auto;
+    align-items: center;
+    gap: 12px;
+    min-height: var(--row-h, 34px);
+    padding: var(--pad-y, 7px) var(--pad-x, 10px);
+    border-bottom: 1px solid var(--rule);
+  }
+  .crow:last-child { border-bottom: 0; }
+  /* The ground steps one level toward ink, and nothing moves or resizes: a
+     row that shifts under the cursor is a row you misclick, and a misclick
+     here turns protection off. */
+  .crow:hover { background: var(--hover); }
+
+  .crow-head {
+    display: grid;
+    grid-template-columns: minmax(150px, 1.6fr) minmax(120px, 1.5fr) 116px auto auto;
+    gap: 12px;
+    padding: 4px var(--pad-x, 10px);
+    border-bottom: 1px solid var(--rule-2);
+    font-family: var(--mono); font-size: 11px; font-weight: 500;
+    letter-spacing: .07em; text-transform: uppercase; color: var(--text-3);
+  }
+
+  .csubj { color: var(--text); font-weight: 500; min-width: 0; }
+  .csubj.m {
+    font-family: var(--mono); font-size: 12px; font-weight: 400;
+    -webkit-user-select: text; user-select: text;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .csubj .csub {
+    display: block; font-family: var(--mono); font-size: 11px;
+    font-weight: 400; color: var(--text-3);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .cprot { font-size: 12px; color: var(--text-2); min-width: 0; }
+
+  /* Status is never colour alone. Every state carries a mark of its own
+     SHAPE and a word, so the row reads in greyscale, under any colour
+     vision, and on a printed page. */
+  .cstate { display: flex; align-items: center; gap: 7px; font-size: 12px; white-space: nowrap; }
+  .cmk { width: 9px; height: 9px; flex: none; display: inline-block; }
+  .cstate[data-s="enforcing"] { color: var(--accent); }
+  .cstate[data-s="enforcing"] .cmk { background: var(--accent); }
+  .cstate[data-s="waiting"] { color: var(--warn); }
+  .cstate[data-s="waiting"] .cmk { border: 1.5px solid var(--warn); }
+  .cstate[data-s="idle"] { color: var(--text-3); }
+  .cstate[data-s="idle"] .cmk { border-top: 1.5px solid var(--text-3); height: 0; }
+  .cstate[data-s="off"] { color: var(--text-3); }
+  .cstate[data-s="off"] .cmk { border: 1.5px solid var(--text-3); transform: rotate(45deg); }
+  .cstate[data-s="gap"] { color: var(--serious); }
+  .cstate[data-s="gap"] .cmk {
+    width: 0; height: 0;
+    border-left: 5px solid transparent; border-right: 5px solid transparent;
+    border-bottom: 9px solid var(--serious);
+  }
+  .cstate[data-s="unavailable"] { color: var(--text-3); }
+  .cstate[data-s="unavailable"] .cmk {
+    border-top: 1.5px dotted var(--text-3); height: 0;
+  }
+
+  /* Cost chips are small rectangles. Nothing is a pill, and the restraint is
+     what stops a table of these reading as a template. */
+  .ccost {
+    display: inline-flex; align-items: center;
+    font-family: var(--mono); font-size: 11px;
+    padding: 2px 6px; border-radius: 2px; border: 1px solid;
+    white-space: nowrap;
+  }
+  .ccost[data-c="free"]      { color: var(--text-3); border-color: var(--rule-2); }
+  .ccost[data-c="password"]  { color: var(--warn);   border-color: color-mix(in oklab, var(--warn) 45%, transparent); }
+  .ccost[data-c="challenge"] { color: var(--serious);border-color: color-mix(in oklab, var(--serious) 45%, transparent); }
+  .ccost[data-c="locked"]    { color: var(--critical);border-color: color-mix(in oklab, var(--critical) 45%, transparent); }
+
+  /* A row narrows by ITS OWN width, not the window's: these lists sit in
+     cards the layout engine resizes, so a viewport query would drop columns
+     on a wide window and keep them on a squeezed card. The order of sacrifice
+     is fixed and the cost chip is never in it - what a change costs is the
+     one field this row exists to add. The protection clause goes first: it is
+     the same sentence on every row of a given list, which is what makes it
+     the most repeated and the least missed. */
+  .rows { container-type: inline-size; }
+
+  @container (max-width: 560px) {
+    .crow, .crow-head { grid-template-columns: minmax(120px, 1.6fr) 108px auto auto; }
+    .cprot, .h-prot { display: none; }
+  }
+  /* There is deliberately no narrower step. The window's MinWidth is 940 and
+     these cards floor at half the grid, so the next thing to go would be the
+     state or the cost - and a list that quietly stops saying "on, but
+     waiting" or "this needs the password" is worse than one that scrolls. */
 </style>
 <script>
   // Runs before the first paint, and does nothing else. A window that opens
@@ -1851,6 +1965,89 @@
     const s = el('span', 'tile sm' + (tone ? ' t-' + tone : ''));
     s.appendChild(icon(name));
     return s;
+  }
+
+  /* ======================================================================
+     The commitment row. See the CSS block of the same name for why this is
+     the object the window repeats rather than a verdict row.
+     ====================================================================== */
+
+  // costOf says what changing a row would cost, in the guard's own terms.
+  // Two rules and one inversion, and all three belong to the config rather
+  // than to this page:
+  //   - turning a protection ON only ever adds protection, so it is free;
+  //   - turning one OFF weakens, so it meets the password;
+  //   - while protection is paused there is nothing to weaken, so it reverses.
+  // The typing challenge is charged after the password at every one of the
+  // weakening call sites, so when one is configured it is named here instead
+  // of being discovered at the prompt. That is the whole point of the column:
+  // the price is known before the button, not after it.
+  function costOf(on) {
+    if (!on) {
+      return { c: 'free', label: 'Free to turn on',
+        hint: 'Adding protection costs nothing but the Windows permission prompt.' };
+    }
+    if (current && current.disabled) {
+      return { c: 'free', label: 'Free while paused',
+        hint: 'Protection is paused, so there is nothing to weaken. This returns to needing the password when it resumes.' };
+    }
+    const n = (current && current.frictionChars) || 0;
+    return n
+      ? { c: 'challenge', label: 'Password + ' + n,
+          hint: 'The password, then ' + n + ' characters typed by hand. Pasting is refused.' }
+      : { c: 'password', label: 'Password',
+          hint: 'Turning this off weakens protection, so it needs the password.' };
+  }
+
+  // stateOf turns the booleans a list row carries into the one vocabulary the
+  // window uses. "Waiting" is the case worth having a word for - on, but
+  // outside its schedule window, so neither enforcing nor off - and it used to
+  // be a badge on some rows and nothing at all on others.
+  function stateOf(r) {
+    if (!r.enabled) { return ['off', 'Off']; }
+    if (r.scheduled && !r.blocked) { return ['waiting', 'Waiting']; }
+    return ['enforcing', 'Enforcing'];
+  }
+
+  // commitRow builds one. Every list of something the guard is doing goes
+  // through here, so a row cannot grow a second anatomy on a page somebody
+  // edits later.
+  function commitRow(o) {
+    const row = el('div', 'crow');
+
+    // A hostname or an executable is an identifier, and identifiers wear the
+    // mono face - it is also the text people copy out of this window.
+    const subj = el('div', 'csubj' + (o.mono ? ' m' : ''), o.subject);
+    if (o.sub) { subj.appendChild(el('span', 'csub', o.sub)); }
+    row.appendChild(subj);
+
+    row.appendChild(el('div', 'cprot', o.protection || ''));
+
+    const st = el('span', 'cstate');
+    st.setAttribute('data-s', o.state[0]);
+    st.appendChild(el('i', 'cmk'));
+    st.appendChild(document.createTextNode(o.state[1]));
+    if (o.stateHint) { st.title = o.stateHint; }
+    row.appendChild(st);
+
+    const cost = el('span', 'ccost', o.cost.label);
+    cost.setAttribute('data-c', o.cost.c);
+    cost.title = o.cost.hint || 'What changing this would cost';
+    row.appendChild(cost);
+
+    row.appendChild(o.control || el('span'));
+    return row;
+  }
+
+  // header writes the column names once above a list of rows.
+  function commitHead(host, subject, protection) {
+    const h = el('div', 'crow-head');
+    h.appendChild(el('div', null, subject));
+    h.appendChild(el('div', 'h-prot', protection));
+    h.appendChild(el('div', null, 'Right now'));
+    h.appendChild(el('div', 'h-cost', 'To undo'));
+    h.appendChild(el('div', null, ''));
+    host.appendChild(h);
   }
   function show(id, on) {
     const n = typeof id === 'string' ? document.getElementById(id) : id;
@@ -2873,19 +3070,23 @@
   function renderExtensions(s) {
     const extRows = document.getElementById('ext-rows');
     extRows.innerHTML = '';
-    (s.extensions || []).forEach(function (e) {
-      const row = el('div', 'row');
-      row.appendChild(tile('puzzle'));
-      const info = el('div', 'ainfo');
-      const name = el('div', 'aname', e.label || e.name);
-      if (e.scheduled) { name.appendChild(el('span', 'schedtag', 'scheduled')); }
-      info.appendChild(name);
-      row.appendChild(info);
-
-      const tog = el('button', 'toggle push ' + (e.enabled ? 'on' : 'off'), e.enabled ? 'On' : 'Off');
+    const list = s.extensions || [];
+    if (list.length) { commitHead(extRows, 'Extension', 'Protection'); }
+    list.forEach(function (e) {
+      const tog = el('button', 'toggle ' + (e.enabled ? 'on' : 'off'), e.enabled ? 'On' : 'Off');
       tog.addEventListener('click', function () { toggleExt(e.name, e.label || e.name, e.enabled); });
-      row.appendChild(tog);
-      extRows.appendChild(row);
+      extRows.appendChild(commitRow({
+        subject: e.label || e.name,
+        sub: e.name,
+        // An extension row carries no in-window flag, so a schedule is named
+        // in the clause rather than guessed at in the state.
+        protection: e.enabled
+          ? 'Force-installed and pinned' + (e.scheduled ? ', on a schedule' : '')
+          : 'Not installed by the guard',
+        state: e.enabled ? ['enforcing', 'Enforcing'] : ['off', 'Off'],
+        cost: costOf(e.enabled),
+        control: tog
+      }));
     });
   }
 
@@ -3062,27 +3263,25 @@
       ? 'Clear the filter in the toolbar to see all ' + all.length + '.'
       : 'Type a site above and it stops loading in every supported browser, subdomains included.');
 
+    if (domains.length) { commitHead(rows, 'Site', 'Protection'); }
     domains.forEach(function (d) {
-      const waiting = d.enabled && d.scheduled && !d.blocked;
-      const row = el('div', 'row');
-      // Neutral unless the row is doing something unexpected. On-ness is said
-      // by the switch at the other end of the line; saying it again in the icon
-      // is what turned a list of sites into a colour field.
-      row.appendChild(tile('globe', waiting ? 'warn' : null));
-      const info = el('div', 'ainfo');
-      info.appendChild(el('div', 'dname', d.name));
-      row.appendChild(info);
-
-      if (waiting) {
-        const badge = el('span', 'badge push idlewin', 'Waiting');
-        badge.title = 'On, but outside its schedule window right now';
-        row.appendChild(badge);
-      }
-      const tog = el('button', 'toggle ' + (d.enabled ? 'on' : 'off') + (waiting ? '' : ' push'),
-        d.enabled ? 'On' : 'Off');
+      const tog = el('button', 'toggle ' + (d.enabled ? 'on' : 'off'), d.enabled ? 'On' : 'Off');
       tog.addEventListener('click', function () { toggleDomain(d.name, d.enabled); });
-      row.appendChild(tog);
-      rows.appendChild(row);
+      rows.appendChild(commitRow({
+        subject: d.name,
+        mono: true,
+        // Short, and it varies. The full sentence - every managed browser,
+        // subdomains included - is the same on all four rows, and a clause
+        // repeated verbatim down a column is not information, it is a wall.
+        // It lives in the card's help bubble; what changes per row is when.
+        protection: d.scheduled ? 'All browsers, on a schedule' : 'All browsers, around the clock',
+        // "Waiting" was a badge that appeared on some rows and nothing on
+        // others; it is a state with a word and a mark of its own now.
+        state: stateOf(d),
+        stateHint: 'On, but outside its schedule window right now',
+        cost: costOf(d.enabled),
+        control: tog
+      }));
     });
 
     // The card's foot. A list of three used to leave four hundred pixels of
@@ -4796,13 +4995,17 @@
     // row of cards competing for width; it now has one card and one figure on
     // a fixed 8/4, and Activity has a page to itself. The engine still runs
     // the three pages that do have rows of cards.
-    'card-browsers':   { grp: 'brA', min: 4 },
-    'card-ext':        { grp: 'brA', min: 4 },
-    'card-hardening':  { grp: 'brB', min: 4, rw: 1.4 },
+    // A card carrying commitment rows is carrying a table, and a table is not
+    // allowed to lose a column - the cost of undoing something is the one
+    // field a person is here to read. So the lists get half the grid as their
+    // floor, and the rule-mix chart moves off their row to make it possible.
+    'card-browsers':   { grp: 'brA', min: 6 },
+    'card-ext':        { grp: 'brA', min: 6 },
+    'card-hardening':  { grp: 'brB', min: 6, rw: 1.4 },
     'card-unmanaged':  { grp: 'brB', min: 4, rw: 1.4 },
-    'card-domains':    { grp: 'blA', min: 3 },
-    'card-apps':       { grp: 'blA', min: 3, rw: 1.4 },
-    'card-rulemix':    { grp: 'blA', min: 3, weight: 5 },
+    'card-domains':    { grp: 'blA', min: 6 },
+    'card-apps':       { grp: 'blA', min: 6, rw: 1.4 },
+    'card-rulemix':    { grp: 'blB', min: 4, weight: 5 },
     'card-allow':      { grp: 'blB', min: 4 },
     'card-categories': { grp: 'blB', min: 4, rw: 1.6 },
     'card-byday':      { grp: 'scA', min: 4, weight: 9 },
