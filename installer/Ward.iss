@@ -23,6 +23,19 @@ AppId={{6B2C9E4A-3F71-4B8E-9C2D-5A1E7F0D9C34}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher=monolab
+; The version resource on Setup.exe itself. AppVersion above does NOT supply
+; it - Inno leaves VersionInfoVersion at 0.0.0.0 unless it is set explicitly -
+; and Setup.exe was shipping as 0.0.0.0 with no publisher on its Details tab.
+; That is the same problem cmd/guard/versioninfo.json exists to solve for
+; guard.exe: an unsigned installer with no version and no company is exactly
+; what antivirus heuristics score against, and the one binary a user is most
+; likely to inspect the properties of before running it.
+VersionInfoVersion={#AppVersion}
+VersionInfoProductVersion={#AppVersion}
+VersionInfoProductName={#AppName}
+VersionInfoCompany=monolab
+VersionInfoDescription={#AppName} Setup
+VersionInfoCopyright=Copyright (c) monolab. MIT License.
 ; New installs land in "Ward"; installs made under the old name keep
 ; "Extension Guard", because the AppId below is unchanged and
 ; UsePreviousAppDir defaults to yes. That divergence is deliberate. Moving
