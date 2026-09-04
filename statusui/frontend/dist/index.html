@@ -113,71 +113,41 @@
     --mono:  "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
 
     /* ================================================================
-       Compatibility shim. The panes below still name the navy system's
-       tokens; each maps onto a role above so the window stays runnable
-       while they are converted one at a time. Every line here is a
-       deletion waiting to happen - when a name has no callers left,
-       remove it rather than keeping it alive.
-       ================================================================ */
-    --bg-glow:    transparent;          /* no glow, no glass */
-    --surface-2:  var(--hover);
-    --surface-3:  var(--hover);
-    --surface-4:  var(--track);
-    --line:       var(--rule);
-    --line-soft:  var(--rule);
-    --line-hi:    var(--rule-2);
-    --text-4:     var(--text-3);
+       What is left of the compatibility shim. Thirty-four names were pure
+       aliases and have been folded into the roles they pointed at - 157
+       var() references rewritten, so --line is --rule everywhere and there
+       is one vocabulary rather than two.
 
-    --brand:      var(--action);
-    --brand-hi:   var(--action);
-    --brand-dim:  var(--action);
-    --brand-tx:   var(--action);
+       These fifteen are not aliases: they are the tinted fills and hairlines
+       the older chrome still paints badges, notices and zero states with.
+       They go when those components are rebuilt as bordered rectangles the
+       way .ccost already is - a fill is not how this system says status.
+       ================================================================ */
+
     --brand-soft: color-mix(in oklab, var(--action) 10%, transparent);
     --brand-soft2:color-mix(in oklab, var(--action) 16%, transparent);
     --brand-line: color-mix(in oklab, var(--action) 45%, transparent);
     --on-brand:   #FEFDFB;
 
-    --ok:        var(--accent);
-    --ok-tx:     var(--accent);
     --ok-soft:   color-mix(in oklab, var(--accent) 10%, transparent);
     --ok-line:   color-mix(in oklab, var(--accent) 45%, transparent);
 
-    --warn-tx:   var(--warn);
     --warn-soft: color-mix(in oklab, var(--warn) 10%, transparent);
     --warn-line: color-mix(in oklab, var(--warn) 45%, transparent);
 
-    --bad:       var(--critical);
-    --bad-tx:    var(--critical);
     --bad-soft:  color-mix(in oklab, var(--critical) 10%, transparent);
     --bad-line:  color-mix(in oklab, var(--critical) 45%, transparent);
 
-    --info:      var(--action);
-    --info-tx:   var(--action);
     --info-soft: color-mix(in oklab, var(--action) 10%, transparent);
     --info-line: color-mix(in oklab, var(--action) 45%, transparent);
 
-    --violet:      var(--s5);
     --violet-soft: color-mix(in oklab, var(--s5) 12%, transparent);
 
-    --danger:    var(--critical);
     --danger-hi: #7F241F;
 
-    --ctl:        var(--surface);
-    --ctl-hi:     var(--hover);
-    --ctl-line:   var(--rule);
-    --ctl-line-hi:var(--rule-2);
-    --field:      var(--surface);
-    --field-hi:   var(--raised);
-    --knob-off:   var(--text-3);
-    --icon-off:   var(--text-3);
 
-    --scroll:    var(--track);
-    --scroll-hi: var(--rule-2);
 
     --backdrop:     color-mix(in oklab, #1A1A16 34%, transparent);
-    --shadow-card:  none;
-    --shadow-pop:   var(--lift);
-    --shadow-modal: var(--lift);
   }
 
   /* Dark is DESIGNED, not inverted. It is a selected set of steps against
@@ -243,9 +213,9 @@
 
   ::-webkit-scrollbar { width: 10px; height: 10px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: 2px; border: 3px solid transparent; background-clip: content-box; }
-  ::-webkit-scrollbar-thumb:hover { background: var(--scroll-hi); background-clip: content-box; }
-  :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 5px; }
+  ::-webkit-scrollbar-thumb { background: var(--track); border-radius: 2px; border: 3px solid transparent; background-clip: content-box; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--rule-2); background-clip: content-box; }
+  :focus-visible { outline: 2px solid var(--action); outline-offset: 2px; border-radius: 5px; }
 
   /* Held for the two frames either side of a theme swap. Every control in the
      window animates its background, which is right when one of them is hovered
@@ -265,7 +235,7 @@
   /* ---- top bar -------------------------------------------------------- */
   .topbar {
     display: flex; align-items: center; gap: 18px; padding: 0 16px;
-    background: var(--surface); border-bottom: 1px solid var(--line);
+    background: var(--surface); border-bottom: 1px solid var(--rule);
     min-width: 0; z-index: 40;
   }
   .brand { display: flex; align-items: center; gap: 10px; flex: none; }
@@ -283,27 +253,27 @@
     cursor: pointer; white-space: nowrap; transition: background .14s ease, color .14s ease;
   }
   .navitem svg { width: 16px; height: 16px; flex: none; opacity: .85; }
-  .navitem:hover { background: var(--surface-3); color: var(--text); }
+  .navitem:hover { background: var(--hover); color: var(--text); }
   /* Where you are is a raised surface, not a coloured lozenge. Filling it with
      the brand made four tabs compete with the one control on the page that is
      actually asking to be pressed. */
   .navitem.is-on {
-    background: var(--surface-3); color: var(--text);
-    box-shadow: inset 0 0 0 1px var(--line-hi);
+    background: var(--hover); color: var(--text);
+    box-shadow: inset 0 0 0 1px var(--rule-2);
   }
-  .navitem.is-on svg { opacity: 1; color: var(--brand-tx); }
+  .navitem.is-on svg { opacity: 1; color: var(--action); }
   .navcount {
     font-size: 11px; font-weight: 600; padding: 0 6px; min-width: 20px; text-align: center;
-    border-radius: 2px; background: var(--surface-3); color: var(--text-3);
+    border-radius: 2px; background: var(--hover); color: var(--text-3);
   }
-  .navitem.is-on .navcount { background: var(--brand-soft); color: var(--brand-tx); }
+  .navitem.is-on .navcount { background: var(--brand-soft); color: var(--action); }
   /* A dot, not a number: it says "something here wants you", and the count is
      on the page itself. */
   .navdot {
     position: absolute; top: 4px; right: 5px; width: 7px; height: 7px;
     border-radius: 50%; background: var(--warn); box-shadow: 0 0 0 2px var(--surface);
   }
-  .navdot.bad { background: var(--bad); }
+  .navdot.bad { background: var(--critical); }
 
   .tb-right { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: none; }
 
@@ -314,24 +284,24 @@
     border: 1px solid transparent; white-space: nowrap;
   }
   .pill::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
-  .pill.active   { color: var(--ok);   background: var(--ok-soft);   border-color: var(--ok-line); }
-  .pill.inactive { color: var(--bad);  background: var(--bad-soft);  border-color: var(--bad-line); }
+  .pill.active   { color: var(--accent);   background: var(--ok-soft);   border-color: var(--ok-line); }
+  .pill.inactive { color: var(--critical);  background: var(--bad-soft);  border-color: var(--bad-line); }
   .pill.paused   { color: var(--warn); background: var(--warn-soft); border-color: var(--warn-line); }
   .pill.active::before { animation: pulse 2.4s ease-in-out infinite; }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .28; } }
 
   .iconbtn {
-    position: relative; background: var(--ctl); border: 1px solid var(--ctl-line); color: var(--text-2);
+    position: relative; background: var(--surface); border: 1px solid var(--rule); color: var(--text-2);
     width: 32px; height: 32px; border-radius: 9px; padding: 0;
     display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
     transition: background .14s ease, color .14s ease, border-color .14s ease;
   }
   .iconbtn svg { width: 16px; height: 16px; }
-  .iconbtn:hover { background: var(--ctl-hi); color: var(--text); border-color: var(--ctl-line-hi); }
+  .iconbtn:hover { background: var(--hover); color: var(--text); border-color: var(--rule-2); }
   .iconbtn.spin svg { animation: spin .7s linear infinite; }
   .iconbtn .nub {
     position: absolute; top: -4px; right: -4px; min-width: 16px; height: 16px; padding: 0 4px;
-    border-radius: 2px; background: var(--bad); color: #fff; font-size: 10px; font-weight: 600;
+    border-radius: 2px; background: var(--critical); color: #fff; font-size: 10px; font-weight: 600;
     line-height: 15px; text-align: center; border: 2px solid var(--surface);
   }
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -341,18 +311,18 @@
   .themepick { position: relative; }
   .thememenu {
     position: absolute; right: 0; top: 40px; z-index: 70; min-width: 186px; padding: 5px;
-    background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r);
-    box-shadow: var(--shadow-pop);
+    background: var(--hover); border: 1px solid var(--rule); border-radius: var(--r);
+    box-shadow: var(--lift);
   }
   .thememenu button {
     display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
     background: transparent; border: none; color: var(--text-2);
     padding: 8px 9px; border-radius: var(--r-sm); font-size: 13px; font-weight: 500; cursor: pointer;
   }
-  .thememenu button:hover { background: var(--surface-3); color: var(--text); }
+  .thememenu button:hover { background: var(--hover); color: var(--text); }
   .thememenu button .mi { width: 15px; height: 15px; flex: none; opacity: .85; }
   .thememenu button span { flex: 1; }
-  .thememenu button .tk { width: 14px; height: 14px; flex: none; color: var(--brand); visibility: hidden; }
+  .thememenu button .tk { width: 14px; height: 14px; flex: none; color: var(--action); visibility: hidden; }
   .thememenu button.sel { color: var(--text); }
   .thememenu button.sel .tk { visibility: visible; }
 
@@ -378,8 +348,8 @@
   .filterbox > svg { position: absolute; left: 11px; width: 15px; height: 15px; color: var(--text-3); pointer-events: none; }
   .filterbox input { width: 232px; padding-left: 33px; height: 34px; }
   .filterbox .fkey {
-    position: absolute; right: 9px; font-size: 11px; color: var(--text-4);
-    border: 1px solid var(--ctl-line); border-radius: 4px; padding: 0 5px; pointer-events: none;
+    position: absolute; right: 9px; font-size: 11px; color: var(--text-3);
+    border: 1px solid var(--rule); border-radius: 4px; padding: 0 5px; pointer-events: none;
   }
   .filterbox input:focus + .fkey, .filterbox input:not(:placeholder-shown) + .fkey { display: none; }
 
@@ -396,8 +366,8 @@
      ==================================================================== */
   .card {
     grid-column: span 12; display: flex; flex-direction: column; min-width: 0;
-    background: var(--surface); border: 1px solid var(--line);
-    border-radius: var(--r-lg); box-shadow: var(--shadow-card); overflow: hidden;
+    background: var(--surface); border: 1px solid var(--rule);
+    border-radius: var(--r-lg); box-shadow: none; overflow: hidden;
   }
   /* A card with nothing in it stops stretching to match its neighbours and
      becomes a strip. Matching an empty list to a full one is how a dashboard
@@ -409,11 +379,11 @@
   .chead .grow { flex: 1; min-width: 0; }
   .chead .note { font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cnt {
-    font-size: 11.5px; font-weight: 600; color: var(--text-2); background: var(--surface-3);
-    border: 1px solid var(--line); padding: 1px 8px; border-radius: 2px; flex: none;
+    font-size: 11.5px; font-weight: 600; color: var(--text-2); background: var(--hover);
+    border: 1px solid var(--rule); padding: 1px 8px; border-radius: 2px; flex: none;
   }
   .cnt.warn { color: var(--warn); background: var(--warn-soft); border-color: var(--warn-line); }
-  .cnt.ok   { color: var(--ok);   background: var(--ok-soft);   border-color: var(--ok-line); }
+  .cnt.ok   { color: var(--accent);   background: var(--ok-soft);   border-color: var(--ok-line); }
 
   .ctools { flex: none; display: flex; gap: 8px; padding: 0 16px 12px; }
   .ctools.wrap { flex-wrap: wrap; }
@@ -421,8 +391,8 @@
   .cbody.pad { padding: 0 16px 14px; }
   .cbody.tall { max-height: 520px; }
   .cfoot {
-    flex: none; padding: 11px 16px; border-top: 1px solid var(--line-soft);
-    background: var(--surface-2); font-size: 12.5px; color: var(--text-3);
+    flex: none; padding: 11px 16px; border-top: 1px solid var(--rule);
+    background: var(--hover); font-size: 12.5px; color: var(--text-3);
     display: flex; align-items: center; gap: 10px;
   }
   .cfoot b { color: var(--text-2); font-weight: 500; }
@@ -431,15 +401,15 @@
      here, one click away, in the same words. */
   .help {
     width: 19px; height: 19px; padding: 0; flex: none; border-radius: 50%;
-    background: var(--ctl); border: 1px solid var(--ctl-line); color: var(--text-3);
+    background: var(--surface); border: 1px solid var(--rule); color: var(--text-3);
     font-size: 11px; font-weight: 600; line-height: 1; cursor: pointer;
     display: inline-flex; align-items: center; justify-content: center; font-family: inherit;
   }
-  .help:hover, .help.open { background: var(--brand-soft); border-color: var(--brand-line); color: var(--brand-tx); }
+  .help:hover, .help.open { background: var(--brand-soft); border-color: var(--brand-line); color: var(--action); }
   .helpbubble {
     position: fixed; z-index: 80; width: 336px; max-width: calc(100vw - 24px);
-    background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r);
-    padding: 13px 15px; box-shadow: var(--shadow-pop);
+    background: var(--hover); border: 1px solid var(--rule); border-radius: var(--r);
+    padding: 13px 15px; box-shadow: var(--lift);
   }
   .helpbubble p { margin: 0; font-size: 13px; color: var(--text-2); line-height: 1.52; }
   .helpbubble p + p { margin-top: 8px; }
@@ -456,13 +426,13 @@
        behind them is a fourth telling of the same fact, and washes are what
        turn a panel into a colour field. */
     background: var(--surface);
-    border: 1px solid var(--line); box-shadow: var(--shadow-card);
+    border: 1px solid var(--rule); box-shadow: none;
     position: relative; overflow: hidden;
   }
   .statecard::before {
-    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--ok);
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent);
   }
-  .statecard.s-off::before { background: var(--bad); }
+  .statecard.s-off::before { background: var(--critical); }
   .statecard.s-paused::before { background: var(--warn); }
   .statecard .sring { flex: none; width: 62px; height: 62px; position: relative; }
   .statecard .sring .rt {
@@ -471,8 +441,8 @@
   }
   .statecard .sbody { min-width: 0; flex: 1; }
   .statecard h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.024em; }
-  .statecard.s-off h1    { color: var(--bad-tx); }
-  .statecard.s-paused h1 { color: var(--warn-tx); }
+  .statecard.s-off h1    { color: var(--critical); }
+  .statecard.s-paused h1 { color: var(--warn); }
   .statecard p { margin: 3px 0 0; font-size: 13.5px; color: var(--text-2); max-width: 92ch; }
   .statecard .sact { flex: none; display: flex; align-items: center; gap: 10px; }
 
@@ -491,11 +461,11 @@
      noticing. A card is never given a colour it has not earned.
      ==================================================================== */
   .kpi {
-    grid-column: span 3; border: 1px solid var(--line);
-    border-radius: var(--r-lg); padding: 15px 16px 14px; box-shadow: var(--shadow-card);
+    grid-column: span 3; border: 1px solid var(--rule);
+    border-radius: var(--r-lg); padding: 15px 16px 14px; box-shadow: none;
     min-width: 0; display: flex; flex-direction: column; gap: 2px;
     position: relative; overflow: hidden;
-    --kpi: var(--brand); --kpi-wash: var(--brand-soft);
+    --kpi: var(--action); --kpi-wash: var(--brand-soft);
     /* Flat surface. The hue lives in the mark and the figure, never in the
        ground behind them: four tinted panels side by side read as decoration,
        and the reader has to look past the colour to find the number that is
@@ -503,12 +473,12 @@
     background: var(--surface);
     transition: border-color .16s ease;
   }
-  .kpi:hover { border-color: var(--line-hi); }
-  .kpi[data-hue="ok"]     { --kpi: var(--ok);     --kpi-wash: var(--ok-soft); }
-  .kpi[data-hue="info"]   { --kpi: var(--info);   --kpi-wash: var(--info-soft); }
-  .kpi[data-hue="violet"] { --kpi: var(--violet); --kpi-wash: var(--violet-soft); }
+  .kpi:hover { border-color: var(--rule-2); }
+  .kpi[data-hue="ok"]     { --kpi: var(--accent);     --kpi-wash: var(--ok-soft); }
+  .kpi[data-hue="info"]   { --kpi: var(--action);   --kpi-wash: var(--info-soft); }
+  .kpi[data-hue="violet"] { --kpi: var(--s5); --kpi-wash: var(--violet-soft); }
   .kpi[data-hue="warn"]   { --kpi: var(--warn);   --kpi-wash: var(--warn-soft); }
-  .kpi[data-hue="bad"]    { --kpi: var(--bad);    --kpi-wash: var(--bad-soft); }
+  .kpi[data-hue="bad"]    { --kpi: var(--critical);    --kpi-wash: var(--bad-soft); }
   .kpi .tile { background: var(--kpi-wash); color: var(--kpi); }
 
   .kpi-top { display: flex; align-items: flex-start; gap: 10px; }
@@ -520,13 +490,13 @@
   .tile {
     flex: none; width: 34px; height: 34px; border-radius: 10px;
     display: inline-flex; align-items: center; justify-content: center;
-    background: var(--surface-3); color: var(--text-3);
+    background: var(--hover); color: var(--text-3);
   }
   .tile svg { width: 17px; height: 17px; }
-  .tile.t-ok   { background: var(--ok-soft);   color: var(--ok); }
-  .tile.t-info { background: var(--info-soft); color: var(--info); }
+  .tile.t-ok   { background: var(--ok-soft);   color: var(--accent); }
+  .tile.t-info { background: var(--info-soft); color: var(--action); }
   .tile.t-warn { background: var(--warn-soft); color: var(--warn); }
-  .tile.t-bad  { background: var(--bad-soft);  color: var(--bad); }
+  .tile.t-bad  { background: var(--bad-soft);  color: var(--critical); }
   .tile.sm { width: 28px; height: 28px; border-radius: 8px; }
   .tile.sm svg { width: 14px; height: 14px; }
 
@@ -545,13 +515,13 @@
      up a number the pages below cannot back up. */
   .delta {
     display: inline-flex; align-items: center; gap: 3px; flex: none;
-    font-size: 12px; font-weight: 600; color: var(--ok);
+    font-size: 12px; font-weight: 600; color: var(--accent);
   }
   .delta svg { width: 12px; height: 12px; }
   .delta.d-warn { color: var(--warn); }
-  .delta.d-bad  { color: var(--bad); }
+  .delta.d-bad  { color: var(--critical); }
   .delta.d-idle { color: var(--text-3); }
-  .delta.d-info { color: var(--info); }
+  .delta.d-info { color: var(--action); }
 
   /* The sparkline that sits in the floor of a KPI card. Only on the one card
      with a real series behind it - a drawn line under a figure that has no
@@ -566,13 +536,13 @@
      ==================================================================== */
   .insight {
     grid-column: span 12; display: flex; align-items: center; gap: 14px;
-    padding: 14px 18px; border: 1px solid var(--line); border-radius: var(--r-lg);
+    padding: 14px 18px; border: 1px solid var(--rule); border-radius: var(--r-lg);
     background: var(--surface);
   }
   .ins-tile {
     flex: none; width: 38px; height: 38px; border-radius: 12px;
     display: inline-flex; align-items: center; justify-content: center;
-    background: var(--brand-soft2); color: var(--brand-tx);
+    background: var(--brand-soft2); color: var(--action);
   }
   .ins-tile svg { width: 19px; height: 19px; }
   .ins-b { flex: 1; min-width: 0; }
@@ -590,17 +560,17 @@
   /* Sky, not the brand. A chart is something counted rather than something
      judged, so it gets the measurement hue and leaves indigo to mean "press
      this" and emerald to mean "this is holding". */
-  .grid-l { stroke: var(--line-soft); stroke-width: 1; }
-  .axis-t { fill: var(--text-4); font-size: 11px; }
-  .area-l { fill: none; stroke: var(--info); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-  .cross  { stroke: var(--line-hi); stroke-width: 1; stroke-dasharray: 3 3; }
-  .colbar { fill: var(--info); opacity: .34; transition: opacity .12s ease; }
+  .grid-l { stroke: var(--rule); stroke-width: 1; }
+  .axis-t { fill: var(--text-3); font-size: 11px; }
+  .area-l { fill: none; stroke: var(--action); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .cross  { stroke: var(--rule-2); stroke-width: 1; stroke-dasharray: 3 3; }
+  .colbar { fill: var(--action); opacity: .34; transition: opacity .12s ease; }
   .colbar.hot { opacity: 1; }
   .hit { fill: transparent; }
   .chart-tip {
     position: absolute; z-index: 20; pointer-events: none; min-width: 118px;
-    background: var(--surface-2); border: 1px solid var(--line-hi); border-radius: 10px;
-    padding: 8px 11px; box-shadow: var(--shadow-pop); transform: translate(-50%, -100%);
+    background: var(--hover); border: 1px solid var(--rule-2); border-radius: 10px;
+    padding: 8px 11px; box-shadow: var(--lift); transform: translate(-50%, -100%);
     opacity: 0; transition: opacity .12s ease;
   }
   .chart-tip.on { opacity: 1; }
@@ -609,14 +579,14 @@
   .chart-tip .tt-s { font-size: 11.5px; color: var(--text-3); margin-top: 2px; }
 
   /* Segmented range control, the reference's 1D / 1W / 1M row. */
-  .seg { display: flex; gap: 2px; padding: 3px; background: var(--surface-3); border-radius: 2px; flex: none; }
+  .seg { display: flex; gap: 2px; padding: 3px; background: var(--hover); border-radius: 2px; flex: none; }
   .seg button {
     background: transparent; border: none; color: var(--text-3);
     font-size: 12px; font-weight: 500; padding: 4px 11px; border-radius: 2px;
     cursor: pointer; font-family: inherit;
   }
   .seg button:hover { color: var(--text); }
-  .seg button.sel { background: var(--surface); color: var(--text); box-shadow: var(--shadow-card); }
+  .seg button.sel { background: var(--surface); color: var(--text); box-shadow: none; }
 
   /* Donut plus a legend that reads as a table: dot, name, share, count. */
   /* Centred rather than pushed to the edges: the pair is one reading, and a
@@ -643,7 +613,7 @@
     display: flex; align-items: center; gap: 9px; padding: 6px 4px; border-radius: 7px;
     font-size: 13px; cursor: default;
   }
-  .lrow:hover { background: var(--surface-3); }
+  .lrow:hover { background: var(--hover); }
   .lrow .ld { width: 9px; height: 9px; border-radius: 50%; flex: none; }
   .lrow .ln { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
   .legend-p { font-size: 12.5px; color: var(--text-3); width: 46px; text-align: right; flex: none; }
@@ -654,23 +624,23 @@
   .watch { display: flex; gap: 10px; padding: 2px 16px 16px; overflow-x: auto; }
   .wtile {
     flex: 1 1 150px; min-width: 150px; display: flex; align-items: center; gap: 11px;
-    padding: 11px 13px; border-radius: var(--r); border: 1px solid var(--line);
-    background: var(--surface-2);
+    padding: 11px 13px; border-radius: var(--r); border: 1px solid var(--rule);
+    background: var(--hover);
   }
   .wtile.absent { opacity: .5; }
   .wtile .wn { font-size: 13.5px; font-weight: 500; text-transform: capitalize; }
   .wtile .ws { font-size: 11.5px; color: var(--text-3); margin-top: 1px; }
   .wtile .wb { min-width: 0; flex: 1; }
-  .wtile .wok { width: 16px; height: 16px; flex: none; color: var(--ok); }
+  .wtile .wok { width: 16px; height: 16px; flex: none; color: var(--accent); }
 
   /* Horizontal bar rows - the reference's Top Holdings, which is exactly the
      shape "how long did each blocked app run" wants. */
   .bar { display: flex; align-items: center; gap: 11px; padding: 9px 16px; }
-  .bar:hover { background: var(--surface-2); }
+  .bar:hover { background: var(--hover); }
   .bar .bb { flex: 1; min-width: 0; }
   .bar .bn { font-size: 13.5px; display: flex; align-items: center; gap: 7px; }
   .bar .bt { height: 6px; border-radius: 2px; background: var(--track); margin-top: 7px; overflow: hidden; }
-  .bar .bt > span { display: block; height: 100%; border-radius: 2px; background: var(--info); }
+  .bar .bt > span { display: block; height: 100%; border-radius: 2px; background: var(--action); }
   .barnum { flex: none; text-align: right; font-size: 12px; color: var(--text-3); line-height: 1.35; }
   .barnum b { display: block; font-size: 15px; font-weight: 600; color: var(--text); letter-spacing: -0.02em; }
 
@@ -694,10 +664,10 @@
   .rows { display: flex; flex-direction: column; }
   .row {
     display: flex; align-items: center; gap: 11px;
-    padding: 9px 16px; min-height: 46px; border-top: 1px solid var(--line-soft);
+    padding: 9px 16px; min-height: 46px; border-top: 1px solid var(--rule);
   }
   .rows > .row:first-child, .rows > .bar:first-child, .rows > .act:first-child { border-top: none; }
-  .row:hover { background: var(--surface-2); }
+  .row:hover { background: var(--hover); }
   .row.absent { opacity: .48; }
   .row .ainfo { min-width: 0; flex: 1; }
   .row .aname, .row .dname { font-size: 13.5px; word-break: break-word; }
@@ -707,25 +677,25 @@
   .grouphead {
     display: flex; align-items: center; gap: 8px;
     font-size: 11px; font-weight: 600; color: var(--text-3); text-transform: uppercase;
-    letter-spacing: .07em; padding: 9px 16px 7px; background: var(--surface-2);
-    border-top: 1px solid var(--line-soft); position: sticky; top: 0; z-index: 1;
+    letter-spacing: .07em; padding: 9px 16px 7px; background: var(--hover);
+    border-top: 1px solid var(--rule); position: sticky; top: 0; z-index: 1;
   }
 
   .badge {
     font-size: 11.5px; font-weight: 500; padding: 3px 9px; flex: none;
     border-radius: 2px; border: 1px solid transparent; white-space: nowrap;
   }
-  .badge.locked   { color: var(--ok);     background: var(--ok-soft);   border-color: var(--ok-line); }
+  .badge.locked   { color: var(--accent);     background: var(--ok-soft);   border-color: var(--ok-line); }
   .badge.unlocked,
-  .badge.idle     { color: var(--text-3); background: var(--surface-3);  border-color: var(--line); }
+  .badge.idle     { color: var(--text-3); background: var(--hover);  border-color: var(--rule); }
   .badge.idlewin,
   .badge.reachable,
   .badge.budget   { color: var(--warn);   background: var(--warn-soft); border-color: var(--warn-line); }
   .push { margin-left: auto; }
 
   .schedtag {
-    margin-left: 7px; font-size: 10.5px; color: var(--text-3); background: var(--surface-3);
-    border: 1px solid var(--line); padding: 0 6px; border-radius: 2px;
+    margin-left: 7px; font-size: 10.5px; color: var(--text-3); background: var(--hover);
+    border: 1px solid var(--rule); padding: 0 6px; border-radius: 2px;
     vertical-align: middle; font-weight: 500;
   }
 
@@ -736,53 +706,58 @@
     font-size: 11px; font-weight: 600; letter-spacing: .05em; border-radius: 2px;
     border: 1px solid transparent; text-transform: uppercase; padding: 0; font-family: inherit;
   }
-  .toggle.on  { background: var(--ok-soft);     color: var(--ok);     border-color: var(--ok-line); text-align: right; padding-right: 10px; }
-  .toggle.off { background: var(--surface-3);   color: var(--text-3); border-color: var(--ctl-line); text-align: left;  padding-left: 10px; }
+  .toggle.on  { background: var(--ok-soft);     color: var(--accent);     border-color: var(--ok-line); text-align: right; padding-right: 10px; }
+  .toggle.off { background: var(--hover);   color: var(--text-3); border-color: var(--rule); text-align: left;  padding-left: 10px; }
   .toggle::before {
     content: ''; position: absolute; top: 50%; transform: translateY(-50%);
     width: 14px; height: 14px; border-radius: 50%; transition: left .16s ease, right .16s ease;
   }
-  .toggle.on::before  { left: 5px;  background: var(--ok); }
-  .toggle.off::before { right: 5px; background: var(--knob-off); }
-  .toggle:hover { filter: brightness(1.22); }
+  .toggle.on::before  { left: 5px;  background: var(--accent); }
+  .toggle.off::before { right: 5px; background: var(--text-3); }
+  /* Hover is a TOKEN change, never a filter. brightness() lightens in both
+     themes, so on dark it moved toward the ink and on light away from it -
+     the same declaration meaning two different things. Stepping the border to
+     the heavier hairline reads the same either way, and nothing resizes. */
+  .toggle:hover { border-color: var(--rule-2); }
+  .toggle.on:hover { border-color: var(--accent); }
 
   /* Attention rows: read once and acted on, so the text leads and the button
      is the only other thing on the line. */
-  .attrow { display: flex; align-items: flex-start; gap: 11px; padding: 11px 16px; border-top: 1px solid var(--line-soft); }
+  .attrow { display: flex; align-items: flex-start; gap: 11px; padding: 11px 16px; border-top: 1px solid var(--rule); }
   .rows > .attrow:first-child { border-top: none; }
   .attrow .atile { flex: none; width: 28px; height: 28px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; background: var(--warn-soft); color: var(--warn); }
-  .attrow.bad .atile { background: var(--bad-soft); color: var(--bad); }
+  .attrow.bad .atile { background: var(--bad-soft); color: var(--critical); }
   .attrow .atile svg { width: 15px; height: 15px; }
   .attrow .abody { flex: 1; min-width: 0; }
   .attrow .atext { font-size: 13.5px; font-weight: 500; }
-  .attrow.bad .atext { color: var(--bad-tx); }
+  .attrow.bad .atext { color: var(--critical); }
   .attrow .asub { font-size: 12.5px; color: var(--text-2); margin-top: 2px; line-height: 1.45; }
   .attrow button { flex: none; }
 
   /* Safeguards: a checklist, and the count above it is the sum of exactly it. */
-  .sg { display: flex; align-items: center; gap: 10px; padding: 8px 16px; font-size: 13px; border-top: 1px solid var(--line-soft); }
+  .sg { display: flex; align-items: center; gap: 10px; padding: 8px 16px; font-size: 13px; border-top: 1px solid var(--rule); }
   .rows > .sg:first-child { border-top: none; }
-  .sg .sgi { width: 16px; height: 16px; flex: none; color: var(--ok); }
+  .sg .sgi { width: 16px; height: 16px; flex: none; color: var(--accent); }
   .sg.off { color: var(--text-3); }
-  .sg.off .sgi { color: var(--icon-off); }
+  .sg.off .sgi { color: var(--text-3); }
   .sg .sgt { min-width: 0; flex: 1; }
 
   /* Activity, threaded on one line so "held" and "was weakened" are separable
      without reading either. */
   .act { display: flex; align-items: flex-start; gap: 12px; padding: 9px 16px; position: relative; }
-  .act::before { content: ''; position: absolute; left: 20px; top: 0; bottom: 0; width: 1px; background: var(--line-soft); }
+  .act::before { content: ''; position: absolute; left: 20px; top: 0; bottom: 0; width: 1px; background: var(--rule); }
   .act:first-child::before { top: 15px; }
   .act:last-child::before  { bottom: calc(100% - 15px); }
   .act .dot {
     width: 9px; height: 9px; border-radius: 50%; margin-top: 5px; margin-left: 0; flex: none;
-    background: var(--icon-off); box-shadow: 0 0 0 3px var(--surface); z-index: 1;
+    background: var(--text-3); box-shadow: 0 0 0 3px var(--surface); z-index: 1;
   }
-  .act.enforced .dot { background: var(--ok); }
+  .act.enforced .dot { background: var(--accent); }
   .act.weakened .dot { background: var(--warn); }
   .act .body { flex: 1; min-width: 0; }
   .act .text { font-size: 13px; line-height: 1.42; }
   .act .sub { font-size: 11.5px; color: var(--text-3); margin-top: 1px; word-break: break-word; }
-  .act .when { font-size: 11px; color: var(--text-4); white-space: nowrap; margin-top: 3px; flex: none; }
+  .act .when { font-size: 11px; color: var(--text-3); white-space: nowrap; margin-top: 3px; flex: none; }
 
   /* =======================================================================
      Zero states. The whole reason this redesign exists: a section with no
@@ -794,13 +769,17 @@
   .zero .zt {
     flex: none; width: 38px; height: 38px; border-radius: var(--r);
     display: inline-flex; align-items: center; justify-content: center;
-    background: var(--surface-3); color: var(--text-3);
+    background: var(--hover); color: var(--text-3);
   }
   .zero .zt svg { width: 18px; height: 18px; }
-  .zero.good .zt { background: var(--ok-soft); color: var(--ok); }
+  .zero.good .zt { background: var(--ok-soft); color: var(--accent); }
   .zero .zb { flex: 1; min-width: 0; }
-  .zero .zh { font-size: 13.5px; font-weight: 500; }
-  .zero.good .zh { color: var(--ok-tx); }
+  /* The one place the serif is spent. Instrument allows Newsreader for empty
+     states, page titles and the occasional caption, and warns that a serif
+     headline over a table is a costume - so it lives here, where there is no
+     table, and nowhere else. */
+  .zero .zh { font-family: var(--serif); font-size: 16px; font-weight: 500; color: var(--text); }
+  .zero.good .zh { color: var(--accent); }
   .zero .zs { font-size: 12.5px; color: var(--text-3); margin-top: 2px; line-height: 1.45; }
   .zero button { flex: none; }
 
@@ -808,29 +787,29 @@
      Buttons and inputs.
      ==================================================================== */
   button {
-    background: var(--brand); color: var(--on-brand); border: 1px solid transparent; border-radius: 9px;
+    background: var(--action); color: var(--on-brand); border: 1px solid transparent; border-radius: 9px;
     padding: 7px 14px; font-size: 13px; font-weight: 500; cursor: pointer;
     font-family: inherit; line-height: 1.4; transition: background .14s ease, border-color .14s ease, color .14s ease;
   }
-  button:hover { background: var(--brand-hi); }
-  button.ghost { background: var(--ctl); border-color: var(--ctl-line); color: var(--text-2); }
-  button.ghost:hover { background: var(--ctl-hi); color: var(--text); border-color: var(--ctl-line-hi); }
-  button.danger { background: var(--danger); color: #fff; }
+  button:hover { background: var(--action); }
+  button.ghost { background: var(--surface); border-color: var(--rule); color: var(--text-2); }
+  button.ghost:hover { background: var(--hover); color: var(--text); border-color: var(--rule-2); }
+  button.danger { background: var(--critical); color: #fff; }
   button.danger:hover { background: var(--danger-hi); }
-  button.link { background: none; border: none; color: var(--brand-tx); padding: 4px 6px; font-weight: 500; }
-  button.link:hover { background: var(--brand-soft); color: var(--brand-hi); }
+  button.link { background: none; border: none; color: var(--action); padding: 4px 6px; font-weight: 500; }
+  button.link:hover { background: var(--brand-soft); color: var(--action); }
   button:disabled { opacity: .45; cursor: default; }
-  button:disabled:hover { background: var(--ctl); }
+  button:disabled:hover { background: var(--surface); }
   button.small { padding: 4px 11px; font-size: 12.5px; border-radius: 8px; }
   button.big { padding: 10px 20px; font-size: 14px; border-radius: 10px; }
   .btnrow { display: flex; align-items: center; gap: 9px; }
 
   input[type=password], input[type=text] {
-    background: var(--field); border: 1px solid var(--ctl-line); border-radius: 9px;
+    background: var(--surface); border: 1px solid var(--rule); border-radius: 9px;
     color: var(--text); padding: 7px 11px; font-size: 13.5px; outline: none; font-family: inherit;
   }
-  input::placeholder { color: var(--text-4); }
-  input[type=password]:focus, input[type=text]:focus { border-color: var(--brand); background: var(--field-hi); }
+  input::placeholder { color: var(--text-3); }
+  input[type=password]:focus, input[type=text]:focus { border-color: var(--action); background: var(--raised); }
 
   .addrow { display: flex; gap: 8px; flex: 1; }
   .addrow input[type=text] { flex: 1; min-width: 0; }
@@ -838,10 +817,10 @@
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
   .chips button, .lock-choices button {
     padding: 6px 12px; font-size: 12.5px; font-weight: 500; border-radius: 2px;
-    background: var(--ctl); border: 1px solid var(--ctl-line); color: var(--text-2);
+    background: var(--surface); border: 1px solid var(--rule); color: var(--text-2);
   }
   .chips button.sel, .chips button:hover,
-  .lock-choices button.sel, .lock-choices button:hover { background: var(--brand); border-color: transparent; color: var(--on-brand); }
+  .lock-choices button.sel, .lock-choices button:hover { background: var(--action); border-color: transparent; color: var(--on-brand); }
   .lock-choices { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 
   /* =======================================================================
@@ -849,10 +828,10 @@
      ==================================================================== */
   .notice {
     grid-column: span 12; display: flex; align-items: flex-start; gap: 12px;
-    background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
+    background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r);
     padding: 13px 15px; position: relative;
   }
-  .notice .nt { flex: none; width: 30px; height: 30px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; background: var(--info-soft); color: var(--info); }
+  .notice .nt { flex: none; width: 30px; height: 30px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; background: var(--info-soft); color: var(--action); }
   .notice .nt svg { width: 16px; height: 16px; }
   .notice .nb { flex: 1; min-width: 0; }
   .notice .lbl { font-size: 13.5px; font-weight: 500; color: var(--text); }
@@ -860,12 +839,12 @@
   .notice.info   { border-color: var(--info-line); background: var(--info-soft); }
   .notice.warn   { border-color: var(--warn-line); background: var(--warn-soft); }
   .notice.warn .nt { background: var(--warn-soft); color: var(--warn); }
-  .notice.warn .lbl { color: var(--warn-tx); }
+  .notice.warn .lbl { color: var(--warn); }
   .notice.danger { border-color: var(--bad-line);  background: var(--bad-soft); }
-  .notice.danger .nt { background: var(--bad-soft); color: var(--bad); }
-  .notice.danger .lbl { color: var(--bad-tx); }
+  .notice.danger .nt { background: var(--bad-soft); color: var(--critical); }
+  .notice.danger .lbl { color: var(--critical); }
   .notice.brand { border-color: var(--brand-line); background: var(--brand-soft); }
-  .notice.brand .nt { background: var(--brand-soft2); color: var(--brand); }
+  .notice.brand .nt { background: var(--brand-soft2); color: var(--action); }
   /* Inside a card body, a notice is inset rather than edge to edge. */
   .cbody > .notice { margin: 12px 16px; }
   .announce-x {
@@ -875,20 +854,20 @@
   .announce-x:hover { color: var(--text); background: transparent; }
 
   .msg { font-size: 12.5px; min-height: 16px; }
-  .msg.ok { color: var(--ok); } .msg.err { color: var(--bad); } .msg.warn { color: var(--warn); }
+  .msg.ok { color: var(--accent); } .msg.err { color: var(--critical); } .msg.warn { color: var(--warn); }
   /* One line every action reports into. Actions happen on four pages, so it
      floats over all of them rather than living on one. */
   #msg {
     position: fixed; z-index: 90; right: 20px; bottom: calc(var(--sb-h) + 16px); max-width: 440px; min-height: 0;
-    background: var(--surface-2); border: 1px solid var(--line-hi); border-radius: var(--r);
-    padding: 12px 16px 12px 15px; box-shadow: var(--shadow-pop);
+    background: var(--hover); border: 1px solid var(--rule-2); border-radius: var(--r);
+    padding: 12px 16px 12px 15px; box-shadow: var(--lift);
     font-size: 13px; border-left: 3px solid var(--text-3);
     opacity: 0; transform: translateY(8px); pointer-events: none;
     transition: opacity .18s ease, transform .18s ease;
   }
   #msg:not(:empty) { opacity: 1; transform: none; }
-  #msg.ok   { border-left-color: var(--ok); }
-  #msg.err  { border-left-color: var(--bad); }
+  #msg.ok   { border-left-color: var(--accent); }
+  #msg.err  { border-left-color: var(--critical); }
   #msg.warn { border-left-color: var(--warn); }
   /* A message carrying an instruction stays until it is clicked away, so it has
      to be clickable - the toast is pointer-transparent otherwise, on purpose. */
@@ -904,36 +883,36 @@
     -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
   }
   .modal {
-    background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg);
+    background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r-lg);
     width: 396px; max-width: 92vw; max-height: 88vh; overflow: hidden;
-    display: flex; flex-direction: column; box-shadow: var(--shadow-modal);
+    display: flex; flex-direction: column; box-shadow: var(--lift);
   }
   .modal.wide { width: 496px; }
   .modal .modal-title {
     flex: none; font-size: 14.5px; font-weight: 500; padding: 14px 18px;
-    background: var(--surface-2); border-bottom: 1px solid var(--line);
+    background: var(--hover); border-bottom: 1px solid var(--rule);
   }
   .modal-body { padding: 18px; overflow-y: auto; }
   .modal input[type=password], .modal input[type=text] { width: 100%; }
   .modal .modal-actions {
     flex: none; display: flex; gap: 9px; justify-content: flex-end;
-    padding: 13px 18px; border-top: 1px solid var(--line); background: var(--surface-2);
+    padding: 13px 18px; border-top: 1px solid var(--rule); background: var(--hover);
   }
   .modal-note { font-size: 13px; color: var(--text-2); margin: 0 0 13px; line-height: 1.5; }
   .modal .msg { margin-top: 10px; }
 
   .picker { max-height: 258px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; margin-top: 10px; }
   .picker button {
-    width: 100%; text-align: left; background: var(--surface-2); border-color: var(--line);
+    width: 100%; text-align: left; background: var(--hover); border-color: var(--rule);
     color: var(--text); font-weight: 400; font-size: 13px; padding: 8px 11px;
   }
-  .picker button:hover { background: var(--brand); border-color: transparent; color: var(--on-brand); }
+  .picker button:hover { background: var(--action); border-color: transparent; color: var(--on-brand); }
   .picker .none { font-size: 13px; color: var(--text-2); padding: 7px 2px; }
-  .picker .item { display: flex; align-items: center; gap: 9px; padding: 7px 11px; border-radius: var(--r-sm); background: var(--surface-2); }
+  .picker .item { display: flex; align-items: center; gap: 9px; padding: 7px 11px; border-radius: var(--r-sm); background: var(--hover); }
   .picker .item .kind { margin-left: auto; font-size: 11px; color: var(--text-3); }
   .picker .item label { font-size: 13px; display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; cursor: pointer; }
   .picker .item span.nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .picker .item input { accent-color: var(--brand); }
+  .picker .item input { accent-color: var(--action); }
 
   .nb-row { display: flex; align-items: center; gap: 10px; margin: 12px 0; flex-wrap: wrap; }
   .nb-row .nb-lbl { font-size: 13px; color: var(--text-2); }
@@ -941,23 +920,23 @@
   .nb-row input#nb-limit { width: 238px; }
   .nb-sub { font-size: 12.5px; color: var(--text-3); margin: 7px 0 0; line-height: 1.45; }
   .nb-check { display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--text-2); cursor: pointer; }
-  .nb-check input { accent-color: var(--brand); }
+  .nb-check input { accent-color: var(--action); }
 
   /* Categories disclose everything past their one-line summary. */
   .catnote { font-size: 12.5px; color: var(--text-2); margin-top: 8px; line-height: 1.45; }
   .catmore {
-    background: none; border: none; color: var(--brand-tx); padding: 6px 0 0;
+    background: none; border: none; color: var(--action); padding: 6px 0 0;
     font-size: 12.5px; font-weight: 500; cursor: pointer;
   }
-  .catmore:hover { background: none; color: var(--brand-hi); text-decoration: underline; }
+  .catmore:hover { background: none; color: var(--action); text-decoration: underline; }
   .catlist {
-    margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--line-soft);
+    margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--rule);
     display: grid; grid-template-columns: repeat(auto-fill, minmax(158px, 1fr)); gap: 2px 14px;
   }
   .catlist .item { font-size: 12.5px; color: var(--text-2); display: flex; align-items: baseline; gap: 6px; padding: 1px 0; }
   .catlist .item.have { color: var(--text-3); }
-  .catlist .item .tick { color: var(--ok); font-size: 10px; }
-  .catlist .item .kind { color: var(--text-4); font-size: 11px; margin-left: auto; }
+  .catlist .item .tick { color: var(--accent); font-size: 10px; }
+  .catlist .item .kind { color: var(--text-3); font-size: 11px; margin-left: auto; }
   .catlisthead { font-size: 12.5px; color: var(--text-2); margin: 2px 0 6px; }
 
   /* The block-row family is gone: blocks are commitment rows now, and a
@@ -967,11 +946,11 @@
   /* ---- status bar ---------------------------------------------------- */
   .statusbar {
     display: flex; align-items: center; gap: 11px; padding: 0 16px;
-    background: var(--surface); border-top: 1px solid var(--line);
+    background: var(--surface); border-top: 1px solid var(--rule);
     font-size: 12px; color: var(--text-3); min-width: 0;
   }
   .statusbar b { color: var(--text-2); font-weight: 500; }
-  .statusbar .sep { width: 1px; height: 12px; background: var(--line); flex: none; }
+  .statusbar .sep { width: 1px; height: 12px; background: var(--rule); flex: none; }
   .statusbar .grow { flex: 1; }
   .statusbar .sb { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #act-path { max-width: 44%; }
@@ -2286,9 +2265,9 @@
       const defs = svgEl('defs');
       const grad = svgEl('linearGradient', { id: 'ag-' + (host.id || 'x'), x1: '0', y1: '0', x2: '0', y2: '1' });
       const s1 = svgEl('stop', { offset: '0%' });
-      s1.setAttribute('style', 'stop-color:var(--info); stop-opacity:.32');
+      s1.setAttribute('style', 'stop-color:var(--action); stop-opacity:.32');
       const s2 = svgEl('stop', { offset: '100%' });
-      s2.setAttribute('style', 'stop-color:var(--info); stop-opacity:0');
+      s2.setAttribute('style', 'stop-color:var(--action); stop-opacity:0');
       grad.appendChild(s1); grad.appendChild(s2); defs.appendChild(grad);
       svg.appendChild(defs);
 
@@ -2320,7 +2299,7 @@
       const cross = svgEl('line', { x1: 0, y1: padT, x2: 0, y2: padT + ih, class: 'cross', opacity: '0' });
       svg.appendChild(cross);
       const dot = svgEl('circle', { r: 4.5, opacity: '0' });
-      dot.setAttribute('style', 'fill:var(--info); stroke:var(--surface); stroke-width:2.5');
+      dot.setAttribute('style', 'fill:var(--action); stroke:var(--surface); stroke-width:2.5');
       svg.appendChild(dot);
 
       // One hit band per point, full height: aiming at a 4px dot with a mouse
