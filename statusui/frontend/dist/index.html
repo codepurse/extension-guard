@@ -359,6 +359,32 @@
     gap: var(--gap); align-content: start;
   }
 
+  /* The Overview is a column, not a 12-track grid, because it is the one page
+     with a designated BODY: the banner and the two summaries are fixed
+     height, and "What is holding" takes whatever is left. A grid distributes
+     leftover height to nothing and leaves it at the bottom of the window,
+     which on a tall window is most of the page. */
+  /* min-height rather than height, so a long list still grows past the window
+     and scrolls the page; it only guarantees the column has the full height to
+     hand out when the list is short. */
+  #pane-overview.is-active { display: flex; flex-direction: column; min-height: 100%; }
+  #pane-overview .ovrow {
+    display: grid; grid-template-columns: 2fr 1fr; gap: var(--gap);
+    align-items: stretch;
+  }
+  /* The pair still carry span8/span4 from when this pane was a 12-track grid.
+     Inside a two-track row those would claim eight and four tracks and spill
+     into implicit columns, which is why the two were stacking. */
+  #pane-overview .ovrow > * { grid-column: auto; }
+  #card-holding { flex: 1; min-height: 240px; }
+  /* It is the page's body, so it is not capped at --cap like a card sharing a
+     row with three others - it grows to the window and scrolls inside itself.
+     The app body still never scrolls sideways. */
+  #card-holding .cbody { max-height: none; }
+  @media (max-width: 900px) {
+    #pane-overview .ovrow { grid-template-columns: 1fr; }
+  }
+
   /* =======================================================================
      The card. One shape for everything: a head, an optional tool row, a body,
      and - the part that earns its keep on a quiet machine - a foot that turns
@@ -1354,6 +1380,7 @@
 
              What is left is the shape someone actually arrives with: is it on,
              what would stop it being on, and how long was I in there. -->
+        <div class="ovrow">
         <section class="card span8" id="card-attention">
           <div class="chead">
             <h2>Needs attention</h2>
@@ -1384,6 +1411,35 @@
           <div class="kpi-foot"><span class="delta d-idle" id="m-time-delta">…</span><span class="kpi-sub" id="m-time-sub"></span></div>
           <div class="kpi-spark" id="m-time-spark"></div>
         </div>
+        </div>
+
+        <!-- The body of the page: everything the guard is holding right now,
+             on the one row this window repeats, and switchable here rather
+             than three clicks away on the page that owns it. The banner says
+             whether protection is on; this says what "on" currently consists
+             of, which is the question people were opening the other pages to
+             answer. -->
+        <section class="card span12" id="card-holding">
+          <div class="chead">
+            <h2>What is holding</h2>
+            <span class="cnt" id="hold-count">—</span>
+            <div class="grow"></div>
+            <span class="note" id="hold-note"></span>
+            <button class="help" data-help="Every protection that is switched on right now, whatever kind it is — locked extensions, pinned browser settings, blocked sites and blocked applications — on the same row they use on their own pages.|Switching one off here does exactly what it does there, and costs the same. Anything off, waiting on a schedule, or needing attention is not in this list: the banner and the gaps above cover those." aria-label="About this list">?</button>
+          </div>
+          <div class="cbody tall">
+            <div class="rows" id="hold-rows"></div>
+            <div class="zero good" id="hold-empty" style="display:none;">
+              <span class="zt"><svg><use href="#i-shield"/></svg></span>
+              <div class="zb">
+                <div class="zh">Nothing is being enforced</div>
+                <div class="zs">Lock an extension, block a site or block an application, and it appears here.</div>
+              </div>
+              <button class="ghost small" data-goto="blocking">Block something</button>
+            </div>
+          </div>
+          <div class="cfoot" id="hold-foot"></div>
+        </section>
       </div>
 
       <!-- ==================== ACTIVITY ====================
@@ -3120,6 +3176,8 @@
     renderCategories(s);
     renderApps(s);
     renderBlocks(s);
+    // After the four lists it reads, so it cannot disagree with them.
+    renderHolding(s);
     // Last, because it reads the state the lines above have just set rather
     // than working it out for itself - and because it sizes the cards, which
     // can only be done once they have their rows in them.
@@ -3364,6 +3422,117 @@
         control: ctl
       }));
     });
+  }
+
+  // toggleBtn is the switch every commitment row carries.
+  function toggleBtn(on, onClick) {
+    const b = el('button', 'toggle ' + (on ? 'on' : 'off'), on ? 'On' : 'Off');
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
+  // renderHolding is the body of the Overview: every protection that is on
+  // right now, whatever kind it is, on the row the rest of the window uses.
+  //
+  // It is not a fifth list. It is the four lists read together, which is the
+  // question the banner raises and which none of the pages answers on its own
+  // - "protection is active" is not the same as knowing what active consists
+  // of. Switching one off here does exactly what it does on the page that
+  // owns it, and costs exactly the same, because it calls the same function.
+  //
+  // Only things that are ON appear. Off is not a commitment, waiting is the
+  // schedule's business, and a gap is what the strip above it is for.
+  function renderHolding(s) {
+    const rows = document.getElementById('hold-rows');
+    if (!rows) { return; }
+    rows.innerHTML = '';
+    const items = [];
+
+    (s.extensions || []).forEach(function (e) {
+      if (!e.enabled) { return; }
+      const label = e.label || e.name;
+      items.push({
+        subject: label, sub: 'extension · ' + e.name,
+        protection: 'Force-installed and pinned' + (e.scheduled ? ', on a schedule' : ''),
+        state: ['enforcing', 'Enforcing'], cost: costOf(true),
+        control: toggleBtn(true, function () { toggleExt(e.name, label, true); })
+      });
+    });
+
+    (s.hardening || []).forEach(function (h) {
+      if (!h.on) { return; }
+      items.push({
+        subject: h.label, sub: 'browser setting · ' + h.id,
+        protection: h.browsers ? 'Pinned in ' + h.browsers : 'Pinned for this machine',
+        state: h.gap ? ['gap', 'Partial']
+                     : ['enforcing', h.level ? h.level.charAt(0).toUpperCase() + h.level.slice(1) : 'Pinned'],
+        cost: costOf(true),
+        control: toggleBtn(true, function () { toggleHardening(h); })
+      });
+    });
+
+    (s.domains || []).forEach(function (d) {
+      if (!d.enabled) { return; }
+      items.push({
+        subject: d.name, mono: true, sub: 'site',
+        protection: d.scheduled ? 'All browsers, on a schedule' : 'All browsers, around the clock',
+        state: stateOf(d), stateHint: 'On, but outside its schedule window right now',
+        cost: costOf(true),
+        control: toggleBtn(true, function () { toggleDomain(d.name, true); })
+      });
+    });
+
+    (s.apps || []).forEach(function (a) {
+      if (!a.enabled) { return; }
+      const label = a.label || a.value;
+      const bare = label === a.value;
+      items.push({
+        subject: label, mono: bare,
+        sub: bare ? 'application' : 'application · ' + a.value,
+        protection: a.note || APP_KIND[a.kind || 'exe'] || 'Application',
+        state: stateOf(a), stateHint: 'On, but outside its schedule window right now',
+        cost: costOf(true),
+        control: toggleBtn(true, function () { toggleApp(a); })
+      });
+    });
+
+    const allow = s.allowlist || {};
+    if (allow.on) {
+      const n = (allow.sites || []).length;
+      items.push({
+        subject: 'Allowed sites only', sub: 'mode',
+        protection: n ? 'Everything except ' + plural(n, 'site', 'sites') : 'The whole web is shut',
+        state: allow.enforcing ? ['enforcing', 'Enforcing'] : ['waiting', 'Waiting'],
+        cost: costOf(true),
+        control: toggleBtn(true, function () { allowOnly(); })
+      });
+    }
+
+    show('hold-empty', !items.length);
+    text('hold-count', items.length || '');
+    text('hold-note', items.length ? 'switching one off here costs what it costs on its own page' : '');
+    if (items.length) { commitHead(rows, 'What', 'How it is held'); }
+    items.forEach(function (o) { rows.appendChild(commitRow(o)); });
+
+    // The foot is the one place the mix is worth a figure, because this list
+    // is the only one that mixes kinds.
+    const foot = document.getElementById('hold-foot');
+    if (foot) {
+      foot.textContent = '';
+      show(foot, items.length > 0);
+      if (items.length) {
+        const ext = (s.extensions || []).filter(function (e) { return e.enabled; }).length;
+        const dom = (s.domains || []).filter(function (d) { return d.enabled; }).length;
+        const app = (s.apps || []).filter(function (a) { return a.enabled; }).length;
+        const hard = (s.hardening || []).filter(function (h) { return h.on; }).length;
+        const parts = [];
+        if (ext) { parts.push(plural(ext, 'extension', 'extensions')); }
+        if (hard) { parts.push(plural(hard, 'browser setting', 'browser settings')); }
+        if (dom) { parts.push(plural(dom, 'site', 'sites')); }
+        if (app) { parts.push(plural(app, 'application', 'applications')); }
+        foot.appendChild(el('span', null, parts.join(' · ')));
+      }
+    }
   }
 
   // renderDomains lists the site block list. A site can be switched on yet not
