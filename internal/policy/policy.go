@@ -137,6 +137,25 @@ func (e Extension) Target(k Kind) Target {
 	return Target{}
 }
 
+// setTarget replaces the extension's target for a browser kind. It is the
+// inverse of Target and shares its one asymmetry: Zen writes through to the
+// Firefox field, because that is the field Zen reads from.
+//
+// Only catalog adoption uses this - every other change to a target is somebody
+// editing the config and committing it. See AdoptCatalog.
+func (e *Extension) setTarget(k Kind, t Target) {
+	switch k {
+	case Chrome:
+		e.Chrome = t
+	case Edge:
+		e.Edge = t
+	case Brave:
+		e.Brave = t
+	case Firefox, Zen:
+		e.Firefox = t
+	}
+}
+
 // Config is the parsed extension-ids.json: the full set of extensions the guard
 // force-installs and locks, plus app-level settings.
 type Config struct {
@@ -410,7 +429,41 @@ type Status struct {
 	Kind      Kind   // which browser
 	Installed bool   // browser detected on this machine
 	Locked    bool   // force-install policy present and correct for all configured extensions
-	Detail    string // human-readable note: "ok", "missing", "tampered", "partial (n/m)", "not configured"
+	// Detail is a human-readable note: "ok", "missing", "tampered",
+	// "partial (n/m)", and for a total of zero either "none active now" (nothing
+	// is due to be enforced at this moment) or "no id for this browser" (nothing
+	// ever will be, because no store id is configured for it). The hardening rows
+	// still say "not configured", which is the right words there - a knob nobody
+	// asked for. See lockStatusExt.
+	Detail string
+}
+
+// lockStatusExt is lockStatus for the extension forcelist, which can tell apart
+// two situations lockStatus is obliged to report identically - and has to,
+// because conflating them hid a real hole for weeks.
+//
+// Both arrive as a total of zero. "Nothing is due to be enforced in any browser
+// at this moment" is the ordinary state outside a block's window, and saying so
+// is correct. "This browser has no id configured, so nothing will ever be
+// enforced in it" is a permanent gap that no hour of the day will fix. Printed
+// as the same words, the second reads as the first, and a browser filtering
+// nothing looks like a schedule doing its job. That is exactly how Edge came to
+// sit unprotected behind a status window nobody had reason to doubt.
+//
+// considered is how many enabled extensions are active right now for this
+// browser, before asking whether their targets are usable. Non-zero with a total
+// of zero is the gap: something should be enforced here and there is nowhere to
+// install it from.
+func lockStatusExt(s Status, matched, total, considered int) Status {
+	if total == 0 {
+		if considered == 0 {
+			s.Detail = "none active now"
+		} else {
+			s.Detail = "no id for this browser"
+		}
+		return s
+	}
+	return lockStatus(s, matched, total)
 }
 
 // lockStatus turns a matched/total tally into a Status detail + locked flag,

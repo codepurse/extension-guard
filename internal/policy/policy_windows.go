@@ -186,7 +186,7 @@ func verifyChromium(k Kind, targets []Target, installed bool) Status {
 	s := Status{Kind: k, Installed: installed}
 	wants := chromiumForcelistValues(targets)
 	if len(wants) == 0 {
-		return lockStatus(s, 0, 0)
+		return lockStatusExt(s, 0, 0, len(targets))
 	}
 	present := map[string]bool{}
 	if key, err := registry.OpenKey(registry.LOCAL_MACHINE, chromiumPolicyRoot[k]+`\`+forcelistSubkey, registry.QUERY_VALUE); err == nil {
@@ -204,14 +204,14 @@ func verifyChromium(k Kind, targets []Target, installed bool) Status {
 			matched++
 		}
 	}
-	return lockStatus(s, matched, len(wants))
+	return lockStatusExt(s, matched, len(wants), len(targets))
 }
 
 func verifyGecko(g GeckoBrowser, targets []Target, installed bool) Status {
 	s := Status{Kind: g.Kind, Installed: installed}
 	configured := configuredFirefox(targets)
 	if len(configured) == 0 {
-		return lockStatus(s, 0, 0)
+		return lockStatusExt(s, 0, 0, len(targets))
 	}
 	matched := 0
 	for _, t := range configured {
@@ -226,7 +226,7 @@ func verifyGecko(g GeckoBrowser, targets []Target, installed bool) Status {
 			matched++
 		}
 	}
-	return lockStatus(s, matched, len(configured))
+	return lockStatusExt(s, matched, len(configured), len(targets))
 }
 
 // Remove deletes the force-install policy for every configured extension. It is

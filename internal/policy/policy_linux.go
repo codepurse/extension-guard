@@ -167,7 +167,7 @@ func verifyChromium(k Kind, targets []Target, installed bool) Status {
 	s := Status{Kind: k, Installed: installed}
 	wants := chromiumForcelistValues(targets)
 	if len(wants) == 0 {
-		return lockStatus(s, 0, 0)
+		return lockStatusExt(s, 0, 0, len(targets))
 	}
 	present := map[string]bool{}
 	if data, err := os.ReadFile(filepath.Join(chromiumManagedDir[k], policyFileName)); err == nil {
@@ -186,14 +186,14 @@ func verifyChromium(k Kind, targets []Target, installed bool) Status {
 			matched++
 		}
 	}
-	return lockStatus(s, matched, len(wants))
+	return lockStatusExt(s, matched, len(wants), len(targets))
 }
 
 func verifyFirefox(targets []Target, installed bool) Status {
 	s := Status{Kind: Firefox, Installed: installed}
 	configured := configuredFirefox(targets)
 	if len(configured) == 0 {
-		return lockStatus(s, 0, 0)
+		return lockStatusExt(s, 0, 0, len(targets))
 	}
 	settings := map[string]struct {
 		InstallationMode string `json:"installation_mode"`
@@ -218,7 +218,7 @@ func verifyFirefox(targets []Target, installed bool) Status {
 			matched++
 		}
 	}
-	return lockStatus(s, matched, len(configured))
+	return lockStatusExt(s, matched, len(configured), len(targets))
 }
 
 // Remove deletes the force-install policy for every configured extension.

@@ -358,7 +358,7 @@ type UnmanagedRow struct {
 // The resolved path is kept so disable/enable can hand it to the elevated guard.
 func NewApp() *App {
 	p := defaultConfigPath()
-	cfg, _, _ := policy.LoadTrusted(p)
+	cfg, _ := policy.LoadEnforced(p)
 	// The window runs unprivileged, so it cannot create the activity log and does
 	// not try - it appends to the one the service made. It has to be able to write
 	// at all for one reason: a wrong password typed here is verified locally and
@@ -375,13 +375,14 @@ func (a *App) startup(ctx context.Context) {
 // GetStatus returns the current protection status. Read-only and admin-free.
 // It reloads the config each call so a just-toggled extension is reflected.
 //
-// The reload goes through policy.LoadTrusted for the same reason the service
-// does: if extension-ids.json has been edited by hand, the service keeps
-// enforcing the trusted copy, and this window must report that rather than
-// repeat the file's claim back to the user. LoadTrusted's repair writes are
-// best-effort, so running unprivileged here is fine.
+// The reload goes through policy.LoadEnforced: if extension-ids.json has been
+// edited by hand, the service keeps enforcing the trusted copy, and this window
+// must report that rather than repeat the file's claim back to the user. What it
+// must not do is rewrite the file to match - repairing is the service's job, and
+// a window that did it too could correct the wrong file entirely. See
+// policy.LoadEnforced.
 func (a *App) GetStatus() Status {
-	if cfg, _, err := policy.LoadTrusted(a.cfgPath); err == nil {
+	if cfg, err := policy.LoadEnforced(a.cfgPath); err == nil {
 		a.cfg = cfg
 	}
 	// Verify against the schedule-resolved config, matching what the service
@@ -1294,7 +1295,7 @@ func (a *App) LockBlock(id, until string) ActionResult {
 // what the CLI does and one place decides what a duration means.
 func (a *App) Disable(password, pauseFor string) ActionResult {
 	cfg := a.cfg
-	if fresh, _, err := policy.LoadTrusted(a.cfgPath); err == nil {
+	if fresh, err := policy.LoadEnforced(a.cfgPath); err == nil {
 		cfg = fresh
 	}
 	if err := policy.CheckPausable(cfg, time.Now()); err != nil {
