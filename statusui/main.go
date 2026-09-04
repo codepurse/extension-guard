@@ -5,6 +5,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 
 	"github.com/wailsapp/wails/v2"
@@ -83,14 +84,11 @@ func main() {
 		// rather than into anything worth reading. On a large monitor the
 		// result was a full-screen window carrying a page and a half of content.
 		//
-		// MaxWidth/MaxHeight are the ceiling, and they do the work of disabling
-		// maximise without disabling resize. Wails greys the maximise button
-		// only for DisableResize, which also nails the window to exactly
-		// Width x Height - and 860 does not fit a 1366x768 laptop, so that
-		// would trap those users at a size they cannot shrink. With a max set,
-		// Wails clamps the maximised rect in WM_NCCALCSIZE instead: the button
-		// still works, it just grows the window to the ceiling rather than to
-		// the screen.
+		// MaxWidth/MaxHeight are the ceiling for dragging. The maximise button
+		// is gone separately, by taking WS_MAXIMIZEBOX off the window in
+		// maxbutton_windows.go - Wails only greys it via DisableResize, which
+		// would also nail the window to exactly Width x Height, and 860 does
+		// not fit a 1366x768 laptop.
 		//
 		// The floor stays where it was - the point below which every page has
 		// folded to a single column and the tabs to icons.
@@ -107,7 +105,12 @@ func main() {
 		Windows:          &windows.Options{Theme: frame},
 		AssetServer:      &assetserver.Options{Assets: assets},
 		OnStartup:        app.startup,
-		Bind:             []interface{}{app},
+		// The maximise button comes off here rather than in the options above,
+		// because Wails only offers it bundled with DisableResize. DomReady
+		// rather than Startup: the window has to exist before its style can be
+		// changed. See maxbutton_windows.go.
+		OnDomReady: func(ctx context.Context) { disableMaximise() },
+		Bind:       []interface{}{app},
 	})
 	if err != nil {
 		println("Error:", err.Error())
