@@ -1067,6 +1067,23 @@
      in the last cell so the switch stays in the same column down the list. */
   .cctl { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
 
+  /* The consequence panel. It sits inside a modal, which is already the one
+     lifted surface in the app, so it is an INSET rather than a second lift -
+     if a component seems to need a third elevation the layering is wrong. */
+  .conseq {
+    background: var(--hover); border: 1px solid var(--rule);
+    border-radius: 2px; padding: 10px 12px; margin-bottom: 12px;
+  }
+  .conseq-h {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .07em;
+    text-transform: uppercase; color: var(--text-3); margin-bottom: 6px;
+  }
+  .conseq-l {
+    margin: 0; padding-left: 16px; font-size: 12.5px; color: var(--text-2);
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .conseq-l li::marker { color: var(--brass); }
+
   /* Status is never colour alone. Every state carries a mark of its own
      SHAPE and a word, so the row reads in greyscale, under any colour
      vision, and on a printed page. */
@@ -1796,6 +1813,14 @@
   <div class="modal">
     <div class="modal-title" id="pw-modal-title">Enter password</div>
     <div class="modal-body">
+      <!-- What the change would do, said before it is made rather than
+           discovered afterwards. Hidden when the action has nothing specific
+           to report: a panel that is always there with a platitude in it is a
+           panel people learn to read past. -->
+      <div class="conseq" id="pw-conseq" style="display:none;">
+        <div class="conseq-h">What this does</div>
+        <ul class="conseq-l" id="pw-conseq-list"></ul>
+      </div>
       <input id="pw-modal-input" type="password" placeholder="Password" autocomplete="off" />
       <div id="pw-modal-msg" class="msg"></div>
     </div>
@@ -1989,6 +2014,92 @@
           hint: 'The password, then ' + n + ' characters typed by hand. Pasting is refused.' }
       : { c: 'password', label: 'Password',
           hint: 'Turning this off weakens protection, so it needs the password.' };
+  }
+
+  /* ---- consequences -----------------------------------------------------
+     What a change would actually do, said before it is made. Every sentence
+     below is derived from the status this window already holds or from the
+     words the CLI uses for the same action; nothing here is inferred. If the
+     answer is not in `current`, the sentence is not offered - a consequence
+     panel that guesses once is one nobody trusts again.
+     -------------------------------------------------------------------- */
+
+  // The browsers the guard writes policy for AND that are actually installed.
+  // A sentence naming Firefox on a machine without Firefox teaches people to
+  // stop reading these.
+  function managedBrowsers() {
+    return ((current && current.browsers) || [])
+      .filter(function (b) { return b.installed; })
+      .map(function (b) { return b.kind.charAt(0).toUpperCase() + b.kind.slice(1); });
+  }
+  function andList(names) {
+    if (!names.length) { return ''; }
+    if (names.length === 1) { return names[0]; }
+    return names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+  }
+  function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
+
+  function domainConsequence(name) {
+    const on = ((current && current.domains) || []).filter(function (d) { return d.enabled; }).length;
+    const where = andList(managedBrowsers());
+    return [
+      name + ' will load again' + (where ? ' in ' + where : '') + ', subdomains included.',
+      on > 1 ? 'The other ' + plural(on - 1, 'blocked site stays', 'blocked sites stay') + ' blocked.'
+             : 'It is the last site on the block list.'
+    ];
+  }
+
+  function extConsequence(label) {
+    const locked = (current && current.lockedCount) || 0;
+    return [
+      label + ' is removed from ' + (locked ? plural(locked, 'browser', 'browsers') : 'every browser') +
+        ' where the guard force-installs it.',
+      'Whatever it was filtering stops being filtered once the browser re-reads its policy.'
+    ];
+  }
+
+  function appConsequence(a) {
+    return [
+      (a.label || a.value) + ' will start again, and will not be closed if it is already running.',
+      a.category
+        ? 'It came from the ' + a.category + ' category. The rest of that category stays blocked.'
+        : ''
+    ];
+  }
+
+  function hardenConsequence(h) {
+    if (h.id === 'private-browsing') {
+      const ext = ((current && current.extensions) || []).filter(function (e) { return e.enabled; }).length;
+      return [
+        'Incognito and guest windows become available again.',
+        // The documented hole, and the only one: browser POLICY still applies
+        // in a private window, so blocked sites stay blocked there. It is
+        // force-installed extensions that cannot follow.
+        ext ? 'An extension cannot be force-installed into a private window, so ' +
+              plural(ext, 'locked extension stops', 'locked extensions stop') + ' applying inside one.'
+            : '',
+        'Blocked sites stay blocked there — site policy does reach private windows.'
+      ];
+    }
+    if (h.id === 'safe-search') {
+      return ['Search results stop being filtered in ' + (h.browsers || 'the managed browsers') + '.'];
+    }
+    if (h.id === 'dns-filter') {
+      return ['DNS returns to the network default, so whatever the filtering resolver was catching is no longer caught.'];
+    }
+    return [h.label + ' stops being pinned' + (h.browsers ? ' in ' + h.browsers : '') + '.'];
+  }
+
+  // Removing a block STRENGTHENS, which is the opposite of what "Remove"
+  // suggests and the reason it is worth saying out loud. A schedule narrows
+  // enforcement to its windows; deleting it puts the rules it governed back on
+  // around the clock. These are the guard's own words for the same action.
+  function blockConsequence(b) {
+    return [
+      b.extensions + ' is enforced around the clock again.',
+      b.limit ? 'Its daily limit of ' + b.limit + ' stops being counted.' : '',
+      'The rules themselves are not removed — only the timetable is.'
+    ];
   }
 
   // stateOf turns the booleans a list row carries into the one vocabulary the
@@ -2575,7 +2686,15 @@
 
   // askPassword shows the modal and resolves with the typed password, or null if
   // the user cancels. Used only for actions that weaken protection.
-  function askPassword(title) {
+  // askPassword takes an optional list of plain sentences saying what the
+  // change would do. Every caller that weakens protection passes one: the
+  // second signature move of this design system is that no setting is applied
+  // before its effect is shown, and the password prompt is the one place every
+  // weakening action already passes through.
+  //
+  // The sentences are set as text, never as markup - most of them name a
+  // hostname or an executable the user typed.
+  function askPassword(title, points) {
     return new Promise(function (resolve) {
       const modal = document.getElementById('pw-modal');
       const input = document.getElementById('pw-modal-input');
@@ -2583,6 +2702,14 @@
       const okBtn = document.getElementById('pw-modal-ok');
       const cancelBtn = document.getElementById('pw-modal-cancel');
       document.getElementById('pw-modal-title').textContent = title;
+
+      const list = document.getElementById('pw-conseq-list');
+      const panel = document.getElementById('pw-conseq');
+      list.innerHTML = '';
+      const said = (points || []).filter(Boolean);
+      show(panel, said.length > 0);
+      said.forEach(function (p) { list.appendChild(el('li', null, p)); });
+
       input.value = ''; pmsg.textContent = ''; pmsg.className = 'msg';
       modal.style.display = 'flex';
       setTimeout(function () { input.focus(); }, 0);
@@ -3724,7 +3851,10 @@
       // someone recognises when the label came from a category.
       sub: bare ? '' : a.value,
       mono: bare,
-      protection: a.note || APP_KIND[a.kind] || 'Application',
+      // An empty kind means an executable - policy.App documents the zero
+      // value as AppExe, so a hand-written rule naming only a value still
+      // means what its author meant.
+      protection: a.note || APP_KIND[a.kind || 'exe'] || 'Application',
       state: stateOf(a),
       stateHint: 'On, but outside its schedule window right now',
       cost: costOf(a.enabled),
@@ -3831,7 +3961,8 @@
     let res;
     if (enabled) {
       if (!current.disabled) {
-        const pw = await askPassword('Enter the password to stop blocking ' + name);
+        const pw = await askPassword('Enter the password to stop blocking ' + name,
+          domainConsequence(name));
         if (pw === null) { return; }
         setMsg('Approve the Windows permission prompt…');
         try { res = await window.go.main.App.UnblockDomain(name, pw); } catch (e) { res = { ok: false, message: String(e) }; }
@@ -3855,7 +3986,8 @@
     if (h.on) {
       let pw = '';
       if (!current.disabled) {
-        pw = await askPassword('Enter the password to stop pinning ' + h.label.toLowerCase());
+        pw = await askPassword('Enter the password to stop pinning ' + h.label.toLowerCase(),
+          hardenConsequence(h));
         if (pw === null) { return; }
       }
       setMsg('Approve the Windows permission prompt…');
@@ -3877,7 +4009,10 @@
     let needs = false;
     try { needs = await window.go.main.App.HardenNeedsPassword(h.id, level); } catch (e) { needs = false; }
     if (needs) {
-      pw = await askPassword('Enter the password to filter less than ' + h.label.toLowerCase() + ' does now');
+      pw = await askPassword('Enter the password to filter less than ' + h.label.toLowerCase() + ' does now', [
+        h.label + ' goes from ' + (h.level || 'its current level') + ' to ' + level + '.',
+        'This is the one change to a pinned setting that filters less rather than more.'
+      ]);
       if (pw === null) { return; }
     }
     setMsg('Approve the Windows permission prompt…');
@@ -3897,7 +4032,11 @@
       let needs = true;
       try { needs = await window.go.main.App.AllowNeedsPassword('off'); } catch (e) { needs = true; }
       if (needs) {
-        pw = await askPassword('Enter the password to unblock the whole web again');
+        pw = await askPassword('Enter the password to unblock the whole web again', [
+          'Every site becomes reachable again except the ones on the block list.',
+          plural(((current.allowlist || {}).sites || []).length, 'allowed site is', 'allowed sites are') +
+            ' kept, and will apply again if the mode is turned back on.'
+        ]);
         if (pw === null) { return; }
       }
     }
@@ -3920,7 +4059,10 @@
     let needs = false;
     try { needs = await window.go.main.App.AllowNeedsPassword('allow'); } catch (e) { needs = false; }
     if (needs) {
-      pw = await askPassword('Enter the password to let ' + value + ' through');
+      pw = await askPassword('Enter the password to let ' + value + ' through', [
+        value + ' becomes reachable while allowed-sites-only is on.',
+        'It cannot also be on the block list; the allowlist wins, so blocking it later would not take effect.'
+      ]);
       if (pw === null) { return; }
     }
     setMsg('Approve the Windows permission prompt…');
@@ -4015,7 +4157,8 @@
     let res;
     if (app.enabled) {
       if (!current.disabled) {
-        const pw = await askPassword('Enter the password to unblock ' + label);
+        const pw = await askPassword('Enter the password to unblock ' + label,
+          appConsequence(app));
         if (pw === null) { return; }
         setMsg('Approve the Windows permission prompt…');
         try { res = await window.go.main.App.UnblockApp(app.kind, app.value, pw); } catch (e) { res = { ok: false, message: String(e) }; }
@@ -4054,7 +4197,13 @@
     if (!draft) { return; }
     let pw = '';
     if (draft.from && !current.disabled) {
-      pw = await askPassword('Enter the password to put ' + draft.label + ' on a schedule');
+      pw = await askPassword('Enter the password to put ' + draft.label + ' on a schedule', [
+        // A schedule NARROWS: outside its windows the rules it governs stop
+        // being enforced, which is why adding one costs the password while an
+        // always-on block is free.
+        draft.label + ' will be enforced only inside the windows you set.',
+        'Outside them it stops being enforced. That is why adding a schedule costs the password and an always-on block does not.'
+      ]);
       if (pw === null) { return; }
     }
     setMsg('Approve the Windows permission prompt…');
@@ -4072,7 +4221,9 @@
     if (!bound() || !window.go.main.App.RemoveBlock) { return; }
     let pw = '';
     if (!current.disabled) {
-      pw = await askPassword('Enter the password to remove ' + label);
+      const b = ((current && current.blocks) || []).filter(function (x) { return x.id === id; })[0];
+      pw = await askPassword('Enter the password to remove ' + label,
+        b ? blockConsequence(b) : null);
       if (pw === null) { return; }
     }
     setMsg('Approve the Windows permission prompt…');
@@ -4110,7 +4261,8 @@
     let res;
     if (enabled) {
       if (!current.disabled) {
-        const pw = await askPassword('Enter the password to turn ' + label + ' off');
+        const pw = await askPassword('Enter the password to turn ' + label + ' off',
+          extConsequence(label));
         if (pw === null) { return; }
         setMsg('Approve the Windows permission prompt…');
         try { res = await window.go.main.App.DisableExtension(name, pw); } catch (e) { res = { ok: false, message: String(e) }; }
