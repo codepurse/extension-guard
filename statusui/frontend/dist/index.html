@@ -1154,10 +1154,14 @@
   // localStorage is the fast copy; the file the guard keeps is authoritative
   // and reconciles this a moment later, in loadTheme() below.
   (function () {
-    var pref = 'system';
-    try { pref = localStorage.getItem('theme') || 'system'; } catch (e) { /* private mode */ }
-    var light = pref === 'light' || (pref !== 'dark' &&
-      !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches));
+    // Light unless something says otherwise. Only an explicit "dark", or a
+    // "system" that resolves dark, paints the other way - and the dark media
+    // query is the one tested rather than the light one, so a webview that
+    // cannot answer at all still lands on the default instead of its opposite.
+    var pref = 'light';
+    try { pref = localStorage.getItem('theme') || 'light'; } catch (e) { /* private mode */ }
+    var light = pref !== 'dark' && (pref !== 'system' ||
+      !(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches));
     document.documentElement.setAttribute('data-theme', light ? 'light' : 'dark');
   })();
 </script>
@@ -5175,7 +5179,10 @@
      "follow the system" has to keep following it after the window is open.
      -------------------------------------------------------------------- */
   const THEME_KEY = 'theme';
-  let themePref = 'system';
+  // Matches themeDefault in theme.go. It is only what the page believes until
+  // loadTheme() below hears from the backend, but the two have to agree or a
+  // cold start flashes one theme and settles on the other.
+  let themePref = 'light';
 
   // Held in a variable rather than created inline at the point of use: a
   // MediaQueryList nothing refers to can be collected with its listener still
@@ -5236,7 +5243,9 @@
     if (!pref) {
       try { pref = localStorage.getItem(THEME_KEY); } catch (e) { pref = null; }
     }
-    themePref = pref === 'light' || pref === 'dark' ? pref : 'system';
+    // "system" is a real answer and has to survive the trip; anything else
+    // unrecognised is the default, which is what normalizeTheme does in Go.
+    themePref = (pref === 'light' || pref === 'dark' || pref === 'system') ? pref : 'light';
     try { localStorage.setItem(THEME_KEY, themePref); } catch (e) { /* private mode */ }
     paintTheme();
   }

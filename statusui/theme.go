@@ -22,6 +22,19 @@ const (
 	themeSystem = "system"
 	themeLight  = "light"
 	themeDark   = "dark"
+
+	// themeDefault is what the window opens in when nobody has chosen: light,
+	// because Instrument is a paper system. Its grounds are named by role and
+	// defined light-first, the ink steps were measured against paper and then
+	// re-measured for dark separately, and the app is meant to sit beside the
+	// site without a seam. Dark is designed rather than derived, but it is the
+	// second set, not the first.
+	//
+	// This is a change from following the desktop. "System" is still offered
+	// and still honoured; it is no longer what an install that has never been
+	// asked resolves to, so a machine in dark mode now opens the app light
+	// until somebody says otherwise.
+	themeDefault = themeLight
 )
 
 // uiPrefs is what the file holds. A struct rather than a bare string so a
@@ -49,15 +62,22 @@ func themePath() (string, error) {
 }
 
 // normalizeTheme keeps anything unrecognised - a hand-edited file, a value
-// from a newer build - reading as "follow the system" rather than failing.
+// from a newer build - reading as the default rather than failing.
+//
+// themeSystem needs its own case now. It used to fall through the default
+// branch, which was harmless while the default *was* system; with the default
+// light, an install that had explicitly chosen "follow the desktop" would have
+// been quietly converted to plain light on its next start.
 func normalizeTheme(s string) string {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case themeLight:
 		return themeLight
 	case themeDark:
 		return themeDark
-	default:
+	case themeSystem:
 		return themeSystem
+	default:
+		return themeDefault
 	}
 }
 
@@ -67,15 +87,15 @@ func normalizeTheme(s string) string {
 func loadTheme() string {
 	path, err := themePath()
 	if err != nil {
-		return themeSystem
+		return themeDefault
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return themeSystem
+		return themeDefault
 	}
 	var p uiPrefs
 	if err := json.Unmarshal(data, &p); err != nil {
-		return themeSystem
+		return themeDefault
 	}
 	return normalizeTheme(p.Theme)
 }

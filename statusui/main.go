@@ -33,9 +33,12 @@ func main() {
 	// re-resolves it for itself a moment later from prefers-color-scheme, and
 	// the two answers come from the same Windows setting.
 	pref := loadTheme()
-	ground := darkGround
-	if resolveTheme(pref) == themeLight {
-		ground = lightGround
+	// Light-first, matching themeDefault and the token block: the fallback
+	// side of this branch is the one a machine with no stored preference and
+	// no readable system setting lands on.
+	ground := lightGround
+	if resolveTheme(pref) == themeDark {
+		ground = darkGround
 	}
 	frame := windows.SystemDefault
 	switch pref {
