@@ -26,6 +26,27 @@ var (
 	lightGround = options.RGBA{R: 0xF4, G: 0xF1, B: 0xE9, A: 255} // --bg #F4F1E9
 )
 
+// The window's size, floor and ceiling. Named rather than written inline
+// because the three have to hold a relationship - floor <= opening <= ceiling
+// - and a typo in one of six numbers is the kind of thing that ships.
+const (
+	openWidth  = 1360
+	openHeight = 860
+
+	// The point below which every page has folded to a single column and the
+	// page tabs to icons. Below it nothing fits.
+	minWidth  = 940
+	minHeight = 620
+
+	// The ceiling. Past about 1600 the extra width lands in the gap between a
+	// rule and its state rather than in anything worth reading, so growing
+	// further only spreads the same page thinner. It also does the work of
+	// disabling maximise: Wails clamps the maximised rect to this, so the
+	// button grows the window to the ceiling instead of to the screen.
+	maxWidth  = 1600
+	maxHeight = 1100
+)
+
 func main() {
 	app := NewApp()
 
@@ -51,20 +72,34 @@ func main() {
 	err := wails.Run(&options.App{
 		Title: "Ward",
 
-		// Opens maximised. The window is a console - a top bar carrying the
-		// four pages, a scrolling workspace of cards, and a status bar - and
-		// every card in it is sized by what is actually in it, so the wider the
-		// window the more of each page is on screen at once rather than the
-		// same panels stretched further apart. Width and Height are what an
-		// un-maximised window restores to; the minimum is the point below which
-		// the layout has folded every page to a single column and the page tabs
-		// down to icons, and stopping there keeps it from being dragged into a
-		// size nothing fits in.
-		WindowStartState: options.Maximised,
-		Width:            1360,
-		Height:           860,
-		MinWidth:         940,
-		MinHeight:        620,
+		// It no longer opens maximised, and it has a ceiling.
+		//
+		// Maximised was right for the console this used to be, where every card
+		// was sized by its contents and more width meant more of each page on
+		// screen. It is wrong for the window now. The Overview has one card
+		// that takes the leftover height and three fixed-height blocks above
+		// it, the lists are tables with a capped subject column, and past about
+		// 1600 the extra width goes into the gap between a rule and its state
+		// rather than into anything worth reading. On a large monitor the
+		// result was a full-screen window carrying a page and a half of content.
+		//
+		// MaxWidth/MaxHeight are the ceiling, and they do the work of disabling
+		// maximise without disabling resize. Wails greys the maximise button
+		// only for DisableResize, which also nails the window to exactly
+		// Width x Height - and 860 does not fit a 1366x768 laptop, so that
+		// would trap those users at a size they cannot shrink. With a max set,
+		// Wails clamps the maximised rect in WM_NCCALCSIZE instead: the button
+		// still works, it just grows the window to the ceiling rather than to
+		// the screen.
+		//
+		// The floor stays where it was - the point below which every page has
+		// folded to a single column and the tabs to icons.
+		Width:     openWidth,
+		Height:    openHeight,
+		MinWidth:  minWidth,
+		MinHeight: minHeight,
+		MaxWidth:  maxWidth,
+		MaxHeight: maxHeight,
 
 		// Matches --bg in the theme the window is about to open in, so a cold
 		// start does not flash the other one before the first paint.

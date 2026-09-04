@@ -105,3 +105,22 @@ func TestSystemChoiceSurvivesNormalizing(t *testing.T) {
 		t.Errorf("normalizeTheme(padded, cased system) = %q, want system", got)
 	}
 }
+
+// The window's floor, opening size and ceiling have to stay in that order.
+// Six numbers describing one window is exactly where a typo survives review:
+// a ceiling under the opening size would open every window already clamped,
+// and a floor above it would open one it cannot be shrunk back to.
+func TestWindowSizesAreOrdered(t *testing.T) {
+	if !(minWidth <= openWidth && openWidth <= maxWidth) {
+		t.Errorf("widths out of order: min %d, open %d, max %d", minWidth, openWidth, maxWidth)
+	}
+	if !(minHeight <= openHeight && openHeight <= maxHeight) {
+		t.Errorf("heights out of order: min %d, open %d, max %d", minHeight, openHeight, maxHeight)
+	}
+	// The floor is a promise that the layout works there: the frontend folds
+	// to one column and the tabs to icons at 900px, so a floor below that
+	// would allow a size no CSS in the window accounts for.
+	if minWidth < 900 {
+		t.Errorf("minWidth %d is below the 900px breakpoint the CSS folds at", minWidth)
+	}
+}
