@@ -98,6 +98,17 @@ type Status struct {
 	// (policy.EnforcedAt fails closed), so the window must say so rather than
 	// show windows that are not actually running.
 	ScheduleError string `json:"scheduleError"`
+
+	// FrictionChars is the length of the typing challenge, or zero when none is
+	// configured. It is here so a row can say what changing it would actually
+	// cost. requirePassword runs the challenge after the password on every one
+	// of the twelve weakening call sites, so a window that says only "password"
+	// is under-reporting the price of every one of them - and the whole point of
+	// naming the cost is that it is known before the button, not after it.
+	//
+	// The window already reads this to decide whether the elevated guard needs a
+	// real console (see execGuard); this only carries the same answer to the page.
+	FrictionChars int `json:"frictionChars"`
 }
 
 // AllowlistPanel is the allowed-sites-only mode as the window offers it.
@@ -589,6 +600,9 @@ func (a *App) GetStatus() Status {
 			"first, today's counts start again from zero and the activity list says so."
 	}
 	_, hasPw := scm.GetPasswordHash()
+	// Zero when no challenge is set, which is the same thing the page needs to
+	// know: a cost it cannot see is one it must not claim.
+	frictionChars, _ := scm.GetFrictionChars()
 	pause := scm.Paused()
 	return Status{
 		ServiceRunning:      scm.IsRunning(guardsvc.ServiceName),
@@ -611,6 +625,7 @@ func (a *App) GetStatus() Status {
 		StaleGecko:          policy.BrowserNameList(policy.StaleGecko()),
 		UsageError:          usageErr,
 		ScheduleError:       scheduleErr,
+		FrictionChars:       frictionChars,
 	}
 }
 
