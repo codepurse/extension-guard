@@ -721,7 +721,6 @@
   .badge.idlewin,
   .badge.reachable,
   .badge.budget   { color: var(--warn);   background: var(--warn-soft); border-color: var(--warn-line); }
-  .badge.lockbadge{ color: var(--violet); background: var(--violet-soft); border-color: var(--violet-soft); }
   .push { margin-left: auto; }
 
   .schedtag {
@@ -961,19 +960,9 @@
   .catlist .item .kind { color: var(--text-4); font-size: 11px; margin-left: auto; }
   .catlisthead { font-size: 12.5px; color: var(--text-2); margin: 2px 0 6px; }
 
-  .blockrow { display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--line-soft); }
-  .rows > .blockrow:first-child { border-top: none; }
-  .blockrow:hover { background: var(--surface-2); }
-  /* A locked block cannot be undone until its deadline. That is the strongest
-     promise the app makes, so it is the one row allowed a coloured edge. */
-  .blockrow.islocked { box-shadow: inset 3px 0 0 var(--violet); }
-  .blockrow .binfo { min-width: 0; flex: 1; }
-  .blockrow .btitle { font-size: 13.5px; font-weight: 500; }
-  .blockrow .bmeta { font-size: 12px; color: var(--text-3); margin-top: 2px; }
-  .blockrow .bright { margin-left: auto; display: flex; align-items: center; gap: 7px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
-  .lockbtn { padding: 4px 11px; font-size: 12px; font-weight: 500; border-radius: 8px; background: var(--ctl); border: 1px solid var(--ctl-line); color: var(--text-2); }
-  .lockbtn:hover { background: var(--brand); border-color: transparent; color: var(--on-brand); }
-
+  /* The block-row family is gone: blocks are commitment rows now, and a
+     locked one says so in the cost column rather than with a coloured edge.
+     .badge.lockbadge went with it. */
 
   /* ---- status bar ---------------------------------------------------- */
   .statusbar {
@@ -1039,7 +1028,7 @@
      ====================================================================== */
   .crow {
     display: grid;
-    grid-template-columns: minmax(150px, 1.6fr) minmax(120px, 1.5fr) 116px auto auto;
+    grid-template-columns: minmax(150px, 26ch) minmax(120px, 1fr) 116px auto auto;
     align-items: center;
     gap: 12px;
     min-height: var(--row-h, 34px);
@@ -1054,7 +1043,7 @@
 
   .crow-head {
     display: grid;
-    grid-template-columns: minmax(150px, 1.6fr) minmax(120px, 1.5fr) 116px auto auto;
+    grid-template-columns: minmax(150px, 26ch) minmax(120px, 1fr) 116px auto auto;
     gap: 12px;
     padding: 4px var(--pad-x, 10px);
     border-bottom: 1px solid var(--rule-2);
@@ -1074,6 +1063,9 @@
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .cprot { font-size: 12px; color: var(--text-2); min-width: 0; }
+  /* Some rows carry two controls - a level and a switch. They travel together
+     in the last cell so the switch stays in the same column down the list. */
+  .cctl { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
 
   /* Status is never colour alone. Every state carries a mark of its own
      SHAPE and a word, so the row reads in greyscale, under any colour
@@ -3213,37 +3205,58 @@
     show('harden-warning', !!s.privateBrowsingOpen);
     rows.innerHTML = '';
 
+    if (list.length) { commitHead(rows, 'Setting', 'Where it applies'); }
     list.forEach(function (h) {
-      const row = el('div', 'row');
-      row.appendChild(tile(h.id === 'dns' ? 'dns' : 'sliders'));
-      const info = el('div', 'ainfo');
-      info.appendChild(el('div', 'aname', h.label));
-      // What it covers, and what it misses. Both on one line: the gap is only
-      // ever a clause long, and a second line would push the toggles apart
-      // unevenly.
-      info.appendChild(el('div', 'anote', h.on
-        ? (h.state === 'blocked' ? 'Pinned in ' : h.state + ' in ') + h.browsers + (h.gap ? ' — ' + h.gap : '')
-        : 'Not pinned. Covers ' + h.browsers + '.'));
-      row.appendChild(info);
+      // "Not available" is a third state, not a kind of off: Firefox ships no
+      // SafeSearch policy at all, and a row that said "Off" there would be
+      // offering something no press could deliver.
+      const unavailable = h.state === 'not available';
 
-      // The level switch, for the one setting that has two on-states. Going up
-      // is free; going down asks for the password, because it is a request to
+      const ctl = el('div', 'cctl');
+      // The level switch, for the one setting with two on-states. Going up is
+      // free; going down asks for the password, because it is a request to
       // filter less - HardenNeedsPassword is asked, and the guard re-checks it.
       if (h.on && h.level) {
         const other = h.level === 'strict' ? 'moderate' : 'strict';
-        const lvl = el('button', 'ghost small push', 'Use ' + other);
+        const lvl = el('button', 'ghost small', 'Use ' + other);
         lvl.title = other === 'moderate'
           ? 'Filter less than now — needs the password'
           : 'Filter more than now';
         lvl.addEventListener('click', function () { setHardenLevel(h, other); });
-        row.appendChild(lvl);
+        ctl.appendChild(lvl);
       }
+      const tog = el('button', 'toggle ' + (h.on ? 'on' : 'off'), h.on ? 'On' : 'Off');
+      tog.disabled = unavailable;
+      if (!unavailable) {
+        tog.addEventListener('click', function () { toggleHardening(h); });
+      }
+      ctl.appendChild(tog);
 
-      const tog = el('button', 'toggle ' + (h.on ? 'on' : 'off') + ((h.on && h.level) ? '' : ' push'),
-        h.on ? 'On' : 'Off');
-      tog.addEventListener('click', function () { toggleHardening(h); });
-      row.appendChild(tog);
-      rows.appendChild(row);
+      let state;
+      if (unavailable) { state = ['unavailable', 'Not available']; }
+      // Pinned everywhere it can be, but somewhere it cannot. That is neither
+      // enforcing nor off, and the clause beside it says which browser.
+      else if (h.on && h.gap) { state = ['gap', 'Partial']; }
+      // The level IS the state for the setting that has two of them: "Strict"
+      // says more than "On" and costs no extra column.
+      else if (h.on) { state = ['enforcing', h.level ? h.level.charAt(0).toUpperCase() + h.level.slice(1) : 'Pinned']; }
+      else { state = ['off', 'Off']; }
+
+      rows.appendChild(commitRow({
+        subject: h.label,
+        sub: h.id,
+        // A knob with no browser list - a DNS setting is machine-wide - would
+        // otherwise read as a dangling preposition: "Covers" and then nothing.
+        protection: (h.browsers
+          ? (h.on ? 'Pinned in ' : 'Covers ') + h.browsers
+          : (h.on ? 'Pinned for this machine' : 'Applies to this machine'))
+          + (h.gap ? ' — ' + h.gap : ''),
+        state: state,
+        cost: unavailable
+          ? { c: 'free', label: '—', hint: 'Nothing to undo: this browser has no policy for it.' }
+          : costOf(h.on),
+        control: ctl
+      }));
     });
   }
 
@@ -3655,6 +3668,7 @@
 
     // Loose rules first, then one run per category, in the order the category
     // rows are listed so the two halves of the page agree.
+    if (apps.length) { commitHead(rows, 'Application', 'What it covers'); }
     const loose = apps.filter(function (a) { return !a.category; });
     loose.forEach(function (a) { rows.appendChild(appRow(a)); });
 
@@ -3685,33 +3699,37 @@
     }
   }
 
-  // The icon a rule gets is the kind of thing it names, because a folder rule
-  // and a single executable read identically in a list of friendly names.
-  const APP_ICON = { exe: 'file', folder: 'folder', store: 'store', title: 'type' };
+  // What a rule actually covers, which is the one thing that genuinely varies
+  // down this list: "the app I want gone" is a file, a folder, a Store app or
+  // a window title, and a folder rule and a single executable read identically
+  // once they both wear a friendly name.
+  const APP_KIND = {
+    exe:    'Executable, by name',
+    folder: 'Anything launched from this folder',
+    store:  'Store app',
+    title:  'Any window with this title'
+  };
 
   // appRow builds one rule's row. Shared by the loose run and every category
   // group, so a category entry is toggled exactly like a hand-added one - it is
   // an ordinary rule, and the grouping is only how it is displayed.
   function appRow(a) {
-    const waiting = a.enabled && a.scheduled && !a.blocked;
-    const row = el('div', 'row');
-    row.appendChild(tile(APP_ICON[a.kind] || 'app', waiting ? 'warn' : null));
-    const info = el('div', 'ainfo');
-    info.appendChild(el('div', 'aname', a.label || a.value));
-    info.appendChild(el('div', 'anote', a.note || ''));
-    row.appendChild(info);
-
-    if (waiting) {
-      const badge = el('span', 'badge push idlewin', 'Waiting');
-      badge.title = 'On, but outside its schedule window right now';
-      row.appendChild(badge);
-    }
-
-    const tog = el('button', 'toggle ' + (a.enabled ? 'on' : 'off') + (waiting ? '' : ' push'),
-      a.enabled ? 'On' : 'Off');
+    const tog = el('button', 'toggle ' + (a.enabled ? 'on' : 'off'), a.enabled ? 'On' : 'Off');
     tog.addEventListener('click', function () { toggleApp(a); });
-    row.appendChild(tog);
-    return row;
+    const label = a.label || a.value;
+    const bare = label === a.value;
+    return commitRow({
+      subject: label,
+      // The raw rule under the friendly name, because the executable is what
+      // someone recognises when the label came from a category.
+      sub: bare ? '' : a.value,
+      mono: bare,
+      protection: a.note || APP_KIND[a.kind] || 'Application',
+      state: stateOf(a),
+      stateHint: 'On, but outside its schedule window right now',
+      cost: costOf(a.enabled),
+      control: tog
+    });
   }
 
   // renderBlocks lists each scheduled block, whether it is enforcing right now,
@@ -3730,58 +3748,57 @@
     rows.innerHTML = '';
     if (!blocks.length) { return; }
 
+    commitHead(rows, 'Block', 'When it applies');
     blocks.forEach(function (b) {
-      const row = el('div', 'blockrow' + (b.locked ? ' islocked' : ''));
-      row.appendChild(tile(b.locked ? 'lock' : 'calendar'));
-
-      const info = el('div', 'binfo');
-      info.appendChild(el('div', 'btitle', b.label || b.id));
-      // The limit belongs on this line with the timetable: both answer "when
-      // does this block apply", and a row that showed one without the other
-      // would be describing half the rule.
-      info.appendChild(el('div', 'bmeta',
-        b.schedule + '  •  ' + b.extensions + (b.limit ? '  •  ' + b.limit : '')));
-
-      const right = el('div', 'bright');
-      const badge = el('span', 'badge');
-      // Three states. An idle block is not a fault - it is outside its window
-      // and meant to be - and a block with time left today is not idle either:
-      // it is counting down, which is the state the person checking most wants
-      // to see.
+      // Four states, not three. An idle block is not a fault - it is outside
+      // its window and meant to be. A block with time left today is not idle
+      // either: it is counting down, which is the state the person checking
+      // most wants to see. And one enforcing *because* the budget ran out
+      // rather than because a window opened is the difference between
+      // "working" and "broken", so it says which.
+      let state, hint = '';
       if (b.inBudget) {
-        badge.className = 'badge budget';
-        badge.textContent = (b.left || '0m') + ' left today';
-        badge.title = b.used ? b.used + ' used so far today' : '';
+        state = ['waiting', (b.left || '0m') + ' left today'];
+        hint = b.used ? b.used + ' used so far today' : '';
+      } else if (b.active && b.limit && b.used) {
+        state = ['enforcing', 'Used up'];
+        hint = b.used + ' used today';
+      } else if (b.active) {
+        state = ['enforcing', 'Enforcing'];
       } else {
-        badge.className = 'badge ' + (b.active ? 'locked' : 'idle');
-        badge.textContent = b.active ? 'Enforcing' : 'Idle';
-        if (b.limit && b.active && b.used) {
-          // Enforcing *because* the budget ran out, rather than because a
-          // window opened. Saying which is the difference between "working" and
-          // "broken".
-          badge.textContent = 'Used up';
-          badge.title = b.used + ' used today';
-        }
+        state = ['idle', 'Idle'];
       }
-      right.appendChild(badge);
 
-      if (b.locked) {
-        right.appendChild(el('span', 'badge lockbadge', 'Locked until ' + b.lockedUntil));
-      } else {
-        const lock = el('button', 'lockbtn', 'Lock');
+      const ctl = el('div', 'cctl');
+      if (!b.locked) {
+        const lock = el('button', 'ghost small', 'Lock');
+        lock.title = 'A locked block cannot be released early';
         lock.addEventListener('click', function () { lockBlock(b.id, b.label || b.id); });
-        right.appendChild(lock);
+        ctl.appendChild(lock);
         // No Remove on a locked block: the guard refuses it anyway, and
-        // offering a button that always fails reads as a bug rather than as the
-        // promise it is.
-        const del = el('button', 'lockbtn', 'Remove');
+        // offering a button that always fails reads as a bug rather than as
+        // the promise it is.
+        const del = el('button', 'ghost small', 'Remove');
         del.addEventListener('click', function () { removeBlock(b.id, b.label || b.id); });
-        right.appendChild(del);
+        ctl.appendChild(del);
       }
 
-      row.appendChild(info);
-      row.appendChild(right);
-      rows.appendChild(row);
+      rows.appendChild(commitRow({
+        subject: b.label || b.id,
+        // The timetable and the limit both answer "when does this apply", and
+        // a row showing one without the other describes half the rule.
+        protection: b.schedule + ' · ' + b.extensions + (b.limit ? ' · ' + b.limit : ''),
+        state: state,
+        stateHint: hint,
+        // This is the only row whose cost can be "not at any price". A lock is
+        // the strongest commitment the app offers, and it is the clearest
+        // reason this column exists at all.
+        cost: b.locked
+          ? { c: 'locked', label: 'Locked to ' + b.lockedUntil,
+              hint: 'A locked block cannot be released early. Its deadline can only be extended.' }
+          : costOf(true),
+        control: ctl
+      }));
     });
   }
 
