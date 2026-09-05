@@ -96,8 +96,8 @@ jobs:
       # ---------- Installer + manifest ----------
       # Installer bundles the (now signed, if signing ran) binaries; manifest.json
       # hashes exactly the bytes that ship, so it must come AFTER signing.
-      # To also sign Extension-Guard-Setup.exe, repeat the SignPath pattern here
-      # against release\Extension-Guard-Setup.exe before writing the manifest.
+      # To also sign ExtensionGuard-Setup.exe, repeat the SignPath pattern here
+      # against release\ExtensionGuard-Setup.exe before writing the manifest.
       - name: Build installer + collect artifacts
         shell: pwsh
         run: ./build.ps1 installer
@@ -121,7 +121,7 @@ jobs:
           gh release create "v${{ steps.ver.outputs.version }}" `
             "release/guard.exe" `
             "release/extension-guard-status.exe" `
-            "release/Extension-Guard-Setup.exe" `
+            "release/ExtensionGuard-Setup.exe" `
             "release/manifest.json" `
             --title "Extension Guard v${{ steps.ver.outputs.version }}" `
             --notes "Automated release built by CI. Verify downloads against manifest.json (see docs/verify or the README)."

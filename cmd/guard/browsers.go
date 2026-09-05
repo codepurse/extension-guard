@@ -47,13 +47,20 @@ func browsersCmd(cfg policy.Config) {
 	// whether it is blocked at this moment. Both are shown, because a browser
 	// blocked only on weekday afternoons is genuinely on the list and genuinely
 	// reachable right now, and one badge cannot say both.
-	active := activeNow(cfg)
+	active := cfg
 
 	fmt.Printf("  %-34s %-10s %s\n", "browser", "state", "executable")
 	reachable, gone := 0, 0
 	for _, b := range found {
 		state := browserFiltered
 		switch {
+		case b.Managed() && active.BlocksBrowser(b):
+			// Filtered and blocked at once, which a Firefox fork can now be: the
+			// guard writes policy it reads, and the browsers category also names it.
+			// Blocked is the truthful word for it - the window closes a second after
+			// it opens, and calling that "filtered" would describe a browser the user
+			// can still use.
+			state = browserBlocked
 		case b.Managed():
 			// A managed browser whose file is gone was uninstalled and left its
 			// registration behind. There is nothing to say about it: the guard's

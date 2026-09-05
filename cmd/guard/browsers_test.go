@@ -7,8 +7,11 @@ import (
 	"github.com/codepurse/extension-guard/internal/policy"
 )
 
-func zen() policy.InstalledBrowser {
-	return policy.InstalledBrowser{Name: "Zen Browser", Exe: `C:\Program Files\Zen Browser\zen.exe`}
+// vivaldi is the unmanaged browser these tests warn about. It used to be Zen,
+// which is no longer one: the guard writes the Mozilla policies Zen reads, so
+// Zen is filtered now and would never reach this warning.
+func vivaldi() policy.InstalledBrowser {
+	return policy.InstalledBrowser{Name: "Vivaldi", Exe: `C:\Program Files\Vivaldi\Application\vivaldi.exe`}
 }
 
 func operaBrowser() policy.InstalledBrowser {
@@ -20,25 +23,25 @@ func operaBrowser() policy.InstalledBrowser {
 // wrote on purpose. "1 browsers are" reads as a bug, and a warning that reads as a
 // bug is one the reader learns to skip.
 func TestBrowserWarningReadsAsEnglishForOneAndForSeveral(t *testing.T) {
-	one := browserWarningFor([]policy.InstalledBrowser{zen()}, nil)
+	one := browserWarningFor([]policy.InstalledBrowser{vivaldi()}, nil)
 	if !strings.Contains(one, "1 browser on this machine") {
 		t.Errorf("singular warning is not singular: %q", one)
 	}
 	if strings.Contains(one, "1 browsers") || strings.Contains(one, "through them") {
 		t.Errorf("singular warning uses plural wording: %q", one)
 	}
-	if !strings.Contains(one, "Zen Browser") {
+	if !strings.Contains(one, "Vivaldi") {
 		t.Errorf("singular warning does not name the browser: %q", one)
 	}
 
-	two := browserWarningFor([]policy.InstalledBrowser{zen(), operaBrowser()}, nil)
+	two := browserWarningFor([]policy.InstalledBrowser{vivaldi(), operaBrowser()}, nil)
 	if !strings.Contains(two, "2 browsers on this machine") {
 		t.Errorf("plural warning is not plural: %q", two)
 	}
 	if !strings.Contains(two, "through them") {
 		t.Errorf("plural warning uses the singular pronoun: %q", two)
 	}
-	for _, want := range []string{"Zen Browser", "Opera Stable"} {
+	for _, want := range []string{"Vivaldi", "Opera Stable"} {
 		if !strings.Contains(two, want) {
 			t.Errorf("plural warning does not name %q: %q", want, two)
 		}
@@ -61,7 +64,7 @@ func TestVanishedWarningNamesBothExplanations(t *testing.T) {
 		t.Errorf("vanished warning does not name the browser: %q", one)
 	}
 
-	two := browserWarningFor(nil, []policy.InstalledBrowser{operaBrowser(), zen()})
+	two := browserWarningFor(nil, []policy.InstalledBrowser{operaBrowser(), vivaldi()})
 	if !strings.Contains(two, "2 browsers") || !strings.Contains(two, "the executables they named are gone") {
 		t.Errorf("plural vanished warning reads wrong: %q", two)
 	}
@@ -71,7 +74,7 @@ func TestVanishedWarningNamesBothExplanations(t *testing.T) {
 // and vanished - and they are separate paragraphs because they call for different
 // things. One run-on line would read as a single confused complaint.
 func TestBothWarningsAppearSeparatelyWhenBothApply(t *testing.T) {
-	got := browserWarningFor([]policy.InstalledBrowser{zen()}, []policy.InstalledBrowser{operaBrowser()})
+	got := browserWarningFor([]policy.InstalledBrowser{vivaldi()}, []policy.InstalledBrowser{operaBrowser()})
 	if !strings.Contains(got, "is not blocking") {
 		t.Errorf("the reachable warning is missing: %q", got)
 	}

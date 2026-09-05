@@ -28,18 +28,18 @@ const (
 // Failure here needs no error path - if the message cannot be shown, the
 // application is still blocked, which is the part that matters.
 func notifyBlocked(name string) {
-	title, err := windows.UTF16PtrFromString("Blocked by Extension Guard")
+	title, err := windows.UTF16PtrFromString("Blocked by Ward")
 	if err != nil {
 		return
 	}
 	body, err := windows.UTF16PtrFromString(fmt.Sprintf(
-		"%s is blocked right now.\r\n\r\nOpen Extension Guard to see what is blocked, or to unblock it with the password.", name))
+		"%s is blocked right now.\r\n\r\nOpen Ward to see what is blocked, or to unblock it with the password.", name))
 	if err != nil {
 		return
 	}
 	if _, err := windows.MessageBox(0, body, title, mbOK|mbIconError|mbSetForeground|mbTopMost); err != nil {
 		// No window station to draw on (a service or scheduled task tried the
 		// launch). Say it on stderr instead, in case something is capturing it.
-		fmt.Fprintf(os.Stderr, "%s is blocked by Extension Guard\n", name)
+		fmt.Fprintf(os.Stderr, "%s is blocked by Ward\n", name)
 	}
 }

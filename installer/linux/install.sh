@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Installs Extension Guard on Linux: copies the binaries to /opt/extension-guard and
+# Installs Ward on Linux: copies the binaries to /opt/extension-guard and
 # registers + starts the systemd service. install-service prompts for the
 # uninstall password (held by the parent / accountability partner).
 #

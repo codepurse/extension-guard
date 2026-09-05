@@ -9,7 +9,10 @@
       },
       "edge": {},
       "brave": {},
-      "firefox": {}
+      "firefox": {
+        "addonId": "blocknsfw@extension.local",
+        "installUrl": "https://addons.mozilla.org/firefox/downloads/latest/blocknsfw-porn-adult-content/latest.xpi"
+      }
     },
     {
       "name": "sieve",
@@ -20,7 +23,10 @@
       },
       "edge": {},
       "brave": {},
-      "firefox": {}
+      "firefox": {
+        "addonId": "sieve@extension.local",
+        "installUrl": "https://addons.mozilla.org/firefox/downloads/latest/sieve-site-content-blocker/latest.xpi"
+      }
     }
   ],
   "blocks": [

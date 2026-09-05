@@ -20,3 +20,16 @@ func Verify(cfg Config) []Status { return nil }
 
 // DetectBrowsers returns an empty map on non-Windows platforms.
 func DetectBrowsers() map[Kind]bool { return map[Kind]bool{} }
+
+// geckoBrowsers is the Firefox-family half of AllKinds. Nothing here writes any
+// policy at all, so this is the shortest honest list rather than the family, and
+// it discovers nothing: see policy_linux.go for what naming a browser in it
+// claims.
+func geckoBrowsers() []GeckoBrowser {
+	return []GeckoBrowser{{Kind: Firefox, Name: "Firefox"}}
+}
+
+// resetGeckoBrowsers drops the cached scan on the platform that has one. Nothing
+// is discovered or cached here, so it does nothing - it exists so the test helper
+// that describes a machine reads the same on every platform.
+func resetGeckoBrowsers() {}

@@ -45,7 +45,7 @@ func TestBuildArgsCannotInjectArguments(t *testing.T) {
 		name string
 		args []string
 	}{
-		{"plain", []string{"-config", `C:\Program Files\Extension Guard\extension-ids.json`, "apps"}},
+		{"plain", []string{"-config", `C:\Program Files\Ward\extension-ids.json`, "apps"}},
 		{"spaces in a label", []string{"-label", "Work hours", "add-block"}},
 		{"trailing backslash", []string{"-kind", "folder", "block-app", `D:\Games\`}},
 		{"drive root", []string{"block-app", `D:\`}},
@@ -64,7 +64,7 @@ func TestBuildArgsCannotInjectArguments(t *testing.T) {
 	for _, c := range cases {
 		// ShellExecuteEx passes lpFile separately, so the child's command line is the
 		// executable followed by these parameters - hence the argv[0] stand-in.
-		line := `"C:\Program Files\Extension Guard\guard.exe" ` + buildArgs(c.args)
+		line := `"C:\Program Files\Ward\guard.exe" ` + buildArgs(c.args)
 		got := parseCommandLine(t, line)
 		if len(got) != len(c.args)+1 {
 			t.Errorf("%s: parsed %d arguments, want %d\n  line: %s\n  got:  %q",

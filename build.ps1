@@ -3,7 +3,7 @@
   Builds all Extension Guard release artifacts into release\:
     - guard.exe                    (CLI + service + watchdog)
     - extension-guard-status.exe   (Wails status window)
-    - Extension-Guard-Setup.exe    (Inno Setup installer that bundles both)
+    - ExtensionGuard-Setup.exe    (Inno Setup installer that bundles both)
     - manifest.json                (version + SHA-256, read by the in-app updater)
 
   Stages (so CI can code-sign between building and hashing/bundling):
@@ -87,6 +87,17 @@ if ($doBinaries) {
   Write-Host "== build guard.exe ==" -ForegroundColor Cyan
   & $go -C $root build -ldflags $ldflags -o guard.exe ./cmd/guard; if ($LASTEXITCODE -ne 0) { throw "guard build failed" }
 
+  # No version-info step for this one, and not for want of trying. The built exe
+  # has an empty Properties -> Details tab - ProductName, FileDescription and
+  # FileVersion all read as empty - even though wails.json carries a full info
+  # block. Wails emits its own .rsrc from build/windows/info.json, regenerating
+  # that file on every build if it is missing, so the template cannot be fixed in
+  # place; correcting its language key from the default 0000 to 0409 changes
+  # nothing; and adding a second resource with goversioninfo the way guard.exe
+  # does fails the link with "too many .rsrc sections". Fixing it means patching
+  # Wails or rewriting the resource in the built exe. Verified against Wails
+  # v2.12.0. Cosmetic, so it is left alone - do not spend the afternoon on it
+  # again.
   Write-Host "== build status UI (wails) ==" -ForegroundColor Cyan
   Push-Location (Join-Path $root "statusui")
   try { & $wails build -ldflags $ldflags; if ($LASTEXITCODE -ne 0) { throw "wails build failed" } } finally { Pop-Location }
@@ -98,16 +109,19 @@ if ($doInstaller) {
   Write-Host "== build installer (ISCC) ==" -ForegroundColor Cyan
   # Bundles guard.exe (repo root) + extension-guard-status.exe (statusui\build\bin).
   # In the signed CI flow those have already been signed by the time this runs.
-  & $iscc "/DAppVersion=$version" (Join-Path $root "installer\Extension-Guard.iss"); if ($LASTEXITCODE -ne 0) { throw "installer build failed" }
+  & $iscc "/DAppVersion=$version" (Join-Path $root "installer\ExtensionGuard.iss"); if ($LASTEXITCODE -ne 0) { throw "installer build failed" }
 
   Write-Host "== collect release artifacts ==" -ForegroundColor Cyan
   if (Test-Path $release) { Remove-Item $release -Recurse -Force }
   New-Item -ItemType Directory -Path $release | Out-Null
   Copy-Item (Join-Path $root "guard.exe") $release
   Copy-Item (Join-Path $root "statusui\build\bin\extension-guard-status.exe") $release
-  Copy-Item (Join-Path $root "installer\output\Extension-Guard-Setup.exe") $release
-  # Ship the config next to the binaries so they find it without walking the tree.
-  Copy-Item (Join-Path $root "extension-ids.json") $release
+  Copy-Item (Join-Path $root "installer\output\ExtensionGuard-Setup.exe") $release
+  # Ship the *template* next to the binaries so they find a config without walking
+  # the tree - never the repo's own extension-ids.json, which is a working config
+  # with the developer's blocks and app rules in it. See the [Files] note in
+  # installer\ExtensionGuard.iss.
+  Copy-Item (Join-Path $root "extension-ids.default.json") (Join-Path $release "extension-ids.json")
 }
 
 if ($doManifest) {

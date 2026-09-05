@@ -1,8 +1,8 @@
 {
-  "_comment": "Windows version-info resource for guard.exe, compiled to resource_windows.syso by goversioninfo and linked automatically by `go build`. build.ps1 overwrites the version numbers from the repo-root VERSION file, so the values here are just defaults. Giving the unsigned binary a real publisher name + description lowers antivirus heuristic false positives and populates the file's Properties -> Details tab. See docs/signing.md.",
+  "_comment": "Windows version-info resource for guard.exe, compiled to resource_windows.syso by goversioninfo and linked automatically by `go build`. Giving the unsigned binary a real publisher name + description lowers antivirus heuristic false positives and populates the file's Properties -> Details tab. See docs/signing.md. Version numbers: build.ps1 overrides FixedFileInfo.FileVersion (-ver-*) and both StringFileInfo version strings (-file-version, -product-version) from the repo-root VERSION file, but NOT FixedFileInfo.ProductVersion - goversioninfo has -product-ver-* flags for that and build.ps1 does not pass them. So keep ProductVersion below in step with VERSION by hand, or teach build.ps1 the four flags and make it a default like the rest.",
   "FixedFileInfo": {
-    "FileVersion":    { "Major": 1, "Minor": 0, "Patch": 0, "Build": 0 },
-    "ProductVersion": { "Major": 1, "Minor": 0, "Patch": 0, "Build": 0 },
+    "FileVersion":    { "Major": 1, "Minor": 1, "Patch": 0, "Build": 0 },
+    "ProductVersion": { "Major": 1, "Minor": 1, "Patch": 0, "Build": 0 },
     "FileFlagsMask": "3f",
     "FileFlags": "00",
     "FileOS": "040004",
@@ -11,12 +11,12 @@
   },
   "StringFileInfo": {
     "CompanyName": "monolab",
-    "FileDescription": "Extension Guard - browser extension force-install enforcement service",
+    "FileDescription": "Extension Guard - parental control and content blocking service",
     "InternalName": "guard",
     "LegalCopyright": "Copyright (c) monolab. MIT License. https://github.com/codepurse/extension-guard",
     "OriginalFilename": "guard.exe",
     "ProductName": "Extension Guard",
-    "ProductVersion": "1.0.0"
+    "ProductVersion": "1.1.0"
   },
   "VarFileInfo": {
     "Translation": { "LangID": "0409", "CharsetID": "04B0" }

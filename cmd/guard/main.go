@@ -1,4 +1,4 @@
-// Command guard is the Extension Guard enforcement tool.
+// Command guard is the Ward enforcement tool.
 //
 //   - milestone 1: apply / verify / remove the browser force-install policy.
 //   - milestone 2: run as a Windows service that re-applies the policy on tamper.
@@ -30,24 +30,13 @@ import (
 	"github.com/codepurse/extension-guard/internal/policy"
 	"github.com/codepurse/extension-guard/internal/scm"
 	"github.com/codepurse/extension-guard/internal/updater"
-	"github.com/codepurse/extension-guard/internal/usage"
 )
 
 func main() {
 	cfgPath := flag.String("config", defaultConfigPath(), "path to extension-ids.json")
 	password := flag.String("password", "", "uninstall password (install-service / uninstall-service / set-password)")
 	extensions := flag.String("extensions", "", "comma-separated extension names: the ones to keep ('select'), or the ones a block governs ('add-block')")
-	domains := flag.String("domains", "", "comma-separated domains a block governs (used by 'add-block')")
-	apps := flag.String("apps", "", "comma-separated blocked apps a block governs, by value (used by 'add-block')")
-	days := flag.String("days", "", "days a block's window falls on: mon,wed,fri or weekdays/weekends/daily (default every day)")
-	from := flag.String("from", "", "start of a block's window, HH:MM (used by 'add-block')")
-	to := flag.String("to", "", "end of a block's window, HH:MM; before the start means it runs past midnight")
-	limit := flag.String("limit", "", "daily time limit for a block's apps: 45m, 1h30m, or a number of minutes (used by 'add-block')")
-	until := flag.String("until", "", "deadline for 'lock': a duration (72h, 7d) or a time (2026-09-01, 2026-09-01T17:00)")
 	pauseFor := flag.String("for", "", "how long 'disable' pauses protection: 30m, 2h, 1d, or a time. Omit to pause until you turn it back on")
-	kind := flag.String("kind", "", "what a block-app/unblock-app argument is: exe (default), folder, store, or title")
-	label := flag.String("label", "", "friendly name shown in the status window (used by 'block-app' and 'add-block')")
-	level := flag.String("level", "", "how strict a hardened setting is: moderate or strict (used by 'harden safe-search'; default strict)")
 	count := flag.Int("n", defaultActivityCount, "how many entries 'activity' shows")
 	flag.Usage = printUsage
 	flag.Parse()
@@ -93,13 +82,10 @@ func main() {
 	case "select":
 		selectConfig(*cfgPath, *extensions)
 		return
-	case "commit":
-		commitCmd(*cfgPath, *password)
-		return
 	case "blocked":
-		// Windows starts this in place of a blocked application, in the blocked
-		// user's session, with the application's own command line appended. It must
-		// not need the config, the registry, or admin - see blockedCmd.
+		// Windows starts this in place of a blocked browser, in that user's session,
+		// with the browser's own command line appended. It must not need the config,
+		// the registry, or admin - see blockedCmd.
 		blockedCmd(flag.Args()[1:])
 		return
 	}
@@ -117,7 +103,7 @@ func main() {
 
 	switch cmd {
 	case "apply":
-		must(enforce.Default().Apply(activeNow(cfg)))
+		must(enforce.Default().Apply(cfg))
 		fmt.Println("policy applied")
 		printStatus(cfg)
 	case "verify", "status":
@@ -127,66 +113,21 @@ func main() {
 		fmt.Println("policy removed")
 	case "detect":
 		detected := policy.DetectBrowsers()
-		for _, k := range []policy.Kind{policy.Chrome, policy.Edge, policy.Brave, policy.Firefox} {
+		for _, k := range policy.AllKinds() {
 			fmt.Printf("  %-8s %v\n", k, detected[k])
 		}
 	case "browsers":
 		browsersCmd(cfg)
-	case "blocks":
-		blocksCmd(cfg)
-	case "limits":
-		limitsCmd(cfg)
-	case "usage":
-		usageCmd(cfg, flag.Arg(1))
-	case "domains":
-		domainsCmd(cfg)
-	case "block-domain":
-		blockDomainCmd(cfg, *cfgPath, flag.Arg(1))
-	case "unblock-domain":
-		unblockDomainCmd(cfg, *cfgPath, flag.Arg(1), *password)
-	case "allowed":
-		allowedCmd(cfg)
-	case "allow-only":
-		allowOnlyCmd(cfg, *cfgPath, flag.Arg(1), *password)
-	case "allow":
-		allowCmd(cfg, *cfgPath, flag.Arg(1), *password)
-	case "unallow":
-		unallowCmd(cfg, *cfgPath, flag.Arg(1))
-	case "apps":
-		appsCmd(cfg)
-	case "categories":
-		categoriesCmd(cfg, flag.Arg(1))
-	case "block-category":
-		blockCategoryCmd(cfg, *cfgPath, flag.Arg(1))
+	case "block-browsers":
+		blockBrowsersCmd(cfg, *cfgPath, true, *password)
+	case "unblock-browsers":
+		blockBrowsersCmd(cfg, *cfgPath, false, *password)
 	case "hardening":
 		hardeningCmd(cfg)
 	case "harden":
-		hardenCmd(cfg, *cfgPath, flag.Arg(1), *level, *password)
+		hardenCmd(cfg, *cfgPath, flag.Arg(1), *password)
 	case "unharden":
 		unhardenCmd(cfg, *cfgPath, flag.Arg(1), *password)
-	case "agent":
-		// Internal: the service starts this in the signed-in user's session, because
-		// a service cannot see that session's windows. See runAgent.
-		runAgent(cfg, *cfgPath)
-	case "block-app":
-		blockAppCmd(cfg, *cfgPath, *kind, flag.Arg(1), *label)
-	case "unblock-app":
-		unblockAppCmd(cfg, *cfgPath, *kind, flag.Arg(1), *password)
-	case "add-block":
-		addBlockCmd(cfg, *cfgPath, flag.Arg(1), blockSpec{
-			label:      *label,
-			days:       *days,
-			from:       *from,
-			to:         *to,
-			limit:      *limit,
-			extensions: *extensions,
-			domains:    *domains,
-			apps:       *apps,
-		}, *password)
-	case "remove-block":
-		removeBlockCmd(cfg, *cfgPath, flag.Arg(1), *password)
-	case "lock":
-		lockCmd(cfg, *cfgPath, flag.Arg(1), *until)
 	case "enable-extension":
 		toggleExtension(cfg, *cfgPath, flag.Arg(1), true)
 	case "disable-extension":
@@ -239,10 +180,6 @@ func runService(cmd string, cfg policy.Config, cfgPath, password, pauseFor strin
 		// lands in the record rather than being dropped in the gap. Only privileged
 		// code may create it - see internal/activity.
 		_ = activity.Provision()
-		// The ledger is created here for the same reason: it must be owned by
-		// something privileged, and the service would do it moments later anyway.
-		// See internal/usage.
-		_ = usage.Provision()
 		mustService(guardsvc.Install(cfg, absCfg), "install")
 		activity.Record(activity.Event{Kind: activity.ProtectionInstalled, Target: buildinfo.Version})
 		fmt.Println("service installed, hardened, and started")
@@ -251,6 +188,10 @@ func runService(cmd string, cfg policy.Config, cfgPath, password, pauseFor strin
 		mustService(guardsvc.Uninstall(cfg, absCfg), "uninstall")
 		_ = scm.ClearPasswordHash()
 		_ = scm.ClearTrustedConfig()
+		// Uninstall has just removed the policy, so the note of what was written
+		// describes nothing. Keeping it would leave a later install pruning ids it
+		// never wrote, on a machine whose forcelist may have moved on since.
+		_ = scm.ClearWrittenTargets()
 		// The log itself is deliberately left where it is. It records that
 		// protection was removed, and an accountability record an uninstall erases
 		// is not one.
@@ -258,18 +199,6 @@ func runService(cmd string, cfg policy.Config, cfgPath, password, pauseFor strin
 		fmt.Println("service uninstalled")
 	case "disable":
 		// A live lock refuses a pause, because a pause lifts everything the lock was
-		// holding - see policy.CheckPausable for why this is not the same question
-		// CheckLockedBlocks answers, and why uninstalling stays allowed.
-		//
-		// Checked before the password is asked for, the way add-block and commit do
-		// it: being prompted for a password and *then* told no wastes the one step
-		// that costs the user something.
-		if err := policy.CheckPausable(cfg, time.Now()); err != nil {
-			activity.Record(activity.Event{Kind: activity.PauseRefused, Detail: err.Error()})
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			fmt.Fprintln(os.Stderr, "(nothing was changed; uninstalling still works, and takes the blocks with it)")
-			os.Exit(1)
-		}
 		// Parsed before the password too, so a mistyped duration is not something
 		// you find out about after authenticating.
 		deadline, err := pauseDeadline(pauseFor, time.Now())
@@ -290,9 +219,8 @@ func runService(cmd string, cfg policy.Config, cfgPath, password, pauseFor strin
 	case "enable":
 		// Enabling only strengthens protection, so it needs admin but no password.
 		_ = activity.Provision()
-		_ = usage.Provision()
 		mustService(guardsvc.Resume(cfg, absCfg), "resume")
-		must(enforce.Default().Apply(activeNow(cfg)))
+		must(enforce.Default().Apply(cfg))
 		activity.Record(activity.Event{Kind: activity.ProtectionResumed})
 		fmt.Println("protection enabled")
 	case "start":
@@ -384,17 +312,6 @@ func prompt(label string) string {
 	return strings.TrimSpace(string(b))
 }
 
-// activeNow resolves the schedule the same way the service does, printing any
-// problem that forced the fail-closed fallback so the operator sees it.
-func activeNow(cfg policy.Config) policy.Config {
-	active, err := cfg.EnforcedAt(time.Now())
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "warning: %v\n", err)
-		fmt.Fprintln(os.Stderr, "(the schedule is being ignored; every enabled extension stays enforced)")
-	}
-	return active
-}
-
 // printStatus lists what every enforcer reports. The columns are the general
 // ones rather than browser-specific: "target" is a browser today and an
 // executable once app blocking lands, and "present" means the target exists on
@@ -412,7 +329,7 @@ func activeNow(cfg policy.Config) policy.Config {
 // statement doing the work of a false one, so it does not get to be the last word
 // on the screen.
 func printStatus(cfg policy.Config) {
-	active := activeNow(cfg)
+	active := cfg
 	fmt.Printf("  %-11s %-8s %-8s %-9s %s\n", "area", "target", "present", "enforced", "detail")
 	for _, s := range enforce.Default().Verify(active) {
 		fmt.Printf("  %-11s %-8s %-8v %-9v %s\n", s.Enforcer, s.Target, s.Present, s.Enforced, s.Detail)
@@ -480,7 +397,7 @@ func toggleExtension(cfg policy.Config, cfgPath, name string, enable bool) {
 	}
 	writeConfig(cfg, cfgPath)
 	if enable {
-		must(enforce.Default().Apply(activeNow(cfg)))
+		must(enforce.Default().Apply(cfg))
 		activity.Record(activity.Event{Kind: activity.ExtensionEnabled, Target: name})
 		fmt.Printf("enabled: %s is now force-installed\n", name)
 	} else {
@@ -684,150 +601,63 @@ func waitForStop(name string, timeout time.Duration) {
 // printUsage is the help text. It is not called "usage" because that name now
 // belongs to the package that counts how long a limited block has been used.
 func printUsage() {
-	fmt.Println(`Extension Guard
+	fmt.Print(`Extension Guard
 
 usage: guard [flags] <command>
 
-policy commands (admin):
-  apply              enforce everything the config asks for now
-  verify             show what is enforced, per area and target (alias: status)
+The guard force-installs browser extensions and stops them being removed. Two
+settings decide whether that lock actually holds, and both are here.
+
+status:
+  verify             what is enforced, per browser (alias: status)
+  browsers           every browser on this machine and what the guard can do
+                     about each: managed, blocked, or reachable - a browser it
+                     neither manages nor blocks carries none of the locked
+                     extensions. Needs no admin and no password
+  hardening          the pinned browser settings, and whether private browsing
+                     is still open - which is the hole that makes a locked
+                     extension optional, since one cannot be force-installed
+                     into a private or guest window
+  activity           the local record of what the guard did, and what was done
+                     to the guard
+  version            the running build
+
+extensions (admin):
+  apply              enforce what the config asks for now
   remove             lift everything the guard enforces
-  detect             list which supported browsers are installed
-  select             enable only -extensions, disable the rest (used by the installer)
+  detect             which supported browsers are installed
+  select             enable only -extensions, disable the rest (the installer
+                     uses this)
+  enable-extension   <name>  lock it back into every browser that can carry it
+  disable-extension  <name>  stop force-installing it (password)
 
-browser commands:
-  browsers           list every browser on this machine and what the guard can do
-                     about each: filtered (it reads the guard's policy), blocked,
-                     or reachable - a browser the guard neither filters nor blocks,
-                     through which every blocked site is one click away. Needs no
-                     admin and no password, like 'activity'
+closing the two holes (admin):
+  block-browsers     block the browsers the guard cannot reach
+  unblock-browsers   let them run again (password)
+  harden             <setting>  pin a browser setting:
+                                  private-browsing    no private or guest windows
+                                  private-extensions  Edge only: InPrivate refuses
+                                                      to navigate until the locked
+                                                      extensions are allowed there
+  unharden           <setting>  hand a setting back (password)
 
-browser setting commands:
-  hardening          list the pinned browser settings, where each reaches, and
-                     whether private browsing is still open - which is the hole
-                     that makes a locked extension optional, since one cannot be
-                     force-installed into a private or guest window. Needs no
-                     admin and no password, like 'activity'
-  harden             <setting>  pin a browser setting (admin; no password - it
-                                only adds protection):
-                                  private-browsing  no private or guest windows
-                                  safe-search       SafeSearch + YouTube
-                                                    restricted mode; -level takes
-                                                    moderate or strict (default)
-  unharden           <setting>  hand a setting back (password, unless paused)
+the service:
+  install-service    install, harden and start it (sets the password)
+  uninstall-service  remove it and lift everything (password)
+  start / stop       start or stop it
+  disable            pause protection, optionally -for 30m, 2h, 1d (password)
+  enable             end a pause
+  set-password       set or change the password
+  update             install a newer release if there is one
+  check-update       ask whether there is one
 
-domain commands:
-  domains            list the blocked domains and whether each is enforced now
-  block-domain       <domain>  block a domain and all its subdomains (admin; no
-                               password - it only adds protection)
-  unblock-domain     <domain>  stop filtering a domain (password, unless paused)
-  allowed            list the allowed-sites-only mode, its timetable, and the
-                     sites it lets through
-  allow-only         on|off    block every site except the allowlist. Turning it
-                               on only strengthens (admin, no password); turning
-                               it off unblocks the whole web (password)
-  allow              <domain>  let a site through the mode - the one kind of
-                               "add" here that weakens protection, so it takes
-                               the password while the mode is on
-  unallow            <domain>  stop letting a site through (admin; no password -
-                               it only closes something)
-
-application commands:
-  usage              [days]    how long each blocked application actually ran -
-                               today and over the last 7 days, or the number of
-                               days given. Needs no admin and no password, like
-                               'activity' and 'limits'
-  apps               list the blocked applications and whether each is enforced now
-  block-app          <app>     keep an application closed (admin; no password -
-                               it only adds protection). -kind picks what <app> is:
-                                 exe    (default) a path or a name: steam.exe
-                                 folder every .exe in a folder
-                                 store  a Microsoft Store app, by package family
-                                 title  any window whose title contains the text
-                               -label sets the name the status window shows
-  unblock-app        <app>     let an application run again (password, unless
-                               paused); pass the same -kind it was added with
-  categories         [id]      list the built-in categories and which are
-                               blocked. Name one to see everything it covers,
-                               and which of it is blocked already - worth doing
-                               before block-category, since a category is
-                               agreed to all at once
-  block-category     <id>      block a whole category at once - every application
-                               and site it names, governed by one always-on block
-                               under the category's id (admin; no password - like
-                               block-app it only adds protection). Run it again
-                               after an update to take whatever the category has
-                               gained. To lift one, remove-block its id and
-                               unblock-app what you want back: those take the
-                               password, because those are what weakens
-
-schedule commands:
-  blocks             list each block, whether it is enforcing now, its daily
-                     limit, and its lock
-  limits             show each daily time limit and how much of today is left
-                     (no admin and no password - the person a limit applies to
-                     is meant to be able to see where they stand)
-  add-block          [id]      create a block. -label names it (the id is derived
-                               from the label when you omit it), -extensions /
-                               -domains / -apps say what it governs (naming none
-                               governs everything), and -days -from -to give it a
-                               window. -limit gives it a daily time limit
-                               (45m, 1h30m, or a number of minutes), which may
-                               only cover applications - the guard measures use
-                               by watching processes, and a browser never
-                               reports back. With a window or a limit it needs
-                               the password: both enforce things only sometimes,
-                               which is weaker than around the clock. With
-                               neither it is always on, so it is free - that is
-                               the shape to create and then lock.
-  remove-block       <id>      delete a block, returning what it governed to
-                               around-the-clock enforcement (password; refused
-                               while the block is locked)
-  lock               <id>      lock a block until -until (admin; no password -
-                               a lock can be extended but never shortened)
-  commit             adopt a hand-edited config file (requires the password;
-                               refused outright if it would weaken a locked block)
-  enable-extension   <name>   start locking an extension (adds protection; no password)
-  disable-extension  <name>   stop locking an extension (password, unless already paused)
-
-service commands (admin):
-  install-service    install + harden + start the guard service (sets password)
-  uninstall-service  remove the service (requires the password)
-  disable            pause protection (requires the password). -for says how long
-                     - 30m, 2h, 1d, or a time - and the guard turns protection
-                     back on by itself when it is up. Omit -for to pause until
-                     you turn it back on. The service stays installed and running
-                     either way, so a pause can end on its own; it is refused
-                     outright while any block is locked
-  enable             end a pause (no password; only strengthens)
-  set-password       set or change the uninstall password
-  start              start the service
-  stop               stop the service
-  run                run in the foreground (also used by the service manager)
-  watchdog           run the watchdog loop (internal; spawned by the service)
-  blocked            report that a launch was blocked (internal; Windows starts
-                     this in place of a blocked application)
-  agent              sweep window-title rules in the signed-in user's session
-                     (internal; spawned by the service, which cannot see them)
-
-record commands:
-  activity           show what the guard did and what was done to it, newest
-                     first: refused launches, pauses, rules added and lifted,
-                     tamper it corrected, wrong passwords. No admin and no
-                     password - the record is meant to be readable by everyone
-                     it is about. Show more with the flag before the command,
-                     as everywhere else here: "guard -n 200 activity".
-
-update commands:
-  check-update       report whether a newer release is available (no admin)
-  update             download + install the latest release, then restart the
-                     service (admin; no password - updating strengthens protection)
-  version            print the build version
-
-  help               show this help
-
-flags:`)
-	flag.PrintDefaults()
+flags:
+  -config <path>     extension-ids.json to use
+  -password <pw>     supply the password rather than being asked
+  -extensions <a,b>  which extensions 'select' keeps
+  -for <duration>    how long 'disable' pauses for
+  -n <count>         how many entries 'activity' shows
+`)
 }
 
 // pauseDeadline turns the -for flag into a moment to resume at. An empty flag
