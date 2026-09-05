@@ -107,6 +107,14 @@ func subKeyNames(root registry.Key, path string) []string {
 }
 
 // readBrowserRegistration reads one registration into an InstalledBrowser.
+//
+// Classification happens here, in both of its forms, because this is the one
+// place that has the full path: the executable name settles the browsers the
+// guard knows, and for anything left over the install itself is asked what it is
+// called. That second question is what covers a Firefox fork nobody listed - see
+// gecko.go - and it is asked only of a registration whose file is actually
+// there, since a name read from a missing install would be a browser invented
+// out of a stale registry key.
 func readBrowserRegistration(root registry.Key, path, keyName string) (InstalledBrowser, bool) {
 	exe := exeFromCommand(stringValue(root, path+`\shell\open\command`, ""))
 	name := browserDisplayName(root, path, keyName)
@@ -115,12 +123,28 @@ func readBrowserRegistration(root registry.Key, path, keyName string) (Installed
 		return InstalledBrowser{}, false
 	}
 	exePath := normalizeWinPath(exe)
-	return InstalledBrowser{
+	b := InstalledBrowser{
 		Name:    name,
 		Exe:     exePath,
 		Kind:    ClassifyBrowser(exe),
 		Missing: exePath != "" && fileMissing(exePath),
-	}, true
+	}
+	if b.Kind == "" && exePath != "" && !b.Missing {
+		if app := installAppName(exePath); app != "" {
+			if kind, ok := geckoKindFor(app); ok {
+				b.Kind, b.App = kind, app
+			}
+		}
+	} else if b.Kind != "" {
+		// A built-in browser carries its declared name too, so the policy key is
+		// spelled the way the browser spells it whichever path set the Kind.
+		for _, g := range builtinGecko {
+			if g.Kind == b.Kind {
+				b.App = g.Name
+			}
+		}
+	}
+	return b, true
 }
 
 // fileMissing reports that a path definitely names nothing, which is a stricter

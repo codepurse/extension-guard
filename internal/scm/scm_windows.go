@@ -8,6 +8,7 @@
 package scm
 
 import (
+	"errors"
 	"fmt"
 	"syscall"
 	"time"
@@ -20,13 +21,15 @@ import (
 )
 
 const (
-	stateKeyPath  = `SOFTWARE\ExtensionGuard`
-	disabledValue = "GuardDisabled"
-	updatingValue = "GuardUpdating"
-	passwordValue = "PasswordHash"
-	pausedValue   = "GuardPausedUntil"
-	trustedValue  = "TrustedConfig"
-	resetPeriod   = uint32(24 * 60 * 60) // recovery failure-count reset window (seconds)
+	stateKeyPath    = `SOFTWARE\ExtensionGuard`
+	disabledValue   = "GuardDisabled"
+	updatingValue   = "GuardUpdating"
+	passwordValue   = "PasswordHash"
+	pausedValue     = "GuardPausedUntil"
+	trustedValue    = "TrustedConfig"
+	staleGeckoValue = "StaleGecko"
+	writtenValue    = "WrittenTargets"
+	resetPeriod     = uint32(24 * 60 * 60) // recovery failure-count reset window (seconds)
 )
 
 // Harden configures the service to auto-restart on failure and to start
@@ -249,6 +252,31 @@ func GetTrustedConfig() ([]byte, bool) {
 	return []byte(s), true
 }
 
+// SetStaleGecko records which Firefox-family browser instances were running when
+// the browser policy was last written, as "kind:pid" pairs. Written by whatever
+// privileged process did the writing - the elevated CLI or the service - and read
+// unprivileged by the status window, which is why it lives here rather than in a
+// file next to the config.
+func SetStaleGecko(v string) error { return setStringIn(registry.LOCAL_MACHINE, staleGeckoValue, v) }
+
+// GetStaleGecko returns what SetStaleGecko last recorded.
+func GetStaleGecko() (string, bool) { return getStringIn(registry.LOCAL_MACHINE, staleGeckoValue) }
+
+// SetWrittenTargets records which extension ids the guard has force-installed,
+// so a later run can tell its own past work from a policy somebody else set. See
+// policy.recordWrittenTargets for the format and why the record is needed.
+func SetWrittenTargets(v string) error {
+	return setStringIn(registry.LOCAL_MACHINE, writtenValue, v)
+}
+
+// GetWrittenTargets returns what SetWrittenTargets last recorded.
+func GetWrittenTargets() (string, bool) { return getStringIn(registry.LOCAL_MACHINE, writtenValue) }
+
+// ClearWrittenTargets forgets the record (after a verified uninstall, alongside
+// the trusted copy). Removing the policy and keeping the note of it would leave
+// the next install pruning ids it never wrote.
+func ClearWrittenTargets() error { return deleteValueIn(registry.LOCAL_MACHINE, writtenValue) }
+
 // ClearTrustedConfig removes the trusted copy (called after a verified
 // uninstall, alongside the password hash).
 func ClearTrustedConfig() error { return deleteValueIn(registry.LOCAL_MACHINE, trustedValue) }
@@ -281,7 +309,20 @@ func deleteValueIn(root registry.Key, name string) error {
 		return nil // key absent -> nothing to clear
 	}
 	defer key.Close()
-	return key.DeleteValue(name)
+	// A value that was never written is already the state this is trying to
+	// reach, so its absence is not a failure. The key existing while one of its
+	// values does not is the ordinary case - the key holds several of them, and
+	// whichever was written first created it - but RegDeleteValue reports the
+	// missing value as an error.
+	//
+	// Resume clears the pause value this way on every enable, so returning that
+	// error made "Enable protection" fail with exit code 1 on any machine that
+	// had the state key and had never been paused: the guard gave up before it
+	// ever got as far as installing the service.
+	if err := key.DeleteValue(name); err != nil && !errors.Is(err, registry.ErrNotExist) {
+		return err
+	}
+	return nil
 }
 
 var procCreateMutexW = windows.NewLazySystemDLL("kernel32.dll").NewProc("CreateMutexW")

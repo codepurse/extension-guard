@@ -177,3 +177,44 @@ func contiguous(names []string) bool {
 	}
 	return true
 }
+
+// dropExact matches exactly the given entries. Unlike the force-install list
+// there is no prefix to key on - the value *is* the thing - so an entry only
+// counts as the guard's when it matches something the guard would have written.
+func dropExact(vals []string) func(string) bool {
+	if len(vals) == 0 {
+		return nil
+	}
+	set := make(map[string]bool, len(vals))
+	for _, v := range vals {
+		set[v] = true
+	}
+	return func(v string) bool { return set[v] }
+}
+
+// tally counts how many of wants are present in the numbered list at path. A
+// missing key counts as nothing present rather than as an error, which is the
+// same reading readNumberedList takes: the entries are not there, and that is the
+// fact the caller wants.
+func tally(path string, wants []string) (matched, total int) {
+	if len(wants) == 0 {
+		return 0, 0
+	}
+	present := map[string]bool{}
+	if key, err := registry.OpenKey(registry.LOCAL_MACHINE, path, registry.QUERY_VALUE); err == nil {
+		if names, err := key.ReadValueNames(-1); err == nil {
+			for _, n := range names {
+				if v, _, err := key.GetStringValue(n); err == nil {
+					present[v] = true
+				}
+			}
+		}
+		key.Close()
+	}
+	for _, w := range wants {
+		if present[w] {
+			matched++
+		}
+	}
+	return matched, len(wants)
+}

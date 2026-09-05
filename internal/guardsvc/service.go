@@ -1,4 +1,4 @@
-// Package guardsvc hosts the Extension Guard as a long-running service and its
+// Package guardsvc hosts Ward as a long-running service and its
 // watchdog companion. The service applies the force-install policy on start,
 // re-applies it on registry tamper (via the watcher) and on a backstop timer,
 // and spawns a watchdog process. The watchdog re-asserts service recovery,
@@ -25,7 +25,6 @@ import (
 	"github.com/codepurse/extension-guard/internal/policy"
 	"github.com/codepurse/extension-guard/internal/scm"
 	"github.com/codepurse/extension-guard/internal/updater"
-	"github.com/codepurse/extension-guard/internal/usage"
 	"github.com/codepurse/extension-guard/internal/watcher"
 )
 
@@ -34,25 +33,11 @@ const (
 	ServiceName = "ExtensionGuard"
 
 	backstop = 30 * time.Second
-	// scheduleTick is how often the service checks whether a block boundary has
-	// been crossed. It only compares a computed signature - no registry work - so
-	// it can run far more often than the backstop, which matters because being
-	// late to *start* enforcing is a hole a user could walk through.
-	scheduleTick = 5 * time.Second
-	// appSweepTick is how often blocked applications are swept. It has to be fast:
-	// unlike a browser policy, which the browser then honours on its own, an
-	// application the guard has not looked at yet is an application that is
-	// running, and every second of that is a second the block visibly failed. The
-	// sweep does no registry work and returns immediately when no app rules are
-	// configured, so an install that blocks only extensions and sites pays nothing
-	// for this ticker.
-	appSweepTick = 1 * time.Second
-	// usageFlushTick is how often the daily-limit counters are written to disk.
-	// They are charged every second, in memory, and flushed on this interval plus
-	// whenever a limit is reached - see internal/usage for why not every second.
-	// The interval is also the most a power cut can give back: half a minute of a
-	// budget, once, is a cost worth paying to avoid a file rewrite per second.
-	usageFlushTick = 30 * time.Second
+	// pauseTick is how often the service checks whether a pause has run out. It
+	// compares a stored deadline and does no registry work, so it can run far more
+	// often than the backstop - and being late to *resume* is a gap somebody could
+	// walk through.
+	pauseTick = 5 * time.Second
 	// reasonRegistryChange is the reapply reason the registry watcher passes. It is
 	// named because recordPolicyTamper keys off it, and a typo in either place
 	// would silently stop tamper being recorded.
@@ -85,24 +70,10 @@ type program struct {
 	mu  sync.Mutex
 	dog *exec.Cmd
 
-	// applyMu serializes reapply and guards cfg and activeSig. Several goroutines
-	// reach them - the main loop, the registry watcher's callback, the schedule
-	// ticker and the app sweep - and two concurrent applies would race each other
-	// writing the same policy keys.
-	applyMu   sync.Mutex
-	activeSig string
-	// lastSweepErr is the last app-sweep failure that was logged. The sweep runs
-	// every second, so a persistent failure (a process owned by an account we
-	// cannot touch) would otherwise fill the event log with the same line; it is
-	// logged when it changes and then held. lastAgentErr does the same for the
-	// session agent, which is re-checked on every re-apply.
-	lastSweepErr string
-	lastAgentErr string
-	// lastSampleErr and lastUsageErr hold the same trick for the two halves of
-	// daily-limit accounting: measuring it (every second) and writing it down
-	// (every thirty).
-	lastSampleErr string
-	lastUsageErr  string
+	// applyMu serializes reapply and guards cfg. Two goroutines reach it - the
+	// main loop and the registry watcher's callback - and two concurrent applies
+	// would race each other writing the same policy keys.
+	applyMu sync.Mutex
 	// enforcers is the set the service drives, and pausedAt reads the pause
 	// state. Both are fields rather than direct calls to enforce.Default and
 	// scm.Paused so the loop can be tested at all: those two reach the real
@@ -115,21 +86,6 @@ type program struct {
 	// when one starts, and re-applied when one ends. Without it the service would
 	// rewrite the same registry keys every thirty seconds for the whole pause.
 	paused bool
-	// agent is the helper running in the interactive user's session, present only
-	// while a window-title rule is configured. See agent_windows.go.
-	agent *sessionAgent
-	// usage counts how long each limited block has been used today. The service
-	// owns the only writer, and resolves enforcement against these live counters
-	// rather than the file it flushes them to - a budget that ran out four seconds
-	// ago has to be enforced now, not after the next flush. Guarded by applyMu with
-	// everything else that reads cfg.
-	usage *usage.Tracker
-	// usageDay is the day the counters below belong to, and exhausted is the set of
-	// blocks whose budget had run out the last time it was checked. Both exist to
-	// spot the *transition*: a limit being reached is worth recording once, not
-	// once a second for the rest of the evening.
-	usageDay  string
-	exhausted map[string]bool
 }
 
 // New builds the service. configPath is embedded into the service's launch
@@ -147,8 +103,8 @@ func New(cfg policy.Config, configPath string) (service.Service, error) {
 	}
 	conf := &service.Config{
 		Name:        ServiceName,
-		DisplayName: "Extension Guard",
-		Description: "Keeps the configured browser extensions force-installed and re-applies the policy if it is tampered with.",
+		DisplayName: "Ward",
+		Description: "Blocks the configured apps, sites and browser extensions, enforces schedules and daily limits, and re-applies the policy if it is tampered with.",
 		Arguments:   []string{"-config", configPath, "run"},
 		// systemd: auto-restart the daemon if it dies. Ignored on Windows, where
 		// SCM recovery actions are configured separately by scm.Harden.
@@ -167,13 +123,95 @@ func New(cfg policy.Config, configPath string) (service.Service, error) {
 	return s, nil
 }
 
+// The install path reaches the service control manager and the SYSTEM-owned
+// state store, neither of which a test may touch, so both go through vars the
+// tests substitute - the same seam policy/trust.go uses for the trusted store.
+// replaceWait is one too, because the real value is a sleep no test should sit
+// through.
+var (
+	serviceExists  = scm.Exists
+	serviceRunning = scm.IsRunning
+	serviceHarden  = scm.Harden
+	setDisabled    = scm.SetDisabled
+	controlService = service.Control
+	// defaultEnforcers is the set Uninstall lifts protection with. The service
+	// itself carries its own (program.enforcers); this is for the package-level
+	// teardown, and it is a var for the same reason: the real one writes browser
+	// policy, which a test may not do.
+	defaultEnforcers = enforce.Default
+	replaceWait      = watchdogInterval + 2*time.Second
+	// stopWait is how long a replacement waits for the outgoing service to
+	// actually stop, and createWait how long the incoming one waits for its name
+	// to come free. Both are polled at pollInterval.
+	stopWait     = 20 * time.Second
+	createWait   = 20 * time.Second
+	pollInterval = 250 * time.Millisecond
+)
+
 // Install registers the service, hardens it (recovery + Automatic start),
 // clears the disabled sentinel, and starts it.
+//
+// A registration that already exists is replaced rather than refused. Refusing
+// was a real hole rather than a strict-correctness nicety: `service.Control(s,
+// "install")` fails with "already exists", which is precisely what an installer
+// re-run or an upgrade hits, and the installer's post-install step could only
+// report an error the person running it had no way to act on. Setup then went on
+// to declare success - leaving the new binaries on disk with the *old* service
+// still enforcing from wherever it happened to be registered, which is the one
+// outcome that looks installed and is not.
 func Install(cfg policy.Config, configPath string) error {
-	if err := scm.SetDisabled(false); err != nil {
+	if serviceExists(ServiceName) {
+		if err := replaceRegistration(cfg, configPath); err != nil {
+			// Put the sentinel back the way an untouched machine has it. The old
+			// service is very likely still registered and running, and a failed
+			// install must not be the thing that stops the watchdog guarding it.
+			_ = setDisabled(false)
+			return fmt.Errorf("replace the existing service registration: %w", err)
+		}
+	}
+	if err := setDisabled(false); err != nil {
 		return err
 	}
 	return install(cfg, configPath)
+}
+
+// replaceRegistration removes the service already registered here so Install can
+// register this binary and this config path in its place.
+//
+// The sentinel-then-wait is the teardown Uninstall performs, for the reason
+// given there: a live watchdog re-installs the service within watchdogInterval
+// of noticing it gone. Without the pause it wins the race, and the machine keeps
+// the registration - old binary, old config path - that the installer just
+// replaced.
+func replaceRegistration(cfg policy.Config, configPath string) error {
+	_ = setDisabled(true)
+	time.Sleep(replaceWait)
+	s, err := New(cfg, configPath)
+	if err != nil {
+		return err
+	}
+	// Stop, and then wait for it to actually be stopped. Control returns as soon
+	// as the SCM accepts the request, and deleting a service that is still running
+	// leaves its *name* reserved until the process exits - so a create in that
+	// window fails, and "replace the registration" becomes "remove the
+	// registration and fail to make a new one". That leaves the machine with no
+	// service at all, which is worse than the refusal this whole path replaced.
+	_ = controlService(s, "stop")
+	waitUntil(func() bool { return !serviceRunning(ServiceName) }, stopWait)
+	return controlService(s, "uninstall")
+}
+
+// waitUntil polls done until it reports true or the timeout passes. It does not
+// say which happened: every caller here is followed by the operation that was
+// being waited for, and that operation's own error is the better answer.
+func waitUntil(done func() bool, timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	for !done() {
+		if !time.Now().Before(deadline) {
+			return
+		}
+		time.Sleep(pollInterval)
+	}
 }
 
 // install (re)registers + hardens + starts. Shared by Install and the watchdog.
@@ -182,13 +220,32 @@ func install(cfg policy.Config, configPath string) error {
 	if err != nil {
 		return err
 	}
-	if err := service.Control(s, "install"); err != nil {
+	if err := createService(s); err != nil {
 		return err
 	}
-	if err := scm.Harden(ServiceName); err != nil {
+	if err := serviceHarden(ServiceName); err != nil {
 		return err
 	}
-	return service.Control(s, "start")
+	return controlService(s, "start")
+}
+
+// createService registers the service, retrying while the name is still held.
+//
+// After a removal the SCM keeps the name reserved until the last handle to the
+// old service closes, and the wait in replaceRegistration narrows that window
+// without closing it - a handle held by services.msc or by anything else that
+// looked at the service keeps it open too. The message the create fails with is
+// localized, so this retries on any error and returns the last one rather than
+// trying to recognize that particular failure by its text.
+func createService(s service.Service) error {
+	deadline := time.Now().Add(createWait)
+	for {
+		err := controlService(s, "install")
+		if err == nil || !time.Now().Before(deadline) {
+			return err
+		}
+		time.Sleep(pollInterval)
+	}
 }
 
 // Uninstall sets the disabled sentinel (so the watchdog stops resurrecting),
@@ -196,20 +253,28 @@ func install(cfg policy.Config, configPath string) error {
 // removes the service. The wait closes a race where the watchdog could
 // re-install the service mid-teardown.
 func Uninstall(cfg policy.Config, configPath string) error {
-	_ = scm.SetDisabled(true)
-	time.Sleep(watchdogInterval + 2*time.Second)
+	_ = setDisabled(true)
+	time.Sleep(replaceWait)
 	s, err := New(cfg, configPath)
 	if err != nil {
 		return err
 	}
-	_ = service.Control(s, "stop")
-	if err := service.Control(s, "uninstall"); err != nil {
-		return err
+	// A registration that is already gone is this function's goal, not its error.
+	// Refusing here is what stops somebody removing the program at all after a
+	// failed install took the service with it - and an uninstall that cannot be
+	// run is the one failure mode a blocker must never have, because it is
+	// indistinguishable from the program refusing to let itself be removed.
+	if serviceExists(ServiceName) {
+		_ = controlService(s, "stop")
+		waitUntil(func() bool { return !serviceRunning(ServiceName) }, stopWait)
+		if err := controlService(s, "uninstall"); err != nil {
+			return err
+		}
 	}
 	// Lift what every enforcer holds too, so an authorized uninstall fully
 	// restores the machine - otherwise the extensions stay locked with no service
 	// left to manage the lock.
-	return enforce.Default().Remove(cfg)
+	return defaultEnforcers().Remove(cfg)
 }
 
 // Pause turns protection off and keeps the guard running.
@@ -291,7 +356,7 @@ func RunWatchdog(cfg policy.Config, configPath string) error {
 }
 
 func (p *program) Start(s service.Service) error {
-	p.logger.Info("Extension Guard starting")
+	p.logger.Info("Ward starting")
 	// The service runs as SYSTEM, which makes it the right - and normally the
 	// first - place to create the activity log and stamp its permissions. Nothing
 	// unprivileged may create it, so until this has run the window and the
@@ -302,61 +367,21 @@ func (p *program) Start(s service.Service) error {
 	// The usage ledger is created here for the same reasons and by the same
 	// reasoning as the log above: SYSTEM is the right owner, nothing unprivileged
 	// may create it, and the service is normally the first thing to run.
-	if err := usage.Provision(); err != nil {
-		p.logger.Warningf("usage ledger unavailable, so daily limits may not be counted: %v", err)
-	}
-	// Loading is what makes a limit survive a restart. A tracker that started empty
-	// would hand back the whole day's budget every time the service was restarted,
-	// which is a bypass that costs one `net stop`.
-	p.usage = usage.NewTracker()
-	if p.usage.State() == usage.StateUnreadable {
-		// Rebuild it now rather than waiting for the flush ticker. While the state
-		// holds, every limit reads as spent, so a limited application is blocked - and
-		// a blocked application cannot run, so nothing would ever be charged and
-		// nothing flushed. Failing closed has to be a moment, not a trap.
-		//
-		// It is recorded because it looks exactly like what it might be. The counters
-		// that were in the damaged file are gone, so this is a budget coming back, and
-		// a budget coming back belongs in the record next to every other way that can
-		// happen.
-		p.logger.Warningf("usage ledger at %s could not be read; starting today's counts again", usage.Path())
-		if err := p.usage.Flush(); err != nil {
-			p.logger.Errorf("rebuild usage ledger: %v", err)
-		}
-		activity.Record(activity.Event{Kind: activity.UsageReset, Detail: "it could not be read, so today's daily limits start again from zero"})
-	}
-	activity.Record(activity.Event{Kind: activity.ServiceStarted, Target: buildinfo.Version})
 	go p.loop()
 	return nil
 }
 
 func (p *program) Stop(s service.Service) error {
-	p.logger.Info("Extension Guard stopping")
+	p.logger.Info("Ward stopping")
 	// Recorded even though a stop is usually authorized (a pause, or an update
 	// swapping binaries). "The guard was not running between 02:10 and 07:30" is
 	// exactly the kind of gap the record exists to make visible, and the reason it
 	// stopped is a separate entry either side of this one.
 	activity.Record(activity.Event{Kind: activity.ServiceStopped})
-	// Flush before anything else: the counters in memory are ahead of the file, and
-	// a stop that dropped them would return whatever had been spent since the last
-	// flush. Cheap, and it is the difference between a stop being a pause and a
-	// stop being a way to get thirty seconds back.
-	if p.usage != nil {
-		if err := p.usage.Flush(); err != nil {
-			p.logger.Warningf("write usage ledger on stop: %v", err)
-		}
-	}
 	close(p.quit)
 	if p.w != nil {
 		p.w.Stop()
 	}
-	// The session helper enforces nothing on its own once we are gone, and an
-	// orphan sweeping in the user's session would be enforcement nobody is
-	// managing. It also exits by itself when it sees the service stop.
-	p.applyMu.Lock()
-	stopSessionAgent(p.agent)
-	p.agent = nil
-	p.applyMu.Unlock()
 	// In an interactive debug session, kill the watchdog so it doesn't outlive
 	// the console. Under the real service manager we deliberately leave it
 	// running so it can resurrect the service after a graceful stop.
@@ -379,6 +404,10 @@ func (p *program) loop() {
 		updater.CleanupOld(filepath.Dir(exe))
 	}
 
+	// Before the first apply, so a corrected store id is enforced on this start
+	// rather than the next one.
+	p.adoptCatalog()
+
 	p.reapply("startup")
 
 	if w, err := watcher.New(); err != nil {
@@ -398,12 +427,8 @@ func (p *program) loop() {
 
 	ticker := time.NewTicker(backstop)
 	defer ticker.Stop()
-	schedTicker := time.NewTicker(scheduleTick)
-	defer schedTicker.Stop()
-	appTicker := time.NewTicker(appSweepTick)
-	defer appTicker.Stop()
-	usageTicker := time.NewTicker(usageFlushTick)
-	defer usageTicker.Stop()
+	pauseTicker := time.NewTicker(pauseTick)
+	defer pauseTicker.Stop()
 	updateTicker := time.NewTicker(updateCheckInterval)
 	defer updateTicker.Stop()
 	firstUpdate := time.NewTimer(updateStartupDelay)
@@ -414,25 +439,11 @@ func (p *program) loop() {
 			return
 		case <-ticker.C:
 			p.reapply("periodic")
-		case <-schedTicker.C:
-			// Before the schedule: a pause that has just run out has to put
-			// protection back promptly, and waiting for the 30s backstop would be
-			// thirty seconds of a pause the user was told had ended.
+		case <-pauseTicker.C:
+			// A pause that has just run out has to put protection back promptly, and
+			// waiting for the 30s backstop would be thirty seconds of a pause the user
+			// was told had ended.
 			p.checkPause()
-			p.checkSchedule()
-		case <-appTicker.C:
-			// Measure first, then sweep. Charging the last second before resolving
-			// means a budget that has just run out is enforced on this tick rather
-			// than the next one, and the sweep that follows closes the application
-			// the moment it stops being allowed.
-			if p.measureUsage() {
-				p.reapply("time limit")
-			}
-			p.sweepApps()
-		case <-usageTicker.C:
-			p.flushUsage()
-		case <-firstUpdate.C:
-			p.checkForUpdate()
 		case <-updateTicker.C:
 			p.checkForUpdate()
 		}
@@ -510,6 +521,60 @@ func (p *program) spawnWatchdog() {
 	}()
 }
 
+// adoptCatalog brings the config's per-browser store ids up to date from the
+// catalog compiled into this binary, once per service start.
+//
+// This is what makes a corrected id reach a machine that already has a config.
+// None of the other three paths carry it: the installer lays the template down
+// with onlyifdoesntexist and so keeps the config it finds, `select` runs on
+// first install only, and the in-app updater ships the binaries and nothing
+// else. Without this, the machines with the right ids are only the ones
+// installed after the fix. See policy.AdoptCatalog for the narrow set of things
+// it will touch - and, more to the point, everything it will not.
+//
+// It belongs to the service and nowhere else. This is the one path that runs as
+// SYSTEM on every start, so it is the only one that can record the trusted copy;
+// and a reader doing it would walk into the trap policy.LoadEnforced documents,
+// where defaultConfigPath resolves to whatever extension-ids.json happens to be
+// above the working directory and the write lands in somebody's repository.
+//
+// p.cfg is left alone: reapply reloads through LoadTrusted immediately after
+// this returns and picks the committed config up on its own. Setting it here as
+// well would give the same value two writers.
+//
+// Every failure is logged and otherwise ignored. Enforcing the ids we already
+// have beats enforcing nothing, and the next start tries again.
+func (p *program) adoptCatalog() {
+	cat, err := policy.EmbeddedCatalog()
+	if err != nil {
+		p.logger.Errorf("read the built-in store catalog: %v", err)
+		return
+	}
+	cfg, _, err := policy.LoadTrusted(p.configPath)
+	if err != nil {
+		p.logger.Errorf("load the config before adopting the store catalog: %v", err)
+		return
+	}
+	updated, changes := cfg.AdoptCatalog(cat)
+	if len(changes) == 0 {
+		return
+	}
+	if err := policy.Commit(updated, p.configPath); err != nil {
+		p.logger.Errorf("record the corrected store ids: %v", err)
+		return
+	}
+	for _, c := range changes {
+		p.logger.Infof("store catalog: %s", c)
+	}
+	// The version is the Target because it answers the question the line raises:
+	// a reader who sees their ids change wants to know what changed them.
+	activity.Record(activity.Event{
+		Kind:   activity.CatalogAdopted,
+		Target: buildinfo.Version,
+		Detail: strings.Join(changes, "; "),
+	})
+}
+
 // reapply writes the policy and logs only when it actually fixed something (the
 // locked-browser count changed), keeping the log quiet in steady state.
 //
@@ -551,8 +616,6 @@ func (p *program) reapply(reason string) {
 			if err := p.enforcers.Remove(p.cfg); err != nil {
 				p.logger.Errorf("lift protection for the pause (%s): %v", reason, err)
 			}
-			stopSessionAgent(p.agent)
-			p.agent = nil
 			p.logger.Infof("protection paused (%s)", pauseSummary(pause))
 		}
 		return
@@ -564,16 +627,7 @@ func (p *program) reapply(reason string) {
 		p.logger.Info("pause over; re-applying protection")
 	}
 
-	now := time.Now()
-	spent := p.spent(now)
-	active := p.resolve(now, spent)
-	// The same counters decide both, deliberately. Resolving against live counters
-	// and then signing against the file would make the signature disagree with what
-	// was just applied for as long as the flush interval, and the schedule ticker
-	// would re-apply every few seconds trying to reconcile a difference that is not
-	// there.
-	p.activeSig = p.cfg.ActiveSignatureWith(now, spent)
-
+	active := p.cfg
 	set := p.enforcers
 	before := enforce.EnforcedCount(set.Verify(active))
 	if err := set.Apply(active); err != nil {
@@ -584,7 +638,6 @@ func (p *program) reapply(reason string) {
 		p.logger.Infof("re-applied after %s: enforced %d -> %d", reason, before, after)
 		p.recordPolicyTamper(reason, before, after)
 	}
-	p.ensureAgent(active)
 }
 
 // recordPolicyTamper notes in the activity log that enforcement had drifted and
@@ -617,83 +670,6 @@ func isCorrectedTamper(reason string, before, after int) bool {
 	return reason == reasonRegistryChange && after > before
 }
 
-// ensureAgent keeps the session helper running while a window-title rule needs it,
-// and shuts it down when none does. It is driven from reapply rather than from the
-// sweep ticker: starting a process is not something to attempt every second, and a
-// helper that appears within 30 seconds of someone signing in is soon enough for a
-// rule that only matches windows they have opened since.
-//
-// Callers must hold applyMu.
-func (p *program) ensureAgent(active policy.Config) {
-	// An interactive `guard run` is already in the user's session, so it can see
-	// the windows itself and a helper would only duplicate the work.
-	if !policy.NeedsTitles(active.BlockedApps()) || p.interactive {
-		stopSessionAgent(p.agent)
-		p.agent = nil
-		return
-	}
-	exe, err := os.Executable()
-	if err != nil {
-		p.logAgent(fmt.Sprintf("locate executable: %v", err))
-		return
-	}
-	agent, err := ensureSessionAgent(p.agent, exe, p.configPath)
-	p.agent = agent
-	if err != nil {
-		p.logAgent(err.Error())
-		return
-	}
-	p.logAgent("")
-}
-
-// logAgent reports a change in the session agent's health, once. Nobody signed in
-// is the common case on a server or a locked machine, and it must not fill the log.
-func (p *program) logAgent(msg string) {
-	if msg == p.lastAgentErr {
-		return
-	}
-	if msg != "" {
-		p.logger.Warningf("session agent unavailable, so window-title rules are not enforced: %s", msg)
-	} else if p.lastAgentErr != "" {
-		p.logger.Infof("session agent running; window-title rules are enforced again")
-	}
-	p.lastAgentErr = msg
-}
-
-// spent is the service's view of how much of each daily budget has gone. It comes
-// from the live tracker rather than the ledger file, because the file is up to a
-// flush interval behind and enforcement cannot be.
-//
-// Callers must hold applyMu.
-func (p *program) spent(now time.Time) policy.Spent {
-	if p.usage == nil {
-		return p.cfg.SpentAt(now) // no tracker yet: read the ledger, which fails closed
-	}
-	return policy.Spent{
-		ByBlock:    p.usage.Spent(p.cfg.DayKey(now)),
-		Unreadable: p.usage.State() == usage.StateUnreadable,
-	}
-}
-
-// resolve narrows the config to what should be enforced right now, logging any
-// schedule problem that made policy.EnforcedAt fall back to ignoring it.
-//
-// Callers must hold applyMu.
-func (p *program) resolve(now time.Time, spent policy.Spent) policy.Config {
-	active, err := p.cfg.EnforcedAtWith(now, spent)
-	if err != nil {
-		p.logger.Errorf("invalid schedule (%v); enforcing every enabled extension until it is corrected", err)
-	}
-	return active
-}
-
-// checkPause re-applies when a pause has ended since the last cycle.
-//
-// It only has to notice, not to decide. A bounded pause expires by the clock in
-// scm.Paused, so protection is already considered on the moment the deadline
-// passes, whether or not anything is running - this is what turns that back into
-// enforcement, promptly. The reverse direction (a pause starting) needs no
-// watcher because the command that starts one lifts enforcement itself.
 func (p *program) checkPause() {
 	p.applyMu.Lock()
 	ended := p.paused && !p.pausedAt().Paused
@@ -716,201 +692,6 @@ func pauseSummary(p scm.PauseState) string {
 	return "until " + p.Until.Local().Format(time.RFC1123)
 }
 
-// checkSchedule re-applies only when a block boundary has been crossed since the
-// last apply. It runs every few seconds, so it deliberately does no registry work
-// to decide - comparing the resolved signature is pure computation.
-func (p *program) checkSchedule() {
-	p.applyMu.Lock()
-	now := time.Now()
-	changed := p.cfg.ActiveSignatureWith(now, p.spent(now)) != p.activeSig
-	p.applyMu.Unlock()
-	if changed {
-		p.reapply("schedule")
-	}
-}
-
-// measureUsage charges the time since the last observation to every limited block
-// being used right now, and reports whether one of them has just run out - which
-// the caller turns into an immediate re-apply, because a budget reaching zero has
-// to start a launch block, not only close what is already open.
-//
-// It is also where the day rolling over is noticed. Nothing has to be reset for
-// that: the counters are filed per day, so a new day is simply a key nobody has
-// written to yet. Only the "already told them" set is cleared.
-func (p *program) measureUsage() bool {
-	p.applyMu.Lock()
-	defer p.applyMu.Unlock()
-
-	if p.usage == nil {
-		return false
-	}
-	if !p.cfg.AnyLimits() && !p.cfg.AnyApps() {
-		return false // nothing configured; do not even look at the process list
-	}
-	now := time.Now()
-	day := p.cfg.DayKey(now)
-	if day != p.usageDay {
-		p.usageDay, p.exhausted = day, map[string]bool{}
-	}
-
-	sample, err := policy.SampleUsage(p.cfg, now)
-	if err != nil {
-		// Same throttling reasoning as the sweep: this runs every second, so a
-		// persistent failure is logged when it changes and then held.
-		p.logUsage(err.Error())
-		return false
-	}
-	p.logUsage("")
-
-	if p.paused {
-		// Protection is off, so a daily budget must not be running down. Charging a
-		// block here would mean an hour's pause quietly spends an hour of an
-		// allowance that was not being enforced for any of it - the budget would be
-		// gone by the time protection came back, for something the guard explicitly
-		// permitted.
-		//
-		// The record is charged anyway, and that is the opposite decision on purpose.
-		// It is not a budget, nothing is enforced from it, and it is the same choice
-		// the activity log makes by recording what happens during a pause: a history
-		// that went quiet during exactly the window usage runs highest would be worse
-		// than no history. The pause itself is in the log next to it, so a reader can
-		// see why an evening looks the way it does.
-		p.usage.Observe(now, day, nil, sample.Apps)
-		return false
-	}
-	p.usage.Observe(now, day, sample.Blocks, sample.Apps)
-
-	// Report the transition, not the state. A block that ran out an hour ago is
-	// still out, and saying so every second would bury everything else in the log.
-	spent := p.spent(now)
-	if spent.Unreadable {
-		// Every limit reads as spent here, which is enforcement working as intended
-		// but is not the same fact as a budget having been used up - and writing "the
-		// daily limit was reached" for a block nobody touched would be a false entry
-		// in a record kept for accountability. Startup rebuilds the ledger, so this is
-		// a state measured in seconds.
-		return false
-	}
-	crossed := false
-	for _, b := range p.cfg.LimitedBlocks() {
-		key := usage.Key(b.ID)
-		out := b.Exhausted(spent)
-		if out && !p.exhausted[key] {
-			crossed = true
-			limit, _ := b.LimitFor()
-			activity.Record(activity.Event{
-				Kind:   activity.LimitReached,
-				Target: blockName(b),
-				Detail: "the " + policy.HumanDuration(limit) + " a day it allows is used up; " + b.GovernedSummary() + " is blocked until the limit resets",
-			})
-		}
-		p.exhausted[key] = out
-	}
-	if crossed {
-		// Flush now rather than at the next interval, for two reasons. If the machine
-		// loses power here, "the budget was spent" must be what comes back, not "there
-		// were four minutes left" - this is the one moment where the exact number
-		// matters. And the session agent, which enforces window-title rules where this
-		// service cannot see them, resolves against the file rather than these
-		// counters: writing at the crossing is what lets it notice within its own
-		// second instead of within a flush interval.
-		if err := p.usage.Flush(); err != nil {
-			p.logger.Warningf("write usage ledger: %v", err)
-		}
-	}
-	return crossed
-}
-
-// flushUsage writes the counters to disk on the flush ticker. Failures are logged
-// once rather than every interval: the usual cause is somebody having taken the
-// ledger away, which does not fix itself and does not need saying repeatedly.
-func (p *program) flushUsage() {
-	p.applyMu.Lock()
-	tracker := p.usage
-	p.applyMu.Unlock()
-	if tracker == nil {
-		return
-	}
-	msg := ""
-	if err := tracker.Flush(); err != nil {
-		msg = err.Error()
-	}
-	// Taken again for the bookkeeping only: the write above must not hold the lock
-	// the one-second sweep needs.
-	p.applyMu.Lock()
-	defer p.applyMu.Unlock()
-	if msg != p.lastUsageErr {
-		if msg != "" {
-			p.logger.Errorf("write usage ledger: %s", msg)
-		} else {
-			p.logger.Infof("usage ledger: writing again")
-		}
-		p.lastUsageErr = msg
-	}
-}
-
-// logUsage reports a change in the measurement's health, once. Callers hold
-// applyMu.
-func (p *program) logUsage(msg string) {
-	if msg == p.lastSampleErr {
-		return
-	}
-	if msg != "" {
-		p.logger.Errorf("measure usage, so daily limits are not being counted: %s", msg)
-	} else if p.lastSampleErr != "" {
-		p.logger.Infof("measuring usage again; daily limits are being counted")
-	}
-	p.lastSampleErr = msg
-}
-
-// blockName is what a block is called in the activity log: the name its author gave
-// it, falling back to the id. The log is read by a person, and "Games" says more
-// than "games-2".
-func blockName(b policy.Block) string {
-	if name := strings.TrimSpace(b.Label); name != "" {
-		return name
-	}
-	return b.ID
-}
-
-// sweepApps closes any blocked application that is running. It is the one piece
-// of enforcement that has to run continuously rather than being written once and
-// honoured by something else, which is why it gets its own ticker instead of
-// waiting for the 30s backstop - see enforce.Sweeper.
-//
-// It takes applyMu so it cannot race a re-apply writing the same launch-block
-// keys, and it resolves the schedule without reporting a bad one: reapply already
-// logs that every cycle, and repeating it every second would bury everything else.
-func (p *program) sweepApps() {
-	p.applyMu.Lock()
-	defer p.applyMu.Unlock()
-
-	if p.paused {
-		return // protection is off; closing an application now would be the guard
-		// enforcing something it has just told the user it is not enforcing
-	}
-	if !p.cfg.AnyApps() {
-		return // nothing configured; do not even look at the process list
-	}
-	now := time.Now()
-	active, _ := p.cfg.EnforcedAtWith(now, p.spent(now))
-	err := p.enforcers.Sweep(active)
-	msg := ""
-	if err != nil {
-		msg = err.Error()
-	}
-	if msg != p.lastSweepErr {
-		if msg != "" {
-			p.logger.Errorf("sweep: %s", msg)
-		} else {
-			p.logger.Infof("sweep: recovered")
-		}
-		p.lastSweepErr = msg
-	}
-}
-
-// updateMode reads the configured auto-update mode under the lock, since the
-// config is replaced by reapply on another goroutine.
 func (p *program) updateMode() string {
 	p.applyMu.Lock()
 	defer p.applyMu.Unlock()

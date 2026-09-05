@@ -117,26 +117,70 @@ const (
 	AppUnblocked      = "app.unblocked"
 	ExtensionEnabled  = "extension.enabled"
 	ExtensionDisabled = "extension.disabled"
-	LimitReached      = "limit.reached" // a block's daily time budget ran out
-	UsageReset        = "usage.reset"   // the record of today's usage was unreadable and was started again
+	// CatalogAdopted is a per-browser store id corrected from the catalog
+	// compiled into the guard. It is how a corrected id reaches a machine that
+	// already has a config, and it only ever adds a browser or moves where one
+	// points - never a Disabled flag - which is why it groups as enforcement.
+	CatalogAdopted = "catalog.adopted"
+	LimitReached   = "limit.reached" // a block's daily time budget ran out
+	UsageReset     = "usage.reset"   // the record of today's usage was unreadable and was started again
 	// CategoryBlocked is a built-in category expanded into the config. It is one
 	// event rather than the thirty the expansion performs: "blocked social media"
 	// is the fact somebody reading this record is looking for, and thirty lines
 	// of Discord.exe, Telegram.exe, facebook.com would bury it.
 	CategoryBlocked = "category.blocked"
+	// CategoryUnblocked is the same expansion lifted. It weakens, so it sits with
+	// the other releases below rather than beside the block it undoes.
+	CategoryUnblocked = "category.unblocked"
 	// HardeningEnabled and HardeningDisabled are a pinned browser setting being
 	// turned on and off - private browsing above all. The disabled half is the one
 	// worth recording: it hands back the window a locked extension does not run in,
 	// so it belongs in the record next to unblocking a site.
 	HardeningEnabled  = "hardening.enabled"
 	HardeningDisabled = "hardening.disabled"
-	BlockCreated      = "block.created"
-	BlockRemoved      = "block.removed"
-	BlockLocked       = "block.locked"
+	// BrowsersBlocked and BrowsersUnblocked are the unsupported-browser block being
+	// switched. The unblocked half is the one that matters: it hands back a browser
+	// carrying none of the locked extensions, which is a way round every lock at
+	// once, and that belongs in the record beside turning an extension off.
+	BrowsersBlocked   = "browsers.blocked"
+	BrowsersUnblocked = "browsers.unblocked"
+	// FilteringEnabled and FilteringDisabled are the request filter being turned on
+	// and off. The enabled half is recorded as carefully as the disabled one, which
+	// is unusual here - turning protection on is not normally news. It is news in
+	// this case because of what it installs: a certificate authority this machine
+	// will trust from that moment on. Somebody reading the record later should be
+	// able to find the day that happened.
+	FilteringEnabled  = "filtering.enabled"
+	FilteringDisabled = "filtering.disabled"
+	// FilteringAdsOn and FilteringAdsOff are ad blocking being switched. The off
+	// half belongs in the record for the usual reason - it filters less than
+	// before. The on half is here for a different one: a page that suddenly has
+	// holes in it is something somebody will come looking to explain, and this is
+	// where they will look.
+	FilteringAdsOn  = "filtering.ads.on"
+	FilteringAdsOff = "filtering.ads.off"
+	BlockCreated    = "block.created"
+	BlockRemoved    = "block.removed"
+	BlockLocked     = "block.locked"
 
 	// The password, and attempts on it.
 	PasswordChanged = "password.changed"
 	PasswordFailed  = "password.failed"
+
+	// The typing challenge, and attempts on it. A failed attempt is recorded for
+	// the same reason a wrong password is: it is the one kind of attempt that
+	// leaves no other trace, and a run of them is the clearest signal there is
+	// that somebody is pushing against the gate rather than using it.
+	ChallengeEnabled  = "challenge.enabled"
+	ChallengeDisabled = "challenge.disabled"
+	ChallengeFailed   = "challenge.failed"
+	ChallengeRefused  = "challenge.refused"
+
+	// ClockChanged is the system clock being moved far enough that the guard stops
+	// believing it. It belongs with the weakening events rather than with
+	// housekeeping: winding the clock past the daily reset hour was the cheapest
+	// way there was to get a spent budget back, needing no password and no admin.
+	ClockChanged = "clock.changed"
 
 	// Housekeeping.
 	UpdateApplied = "update.applied"
@@ -326,6 +370,8 @@ func Describe(e Event) string {
 		return "A pause was refused because a block is locked"
 	case ServiceStarted:
 		return "The guard started"
+	case CatalogAdopted:
+		return "An update corrected which extension is installed in which browser"
 	case ServiceStopped:
 		return "The guard stopped"
 	case DomainBlocked:
@@ -350,10 +396,24 @@ func Describe(e Event) string {
 		return "Stopped protecting " + or(e.Target, "an extension")
 	case CategoryBlocked:
 		return "Blocked the " + or(e.Target, "") + " category"
+	case CategoryUnblocked:
+		return "Stopped blocking " + or(e.Target, "a category")
 	case HardeningEnabled:
 		return "Pinned the browser setting " + or(e.Target, "")
 	case HardeningDisabled:
 		return "Stopped pinning the browser setting " + or(e.Target, "")
+	case BrowsersBlocked:
+		return "Blocked the browsers the guard cannot reach"
+	case BrowsersUnblocked:
+		return "Allowed the browsers the guard cannot reach"
+	case FilteringEnabled:
+		return "Turned on request filtering " + or(e.Detail, "")
+	case FilteringDisabled:
+		return "Turned off request filtering"
+	case FilteringAdsOn:
+		return "Turned on ad blocking"
+	case FilteringAdsOff:
+		return "Turned off ad blocking"
 	case BlockCreated:
 		return "Created the scheduled block " + or(e.Target, "")
 	case BlockRemoved:
@@ -371,6 +431,35 @@ func Describe(e Event) string {
 			return "Wrong password entered for " + e.Target
 		}
 		return "Wrong password entered"
+	case ChallengeEnabled:
+		if e.Detail != "" {
+			return "The typing challenge was turned on or lengthened (" + e.Detail + ")"
+		}
+		return "The typing challenge was turned on"
+	case ChallengeDisabled:
+		if e.Detail != "" {
+			return "The typing challenge was shortened or turned off (" + e.Detail + ")"
+		}
+		return "The typing challenge was turned off"
+	case ChallengeFailed:
+		what := "The typing challenge was not completed"
+		if e.Target != "" {
+			what += " for " + e.Target
+		}
+		if e.Detail == "pasted" {
+			return what + " - the answer was pasted rather than typed"
+		}
+		return what
+	case ChallengeRefused:
+		if e.Target != "" {
+			return "The typing challenge could not be asked for, so " + e.Target + " was refused"
+		}
+		return "The typing challenge could not be asked for, so the action was refused"
+	case ClockChanged:
+		if e.Detail != "" {
+			return "The system clock was " + e.Detail
+		}
+		return "The system clock was moved"
 	case UpdateApplied:
 		return "Updated to " + or(e.Target, "a new version")
 	case LogRotated:
@@ -387,11 +476,13 @@ func (e Event) Severity() string {
 	case LaunchBlocked, AppClosed, TamperConfig, TamperPolicy,
 		DomainBlocked, AppBlocked, ExtensionEnabled, BlockCreated, BlockLocked,
 		CategoryBlocked, HardeningEnabled, AllowlistOn, SiteUnallowed,
-		LimitReached, ProtectionInstalled, ProtectionResumed:
+		ChallengeEnabled, ChallengeRefused,
+		LimitReached, ProtectionInstalled, ProtectionResumed, CatalogAdopted:
 		return SeverityEnforced
 	case DomainUnblocked, AppUnblocked, ExtensionDisabled, BlockRemoved, HardeningDisabled,
-		AllowlistOff, SiteAllowed,
-		ProtectionPaused, ProtectionRemoved, PasswordFailed, UsageReset, PauseRefused:
+		AllowlistOff, SiteAllowed, CategoryUnblocked,
+		ProtectionPaused, ProtectionRemoved, PasswordFailed, UsageReset, PauseRefused,
+		ChallengeDisabled, ChallengeFailed, ClockChanged:
 		return SeverityWeakened
 	}
 	return SeverityNeutral

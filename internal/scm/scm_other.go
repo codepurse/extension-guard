@@ -50,6 +50,15 @@ func GetPasswordHash() (string, bool) { return "", false }
 // ClearPasswordHash is a no-op stub on non-Windows platforms.
 func ClearPasswordHash() error { return errWindowsOnly }
 
+// SetFrictionChars is a no-op stub on unsupported platforms.
+func SetFrictionChars(n int) error { return errWindowsOnly }
+
+// GetFrictionChars reports no challenge on unsupported platforms.
+func GetFrictionChars() (int, bool) { return 0, false }
+
+// ClearFrictionChars is a no-op stub on unsupported platforms.
+func ClearFrictionChars() error { return errWindowsOnly }
+
 // SetTrustedConfig is a no-op stub on unsupported platforms.
 func SetTrustedConfig(data []byte) error { return errWindowsOnly }
 
@@ -59,3 +68,6 @@ func GetTrustedConfig() ([]byte, bool) { return nil, false }
 
 // ClearTrustedConfig is a no-op stub on unsupported platforms.
 func ClearTrustedConfig() error { return errWindowsOnly }
+
+// ClearWrittenTargets is a no-op stub on unsupported platforms.
+func ClearWrittenTargets() error { return errWindowsOnly }

@@ -139,6 +139,35 @@ func LoadTrusted(path string) (Config, Trust, error) {
 	return trustedCfg, TrustRepaired, nil
 }
 
+// LoadEnforced returns the config the guard is enforcing, writing nothing.
+//
+// It answers the same question LoadTrusted does - the trusted copy wins over a
+// hand-edited file - and deliberately drops the other half: the repair. That
+// makes it the right call for a reader, and LoadTrusted the wrong one, for two
+// reasons that only became clear after the repair fired somewhere nobody meant
+// it to.
+//
+// The first is scope. Repairing the config is enforcement, and enforcement is
+// the service's job; it already does this every thirty seconds, as SYSTEM, with
+// the tamper entry in the activity log that makes it accountable. A read-only
+// status window doing it as well adds no protection - the file is corrected
+// either way - and spends a silent write to say so.
+//
+// The second is that the writer cannot always tell which file it has. Both
+// defaultConfigPath implementations fall back to walking up from the working
+// directory, so a process started somewhere unexpected resolves to whatever
+// extension-ids.json is above it. That is how `wails build` came to revert this
+// repository's config on every build: Wails generates its bindings by running
+// the status window binary, NewApp resolved the repo's file, and the repair
+// dutifully overwrote it with the trusted copy from the developer's own install.
+// A read that cannot write cannot make that mistake.
+func LoadEnforced(path string) (Config, error) {
+	if cfg, ok := TrustedConfig(); ok {
+		return cfg, nil
+	}
+	return LoadConfig(path)
+}
+
 // TrustedConfig returns the recorded config and whether one exists. Callers that
 // need to compare a proposed change against what is currently enforced use this
 // rather than reading the file, which is only a mirror.

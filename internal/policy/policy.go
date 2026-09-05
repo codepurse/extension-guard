@@ -20,14 +20,72 @@ const (
 	Edge    Kind = "edge"
 	Brave   Kind = "brave"
 	Firefox Kind = "firefox"
+	Zen     Kind = "zen"
 )
 
 // ChromiumKinds are the Chromium-based browsers that share the
 // ExtensionInstallForcelist policy mechanism.
 var ChromiumKinds = []Kind{Chrome, Edge, Brave}
 
+// GeckoKinds are the Firefox-family browsers the guard knows by name, which
+// share Mozilla's policy engine: ExtensionSettings to force-install,
+// WebsiteFilter to block sites, DisablePrivateBrowsing to close the window a
+// locked extension does not run in.
+//
+// Zen is in it because it reads all of that. It is a Firefox fork, and Mozilla's
+// policy engine reads its settings from a key named after the application -
+// SOFTWARE\Policies\Mozilla\Zen rather than ...\Mozilla\Firefox - so the same
+// policies apply to it once they are written in the right place. That is the
+// whole difference, and it is why Zen needs no extension targets of its own: see
+// Extension.Target.
+//
+// It is not the whole family. The other forks - Floorp, LibreWolf, Waterfox, and
+// whatever ships next year - are found on the machine instead of being listed
+// here, by asking each install what it calls itself: see gecko.go. This list is
+// what the guard writes policy for whether or not it is installed; discovery is
+// what covers the rest once they are.
+var GeckoKinds = []Kind{Firefox, Zen}
+
+// AllKinds is every browser the guard writes policy for on this machine, which
+// is what a status table has a row for and what a hardening gap is measured
+// against.
+//
+// The Gecko half is geckoBrowsers() rather than GeckoKinds, and the difference is
+// the point twice over. On Windows it is longer than the list - a fork found on
+// the machine is written for, and has a row, without anybody adding a line. On
+// Linux it is shorter, because there is nowhere settled to write a fork's
+// policies yet (see policy_linux.go), and listing one there would have the window
+// claim a browser nothing is written for.
+//
+// It returns a fresh slice each call so a caller appending to it cannot reach the
+// package's own lists - which is what the append(append([]Kind{}, ...)) this
+// replaced was spelling out at every call site.
+func AllKinds() []Kind {
+	gecko := geckoBrowsers()
+	out := make([]Kind, 0, len(ChromiumKinds)+len(gecko))
+	out = append(out, ChromiumKinds...)
+	return append(out, geckoKinds(gecko)...)
+}
+
+// Gecko reports whether this browser is one of the Firefox family: the two the
+// guard knows by name, and any fork found on this machine. It is what decides
+// which spelling of a policy a browser gets, and which gaps it inherits.
+func (k Kind) Gecko() bool {
+	for _, g := range GeckoKinds {
+		if g == k {
+			return true
+		}
+	}
+	for _, g := range geckoBrowsers() {
+		if g.Kind == k {
+			return true
+		}
+	}
+	return false
+}
+
 // Target describes what to force-install for one browser. Chromium browsers
-// use ExtensionID + UpdateURL; Firefox uses AddonID + InstallURL.
+// use ExtensionID + UpdateURL; the Firefox family uses AddonID + InstallURL.
 type Target struct {
 	ExtensionID string `json:"extensionId,omitempty"`
 	UpdateURL   string `json:"updateUrl,omitempty"`
@@ -56,6 +114,15 @@ type Extension struct {
 }
 
 // Target returns the extension's target for a browser kind.
+//
+// Zen shares Firefox's target rather than having a field of its own, and that is
+// a fact about the browser rather than a shortcut: a Zen install takes its
+// add-ons from addons.mozilla.org, under the same add-on id and from the same
+// install URL as Firefox, so a separate field could only ever hold a copy. It
+// would also change the shape of every config: extension-ids.json is compared
+// against a trusted copy byte for byte (see trust.go), and adding a field would
+// make every config written before Zen support differ from the one written
+// after it, for a value that is already there.
 func (e Extension) Target(k Kind) Target {
 	switch k {
 	case Chrome:
@@ -64,50 +131,52 @@ func (e Extension) Target(k Kind) Target {
 		return e.Edge
 	case Brave:
 		return e.Brave
-	case Firefox:
+	case Firefox, Zen:
 		return e.Firefox
 	}
 	return Target{}
 }
 
+// setTarget replaces the extension's target for a browser kind. It is the
+// inverse of Target and shares its one asymmetry: Zen writes through to the
+// Firefox field, because that is the field Zen reads from.
+//
+// Only catalog adoption uses this - every other change to a target is somebody
+// editing the config and committing it. See AdoptCatalog.
+func (e *Extension) setTarget(k Kind, t Target) {
+	switch k {
+	case Chrome:
+		e.Chrome = t
+	case Edge:
+		e.Edge = t
+	case Brave:
+		e.Brave = t
+	case Firefox, Zen:
+		e.Firefox = t
+	}
+}
+
 // Config is the parsed extension-ids.json: the full set of extensions the guard
 // force-installs and locks, plus app-level settings.
+// Config is the parsed extension-ids.json: the extensions the guard
+// force-installs and locks, plus the two settings that decide whether that lock
+// actually holds.
 type Config struct {
 	Extensions []Extension `json:"extensions"`
-	// Blocks schedule enforcement and can lock it against early release. Empty
-	// means what it always meant: every enabled extension is enforced around the
-	// clock. It is omitempty so a config without blocks encodes byte-identically
-	// to one written before schedules existed, which keeps trusted copies stable
-	// across the upgrade. See schedule.go.
-	Blocks []Block `json:"blocks,omitempty"`
-	// Domains are sites blocked in every supported browser via its enterprise URL
-	// filter. Blocking a domain also blocks its subdomains. omitempty for the same
-	// reason as Blocks: a config without domains encodes byte-identically to one
-	// written before they existed. See domains.go.
-	Domains []Domain `json:"domains,omitempty"`
-	// Apps are applications the guard keeps closed: an executable, every
-	// executable in a folder, a Microsoft Store app, or anything showing a window
-	// with a given title. omitempty for the same reason as the two above. See
-	// apps.go.
-	Apps []App `json:"apps,omitempty"`
-	// Allowlist is the other way round from Domains: name what is allowed and block
-	// everything else. A nil pointer means the mode does not exist for this config,
-	// which is what every config written before it says. See allowlist.go.
-	Allowlist *Allowlist `json:"allowlist,omitempty"`
 	// Hardening pins the browser settings that decide whether locking an extension
-	// means anything - private browsing above all, since an extension cannot be
-	// force-installed into an Incognito window. A nil pointer rather than a value
-	// struct so a config that hardens nothing encodes byte-identically to one
-	// written before this existed, which is what keeps trusted copies stable across
-	// the upgrade. See hardening.go.
+	// means anything. Private browsing above all: an extension cannot be
+	// force-installed into an Incognito window, so without this the lock is one
+	// keystroke from being off. A nil pointer rather than a value struct so a
+	// config that hardens nothing encodes byte-identically to one written before
+	// this existed, which is what keeps trusted copies stable across an upgrade.
+	// See hardening.go.
 	Hardening *Hardening `json:"hardening,omitempty"`
-	// ResetAt is when a day rolls over for the daily limits, as "HH:MM" in local
-	// time. Empty means midnight (DefaultResetAt). It is a machine-wide setting
-	// rather than a per-block one deliberately: "the day starts at four in the
-	// morning" is a fact about the person using the computer, and letting two
-	// blocks disagree about when today is would buy nothing but a way to be
-	// confused. See limits.go.
-	ResetAt string `json:"resetAt,omitempty"`
+	// BlockUnsupported closes the other hole in the same promise: a browser the
+	// guard writes no policy for carries none of the locked extensions, so leaving
+	// it runnable is leaving a way round every lock. Off by default, because
+	// blocking a browser somebody relies on is not something to do without being
+	// asked. See browsers.go.
+	BlockUnsupported bool `json:"blockUnsupported,omitempty"`
 	// AutoUpdate controls how the service reacts to a newer release:
 	// "notify" (default) logs availability, "apply" downloads and installs it
 	// silently, "off" disables the periodic check. See UpdateMode. Silent "apply"
@@ -234,32 +303,27 @@ func (c Config) AnyEnabled() bool {
 // extension so an already-deployed config keeps loading after the upgrade.
 func (c *Config) UnmarshalJSON(data []byte) error {
 	var multi struct {
-		Extensions []Extension `json:"extensions"`
-		Blocks     []Block     `json:"blocks"`
-		Domains    []Domain    `json:"domains"`
-		Apps       []App       `json:"apps"`
-		Allowlist  *Allowlist  `json:"allowlist"`
-		Hardening  *Hardening  `json:"hardening"`
-		ResetAt    string      `json:"resetAt"`
-		AutoUpdate string      `json:"autoUpdate"`
+		Extensions       []Extension `json:"extensions"`
+		Hardening        *Hardening  `json:"hardening"`
+		BlockUnsupported bool        `json:"blockUnsupported"`
+		AutoUpdate       string      `json:"autoUpdate"`
 	}
 	if err := json.Unmarshal(data, &multi); err != nil {
 		return err
 	}
-	// Any of the modern top-level fields identifies the current shape. Apps counts
-	// too: a config that blocks only applications has no extensions to recognize
-	// it by, and falling through to the legacy branch would silently discard it.
-	// Hardening counts for the same reason - a config that only pins browser
-	// settings names no extension, domain or app at all.
-	if len(multi.Extensions) > 0 || len(multi.Domains) > 0 || len(multi.Apps) > 0 ||
-		multi.Hardening != nil || multi.Allowlist != nil {
+	// Any of the modern top-level fields identifies the current shape. Hardening
+	// counts on its own: a config that only pins browser settings names no
+	// extension at all.
+	//
+	// Every field of the config has to be listed twice: once on the struct and
+	// once here. That is the trap this function sets for anyone adding one, and it
+	// fails in the worst available way - the field parses into nothing, the config
+	// round-trips without it, and the guard reports the feature as off while the
+	// file plainly says otherwise.
+	if len(multi.Extensions) > 0 || multi.Hardening != nil || multi.BlockUnsupported {
 		c.Extensions = multi.Extensions
-		c.Blocks = multi.Blocks
-		c.Domains = multi.Domains
-		c.Apps = multi.Apps
 		c.Hardening = multi.Hardening
-		c.Allowlist = multi.Allowlist
-		c.ResetAt = multi.ResetAt
+		c.BlockUnsupported = multi.BlockUnsupported
 		c.AutoUpdate = multi.AutoUpdate
 		return nil
 	}
@@ -340,10 +404,96 @@ func configuredFirefox(targets []Target) []Target {
 // With several extensions configured for a browser, Locked means every one of
 // them is force-installed; Detail is "partial (n/total)" when only some are.
 type Status struct {
-	Kind      Kind   // which browser
-	Installed bool   // browser detected on this machine
-	Locked    bool   // force-install policy present and correct for all configured extensions
-	Detail    string // human-readable note: "ok", "missing", "tampered", "partial (n/m)", "not configured"
+	Kind      Kind // which browser
+	Installed bool // browser detected on this machine
+	Locked    bool // force-install policy present and correct for all configured extensions
+	// Detail is a human-readable note: "ok", "missing", "tampered",
+	// "partial (n/m)", and for a total of zero either "none active now" (nothing
+	// is due to be enforced at this moment) or "no id for this browser" (nothing
+	// ever will be, because no store id is configured for it). The hardening rows
+	// still say "not configured", which is the right words there - a knob nobody
+	// asked for. See lockStatusExt.
+	Detail string
+	// Foreign is every extension id this browser force-installs that the config
+	// does not name - a pin the guard neither wrote nor can lift.
+	//
+	// It exists because Chromium has a second way to force-install, the
+	// ExtensionSettings policy, which the guard writes for the Firefox family only.
+	// An entry there survives the forcelist being emptied, so without this the
+	// window reports a browser as carrying nothing while the browser goes on
+	// refusing to let the extension be removed, and an uninstall hands the machine
+	// back with it still pinned.
+	//
+	// Reported rather than removed. Policy the guard did not write may be an
+	// administrator's, and the same reasoning that keeps syncNumberedList from
+	// discarding a foreign forcelist entry applies here - but staying silent about
+	// it was never part of that bargain.
+	Foreign []string
+	// Gap says why this browser is not locked, in the one form a caller can branch
+	// on. Detail is written for a person to read and its wording is free to change;
+	// this is not.
+	//
+	// It exists because "not locked" covers two failures and one ordinary state,
+	// and telling them apart is the whole difference between a warning worth
+	// interrupting somebody for and one that teaches them to ignore the panel. Only
+	// the extension forcelist sets it - see lockStatusExt; the hardening and URL
+	// rows share lockStatus and have their own vocabulary.
+	Gap GapKind
+}
+
+// GapKind is why a browser is not carrying what the config says it should.
+type GapKind string
+
+const (
+	// GapNone is a browser that is locked, or one whose verdict is not this
+	// question's business.
+	GapNone GapKind = ""
+	// GapMissing is the fault: ids are configured, they are due right now, and the
+	// browser is carrying none or only some of them. It may clear on its own - a
+	// re-apply, a browser restart - which is exactly why it is worth saying while
+	// it is true rather than waiting to be sure.
+	GapMissing GapKind = "missing"
+	// GapNoID is permanent: no store id is configured for this browser, so nothing
+	// will ever be enforced in it. No hour of the day fixes this one, which is what
+	// makes printing it in the same words as GapIdle so expensive - it is how Edge
+	// came to sit unprotected behind a status window nobody had reason to doubt.
+	GapNoID GapKind = "noid"
+	// GapIdle is not a gap at all: nothing is due to be enforced at this moment.
+	// A schedule outside its window is somebody's own decision working correctly,
+	// and warning about it every evening would be complaining about their config.
+	GapIdle GapKind = "idle"
+)
+
+// lockStatusExt is lockStatus for the extension forcelist, which can tell apart
+// two situations lockStatus is obliged to report identically - and has to,
+// because conflating them hid a real hole for weeks.
+//
+// Both arrive as a total of zero. "Nothing is due to be enforced in any browser
+// at this moment" is the ordinary state outside a block's window, and saying so
+// is correct. "This browser has no id configured, so nothing will ever be
+// enforced in it" is a permanent gap that no hour of the day will fix. Printed
+// as the same words, the second reads as the first, and a browser filtering
+// nothing looks like a schedule doing its job. That is exactly how Edge came to
+// sit unprotected behind a status window nobody had reason to doubt.
+//
+// considered is how many enabled extensions are active right now for this
+// browser, before asking whether their targets are usable. Non-zero with a total
+// of zero is the gap: something should be enforced here and there is nowhere to
+// install it from.
+func lockStatusExt(s Status, matched, total, considered int) Status {
+	if total == 0 {
+		if considered == 0 {
+			s.Detail, s.Gap = "none active now", GapIdle
+		} else {
+			s.Detail, s.Gap = "no id for this browser", GapNoID
+		}
+		return s
+	}
+	s = lockStatus(s, matched, total)
+	if !s.Locked {
+		s.Gap = GapMissing
+	}
+	return s
 }
 
 // lockStatus turns a matched/total tally into a Status detail + locked flag,

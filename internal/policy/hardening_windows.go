@@ -9,13 +9,13 @@ import (
 	"golang.org/x/sys/windows/registry"
 )
 
-// The registry half of hardening.go. Every value here is a DWORD directly under a
-// browser's policy root - the same root the force-install list and the URL filter
-// already live under, which is what makes this the cheapest enforcement in the
-// guard: the tamper watcher is already watching that hive, so a deleted value is
-// restored within milliseconds without a line of new code, and nothing here
-// terminates a process or writes outside SOFTWARE\Policies. Like domain blocking
-// and unlike app blocking, it could ship before the code-signing certificate.
+// The registry half of hardening.go. Every value here lives under a browser's
+// policy root - the same root the force-install list and the URL filter already
+// live under, which is what makes this the cheapest enforcement in the guard: the
+// tamper watcher is already watching that hive, so a deleted value is restored
+// within milliseconds without a line of new code, and nothing here terminates a
+// process or writes outside SOFTWARE\Policies. Like domain blocking and unlike app
+// blocking, it could ship before the code-signing certificate.
 //
 // What is verified is that the *policy is written*, not that the browser obeyed
 // it. That is true of every policy in this package - the guard cannot see inside
@@ -43,24 +43,44 @@ const (
 	// describe, and leaving it out would close the front door of the one browser
 	// that ships a back one.
 	valTorDisabled = "TorDisabled"
-	// valFirefoxPrivate is Firefox's equivalent of the two Chromium switches at
-	// once: Firefox has no guest profile, so private browsing is the whole surface.
-	// Firefox reads booleans from the registry as REG_DWORD 0/1.
+	// valFirefoxPrivate is the Firefox family's equivalent of the two Chromium
+	// switches at once: there is no guest profile, so private browsing is the whole
+	// surface. Mozilla's policy engine reads booleans from the registry as REG_DWORD
+	// 0/1, and Zen reads this one from its own root exactly as Firefox does.
 	valFirefoxPrivate = "DisablePrivateBrowsing"
 )
 
-// hardeningRoot is the policy key each browser's values are written under. It is
-// the same root the forcelist and URL filter use, one level up from their
-// subkeys.
-func hardeningRoot(k Kind) string {
-	if k == Firefox {
-		return firefoxPolicyRoot
-	}
-	return chromiumPolicyRoot[k]
+// mandatoryPrivateSubkey is the private-extensions knob, and it is the only
+// hardening setting that is not a value at all: Edge reads it as one of the
+// numbered lists numberedlist_windows.go exists for - "1", "2", "3", one
+// extension id each. That is why it is written beside syncPolicyValues rather
+// than through it, since the polRef/polVal model above is one name and one value.
+// It is also why it costs nothing to get the guard's usual manners here:
+// syncNumberedList already keeps entries the guard did not write and renumbers
+// what is left.
+const mandatoryPrivateSubkey = "MandatoryExtensionsForInPrivateNavigation"
+
+// polRef locates one policy value relative to a browser's policy root. Sub is
+// empty for a value directly under the root, which is everything except Mozilla's
+// DoH block.
+type polRef struct {
+	Sub  string
+	Name string
 }
 
-// managedNames is every value name the guard may write for a browser, mapped to
-// every DWORD it may write there.
+// polVal is one policy value's contents. IsStr picks which field is meant, so a
+// REG_SZ holding "0" is never confused with a REG_DWORD holding zero.
+type polVal struct {
+	DWord uint32
+	Str   string
+	IsStr bool
+}
+
+func dword(v uint32) polVal { return polVal{DWord: v} }
+func sz(s string) polVal    { return polVal{Str: s, IsStr: true} }
+
+// managedValues is every value the guard may write for a browser, mapped to every
+// value it may write there.
 //
 // The second half is what makes removal safe. Unlike the forcelist there is no
 // prefix identifying an entry as ours, and unlike the URL filter the value is not
@@ -72,24 +92,24 @@ func hardeningRoot(k Kind) string {
 // already set to the same thing. Erring the other way would leave Incognito
 // disabled after an authorized uninstall, which is worse - the machine has to come
 // back the way it was.
-func managedNames(k Kind) map[string][]uint32 {
-	out := map[string][]uint32{}
+//
+// The DoH templates are the one place that compromise is tighter rather than
+// looser: only the exact resolver URLs this build knows count as ours, so an
+// administrator who had pinned their own resolver keeps it. Losing somebody's
+// DnsOverHttpsMode is recoverable; silently repointing their DNS is not.
+func managedValues(k Kind, gecko bool) map[polRef][]polVal {
+	out := map[polRef][]polVal{}
+	at := func(name string, vals ...polVal) { out[polRef{Name: name}] = vals }
+
 	if KnobSupported(KnobPrivateBrowsing, k) {
-		if k == Firefox {
-			out[valFirefoxPrivate] = []uint32{1}
+		if gecko {
+			at(valFirefoxPrivate, dword(1))
 		} else {
-			out[valIncognito] = []uint32{1}
-			out[valGuestMode] = []uint32{0}
+			at(valIncognito, dword(1))
+			at(valGuestMode, dword(0))
 			if k == Brave {
-				out[valTorDisabled] = []uint32{1}
+				at(valTorDisabled, dword(1))
 			}
-		}
-	}
-	if KnobSupported(KnobSafeSearch, k) {
-		out[valGoogleSafe] = []uint32{1}
-		out[valYouTubeRestrict] = []uint32{1, 2}
-		if k == Edge {
-			out[valBingSafe] = []uint32{1, 2}
 		}
 	}
 	return out
@@ -98,31 +118,38 @@ func managedNames(k Kind) map[string][]uint32 {
 // wantedValues is what one browser's policy root should hold right now. An empty
 // map means the guard asks nothing of this browser, either because no knob is on
 // or because none of the knobs that are on exist for it.
-func wantedValues(k Kind, h Hardening) map[string]uint32 {
-	out := map[string]uint32{}
+func wantedValues(k Kind, gecko bool, h Hardening) map[polRef]polVal {
+	out := map[polRef]polVal{}
+	at := func(name string, v polVal) { out[polRef{Name: name}] = v }
+
 	if h.PrivateBrowsing && KnobSupported(KnobPrivateBrowsing, k) {
-		if k == Firefox {
-			out[valFirefoxPrivate] = 1
+		if gecko {
+			at(valFirefoxPrivate, dword(1))
 		} else {
-			out[valIncognito] = 1
-			out[valGuestMode] = 0
+			at(valIncognito, dword(1))
+			at(valGuestMode, dword(0))
 			if k == Brave {
-				out[valTorDisabled] = 1
+				at(valTorDisabled, dword(1))
 			}
 		}
 	}
-	if level, on := h.SafeSearchOn(); on && KnobSupported(KnobSafeSearch, k) {
-		restrict := uint32(2)
-		if level == SafeSearchModerate {
-			restrict = 1
-		}
-		out[valGoogleSafe] = 1
-		out[valYouTubeRestrict] = restrict
-		if k == Edge {
-			out[valBingSafe] = restrict
-		}
-	}
 	return out
+}
+
+// syncMandatoryPrivate writes, or clears, one browser's required-extension list.
+// Clearing is by exact id rather than by wiping the key, for the reason
+// managedValues gives: an administrator may have required extensions of their
+// own, and turning this knob off is not permission to discard them.
+func syncMandatoryPrivate(cfg Config, h Hardening, t policyTarget) error {
+	ids := mandatoryPrivateIDs(cfg, t.Kind)
+	if len(ids) == 0 {
+		return nil
+	}
+	var want []string
+	if h.PrivateExtensions {
+		want = ids
+	}
+	return syncNumberedList(t.Root+`\`+mandatoryPrivateSubkey, want, dropExact(ids))
 }
 
 // ApplyHardening reconciles every browser's policy root with the hardening cfg
@@ -132,9 +159,12 @@ func wantedValues(k Kind, h Hardening) map[string]uint32 {
 func ApplyHardening(cfg Config) error {
 	h := cfg.Hardened()
 	var errs []string
-	for _, k := range append(append([]Kind{}, ChromiumKinds...), Firefox) {
-		if err := syncPolicyValues(hardeningRoot(k), wantedValues(k, h), managedNames(k)); err != nil {
-			errs = append(errs, fmt.Sprintf("%s: %v", k, err))
+	for _, t := range policyTargets() {
+		if err := syncPolicyValues(t.Root, wantedValues(t.Kind, t.Gecko, h), managedValues(t.Kind, t.Gecko)); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", t.Kind, err))
+		}
+		if err := syncMandatoryPrivate(cfg, h, t); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", t.Kind, err))
 		}
 	}
 	// Same reason as ApplyDomains: a running Chromium will not see any of this
@@ -154,13 +184,19 @@ func ApplyHardening(cfg Config) error {
 func VerifyHardening(cfg Config) []Status {
 	h := cfg.Hardened()
 	installed := DetectBrowsers()
-	kinds := append(append([]Kind{}, ChromiumKinds...), Firefox)
-	out := make([]Status, 0, len(kinds))
-	for _, k := range kinds {
+	targets := policyTargets()
+	out := make([]Status, 0, len(targets))
+	for _, t := range targets {
+		var listWant []string
+		if h.PrivateExtensions {
+			listWant = mandatoryPrivateIDs(cfg, t.Kind)
+		}
 		out = append(out, verifyHardeningOne(
-			Status{Kind: k, Installed: installed[k]},
-			hardeningRoot(k),
-			wantedValues(k, h),
+			Status{Kind: t.Kind, Installed: installed[t.Kind]},
+			t.Root,
+			wantedValues(t.Kind, t.Gecko, h),
+			t.Root+`\`+mandatoryPrivateSubkey,
+			listWant,
 			h.Any(),
 		))
 	}
@@ -171,24 +207,27 @@ func VerifyHardening(cfg Config) []Status {
 // worth the extra branch: a config with only SafeSearch on asks nothing of
 // Firefox, and reporting that as "not configured" would read as "nobody asked",
 // when in fact somebody asked and Firefox cannot do it.
-func verifyHardeningOne(s Status, root string, want map[string]uint32, asked bool) Status {
-	if len(want) == 0 {
+func verifyHardeningOne(s Status, root string, want map[polRef]polVal, listPath string, listWant []string, asked bool) Status {
+	if len(want) == 0 && len(listWant) == 0 {
 		if asked {
 			s.Detail = "not available in " + string(s.Kind)
 			return s
 		}
 		return lockStatus(s, 0, 0)
 	}
+	current := readPolicyValues(root, want)
 	matched := 0
-	if key, err := registry.OpenKey(registry.LOCAL_MACHINE, root, registry.QUERY_VALUE); err == nil {
-		for name, wantVal := range want {
-			if cur, _, err := key.GetIntegerValue(name); err == nil && uint32(cur) == wantVal {
-				matched++
-			}
+	for ref, wantVal := range want {
+		if cur, ok := current[ref]; ok && cur == wantVal {
+			matched++
 		}
-		key.Close()
 	}
-	return lockStatus(s, matched, len(want))
+	// The required-extension list counts entry by entry into the same tally, so a
+	// browser holding the settings but missing one required id reads as partial
+	// rather than as locked - the same arithmetic VerifyDomains does, and for the
+	// same reason: a list that is half written is not a list that is enforced.
+	listMatched, listTotal := tally(listPath, listWant)
+	return lockStatus(s, matched+listMatched, len(want)+listTotal)
 }
 
 // RemoveHardening clears every value the guard manages here, whatever the config
@@ -196,9 +235,12 @@ func verifyHardeningOne(s Status, root string, want map[string]uint32, asked boo
 // a pause has to hand Incognito back, or protection being off would not be off.
 func RemoveHardening(cfg Config) error {
 	var errs []string
-	for _, k := range append(append([]Kind{}, ChromiumKinds...), Firefox) {
-		if err := syncPolicyValues(hardeningRoot(k), nil, managedNames(k)); err != nil {
-			errs = append(errs, fmt.Sprintf("%s: %v", k, err))
+	for _, t := range policyTargets() {
+		if err := syncPolicyValues(t.Root, nil, managedValues(t.Kind, t.Gecko)); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", t.Kind, err))
+		}
+		if err := syncMandatoryPrivate(cfg, Hardening{}, t); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", t.Kind, err))
 		}
 	}
 	_ = refreshBrowserPolicy()
@@ -208,38 +250,39 @@ func RemoveHardening(cfg Config) error {
 	return nil
 }
 
-// syncPolicyValues reconciles the DWORD policy values under path so that
-// afterwards every name in want holds its value, every managed name that is not
-// wanted and still holds one of the guard's own values is gone, and everything
-// else under the key is untouched.
+// syncPolicyValues reconciles the policy values under root so that afterwards
+// every ref in want holds its value, every managed ref that is not wanted and
+// still holds one of the guard's own values is gone, and everything else under the
+// key is untouched.
 //
-// It opens the key for writing only when something actually has to change. Apply
+// It opens a key for writing only when something actually has to change. Apply
 // runs on every reconcile cycle - startup, tamper, the backstop timer, every
 // schedule boundary - so rewriting these values each time would mark the browser
 // policy dirty forever and ask Windows for a machine-wide policy refresh every
 // few seconds to confirm that nothing had changed. It also means a browser the
-// config says nothing about never has a key created for it.
-func syncPolicyValues(path string, want map[string]uint32, managed map[string][]uint32) error {
-	current := readPolicyValues(path, managed)
+// config says nothing about never has a key created for it, which now extends to
+// subkeys: a machine with the DNS filter off never grows a DNSOverHTTPS key.
+func syncPolicyValues(root string, want map[polRef]polVal, managed map[polRef][]polVal) error {
+	current := readPolicyValues(root, managed)
 
-	writes := map[string]uint32{}
-	for name, val := range want {
-		if cur, ok := current[name]; !ok || cur != val {
-			writes[name] = val
+	writes := map[polRef]polVal{}
+	for ref, val := range want {
+		if cur, ok := current[ref]; !ok || cur != val {
+			writes[ref] = val
 		}
 	}
-	var deletes []string
-	for name, ours := range managed {
-		if _, keep := want[name]; keep {
+	deletes := map[polRef]bool{}
+	for ref, ours := range managed {
+		if _, keep := want[ref]; keep {
 			continue
 		}
-		cur, ok := current[name]
+		cur, ok := current[ref]
 		if !ok {
 			continue
 		}
 		for _, o := range ours {
 			if cur == o {
-				deletes = append(deletes, name)
+				deletes[ref] = true
 				break
 			}
 		}
@@ -248,42 +291,188 @@ func syncPolicyValues(path string, want map[string]uint32, managed map[string][]
 		return nil
 	}
 
-	key, _, err := registry.CreateKey(registry.LOCAL_MACHINE, path, registry.ALL_ACCESS)
-	if err != nil {
-		return err
-	}
-	defer key.Close()
-	// Next to the write itself, for the reason writeNumberedList marks it there: a
-	// policy added later cannot forget to ask for the refresh.
-	markBrowserPolicyChanged()
-
-	for name, val := range writes {
-		if err := key.SetDWordValue(name, val); err != nil {
-			return err
-		}
-	}
-	for _, name := range deletes {
-		if err := key.DeleteValue(name); err != nil && err != registry.ErrNotExist {
+	// Grouped by subkey so each one is opened once, and so a subkey with nothing
+	// to do is not created just because its parent had a write.
+	for _, sub := range subKeysTouched(writes, deletes) {
+		if err := syncOneKey(root, sub, writes, deletes); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// readPolicyValues reads the managed value names that are present under path. A
-// missing key reads as an empty map rather than an error, exactly as a missing
-// numbered list does.
-func readPolicyValues(path string, managed map[string][]uint32) map[string]uint32 {
-	out := make(map[string]uint32, len(managed))
-	key, err := registry.OpenKey(registry.LOCAL_MACHINE, path, registry.QUERY_VALUE)
-	if err != nil {
-		return out
-	}
-	defer key.Close()
-	for name := range managed {
-		if v, _, err := key.GetIntegerValue(name); err == nil {
-			out[name] = uint32(v)
+// subKeysTouched lists the distinct subkeys the pending changes land in, with the
+// root itself first so a fresh policy root exists before a subkey is created
+// under it.
+func subKeysTouched(writes map[polRef]polVal, deletes map[polRef]bool) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(sub string) {
+		if seen[sub] {
+			return
 		}
+		seen[sub] = true
+		if sub == "" {
+			out = append([]string{sub}, out...)
+			return
+		}
+		out = append(out, sub)
+	}
+	for ref := range writes {
+		add(ref.Sub)
+	}
+	for ref := range deletes {
+		add(ref.Sub)
 	}
 	return out
+}
+
+// syncOneKey applies the writes and deletes that belong to one key.
+func syncOneKey(root, sub string, writes map[polRef]polVal, deletes map[polRef]bool) error {
+	path := keyPath(root, sub)
+	mine := func(ref polRef) bool { return ref.Sub == sub }
+
+	any := false
+	for ref := range writes {
+		if mine(ref) {
+			any = true
+			break
+		}
+	}
+	if !any {
+		for ref := range deletes {
+			if mine(ref) {
+				any = true
+				break
+			}
+		}
+	}
+	if !any {
+		return nil
+	}
+
+	key, _, err := registry.CreateKey(registry.LOCAL_MACHINE, path, registry.ALL_ACCESS)
+	if err != nil {
+		return err
+	}
+	// Next to the write itself, for the reason writeNumberedList marks it there: a
+	// policy added later cannot forget to ask for the refresh.
+	markBrowserPolicyChanged()
+
+	for ref, val := range writes {
+		if !mine(ref) {
+			continue
+		}
+		if err := setPolicyValue(key, ref.Name, val); err != nil {
+			key.Close()
+			return err
+		}
+	}
+	for ref := range deletes {
+		if !mine(ref) {
+			continue
+		}
+		if err := key.DeleteValue(ref.Name); err != nil && err != registry.ErrNotExist {
+			key.Close()
+			return err
+		}
+	}
+	key.Close()
+
+	// A subkey the guard created and has now emptied is removed, so an authorized
+	// teardown leaves the hive as it found it. Only when it is genuinely empty:
+	// Mozilla's DNSOverHTTPS block can also hold an administrator's ExcludedDomains,
+	// and deleting a key because our four values left would take theirs with it.
+	if sub != "" {
+		pruneEmptyKey(path)
+	}
+	return nil
+}
+
+func setPolicyValue(key registry.Key, name string, val polVal) error {
+	if val.IsStr {
+		return key.SetStringValue(name, val.Str)
+	}
+	return key.SetDWordValue(name, val.DWord)
+}
+
+func keyPath(root, sub string) string {
+	if sub == "" {
+		return root
+	}
+	return root + `\` + sub
+}
+
+// pruneEmptyKey deletes path if it holds no values and no subkeys. Best-effort
+// throughout: this is tidiness, and every failure mode leaves behind an empty key
+// that enforces nothing.
+func pruneEmptyKey(path string) {
+	key, err := registry.OpenKey(registry.LOCAL_MACHINE, path, registry.QUERY_VALUE|registry.ENUMERATE_SUB_KEYS)
+	if err != nil {
+		return
+	}
+	names, errN := key.ReadValueNames(-1)
+	subs, errS := key.ReadSubKeyNames(-1)
+	key.Close()
+	if errN != nil || errS != nil || len(names) > 0 || len(subs) > 0 {
+		return
+	}
+	_ = registry.DeleteKey(registry.LOCAL_MACHINE, path)
+}
+
+// readPolicyValues reads the refs that are present under root, typed the way the
+// caller expects them. A missing key reads as an absent value rather than an
+// error, exactly as a missing numbered list does.
+//
+// The expected type comes from the caller's own map, which is what makes a
+// REG_DWORD sitting where a REG_SZ belongs read as absent rather than as a match:
+// it is not a value this guard would have written, so it is not one it should
+// claim or clear.
+func readPolicyValues[T any](root string, expect map[polRef]T) map[polRef]polVal {
+	out := make(map[polRef]polVal, len(expect))
+	byKey := map[string][]polRef{}
+	for ref := range expect {
+		byKey[ref.Sub] = append(byKey[ref.Sub], ref)
+	}
+	for sub, refs := range byKey {
+		key, err := registry.OpenKey(registry.LOCAL_MACHINE, keyPath(root, sub), registry.QUERY_VALUE)
+		if err != nil {
+			continue
+		}
+		for _, ref := range refs {
+			if v, ok := readOne(key, ref.Name, wantsString(expect[ref])); ok {
+				out[ref] = v
+			}
+		}
+		key.Close()
+	}
+	return out
+}
+
+// wantsString reports whether the expected value for a ref is a REG_SZ. The two
+// map shapes this is asked about - one value, or every value the guard accepts -
+// agree on the type, so the first entry answers for a slice.
+func wantsString(expect any) bool {
+	switch v := expect.(type) {
+	case polVal:
+		return v.IsStr
+	case []polVal:
+		return len(v) > 0 && v[0].IsStr
+	}
+	return false
+}
+
+func readOne(key registry.Key, name string, wantStr bool) (polVal, bool) {
+	if wantStr {
+		s, _, err := key.GetStringValue(name)
+		if err != nil {
+			return polVal{}, false
+		}
+		return sz(s), true
+	}
+	v, _, err := key.GetIntegerValue(name)
+	if err != nil {
+		return polVal{}, false
+	}
+	return dword(uint32(v)), true
 }

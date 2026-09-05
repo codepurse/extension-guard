@@ -1,22 +1,37 @@
 Extension Guard - what this installs and what it does
 
-Extension Guard is a parental-control / accountability tool. By installing it you
-acknowledge and agree to the following:
+Extension Guard is a parental-control / accountability tool. By installing it
+you acknowledge and agree to the following:
 
-1. This software keeps the configured browser extension(s) force-installed in your
-   web browsers using Windows enterprise policy. While it is active, the
-   extension cannot be removed from the browser's normal Remove/Disable buttons.
+1. This software keeps the browser extensions you choose force-installed on this
+   device, using Windows enterprise policy, so they cannot be removed or
+   switched off from the browser's own Remove and Disable buttons.
 
-2. It installs a background Windows service and a watchdog that restart
+2. Two settings decide whether that holds, and both can be turned on here. A
+   force-installed extension does not run in a Chrome, Edge or Brave private
+   window, so this software can turn private and guest windows off. A browser it
+   cannot reach carries none of the extensions at all, so it can stop such a
+   browser from starting.
+
+3. It does not block websites, block applications, filter your network traffic,
+   or record where you go. What the installed extensions do is theirs to decide
+   and is described by whoever publishes them, not here.
+
+4. It keeps a local activity log of its own actions - what it enforced, what was
+   changed, when protection was paused. It does not record which pages you
+   visited or what was on them, and nothing leaves this device.
+
+5. It installs a background Windows service and a watchdog that restart
    themselves if stopped or killed. This is intentional: it is what prevents the
    protection from being switched off in a moment of weakness.
 
-3. Removing this software requires the uninstall password set during this setup.
+6. Removing this software requires the uninstall password set during this setup.
    That password should be held by the parent or accountability partner, not by
    the person whose browsing is being filtered.
 
-4. You should install this only on a device you own or administer, or with the
-   clear consent of the device's owner/user. Installing software that resists
-   removal on someone else's device without their knowledge may be unlawful.
+7. You should install this only on a device you own or administer, or with the
+   clear consent of the device's owner and user. Installing software that
+   resists removal on someone else's device without their knowledge may be
+   unlawful.
 
 If you do not agree, choose "I do not accept" and setup will close.

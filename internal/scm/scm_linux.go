@@ -138,6 +138,17 @@ func ClearPasswordHash() error {
 	return saveState(s)
 }
 
+// The typing challenge lives next to the password hash rather than in the config
+// file, and that placement is the feature. A challenge length sitting in
+// extension-ids.json would be editable by anybody who can open Notepad, and the
+// one thing this gate must not be is adjustable by the person it is there to slow
+// down. The config is reconciled continuously and would restore it - but "wrong
+// for a second" is enough when the action being gated takes a second.
+//
+// Absent means off. Every machine that installed the guard before this existed
+// reads as off, which is the only safe default: a challenge nobody was told about
+// appearing in front of an uninstall is a support call, not protection.
+
 // SetTrustedConfig stores the config the guard considers authoritative, in the
 // root-owned (0600) state file rather than the world-readable JSON next to the
 // binary. See the Windows implementation for what this does and does not buy.
@@ -161,6 +172,13 @@ func ClearTrustedConfig() error {
 	s.TrustedConfig = ""
 	return saveState(s)
 }
+
+// ClearWrittenTargets is a no-op here. The record exists so a shared Windows
+// registry list can be told apart from an administrator's own policy; on Linux
+// applyChromium rewrites a managed file the guard owns outright, so a dropped id
+// disappears with the rewrite and there is nothing to remember. See
+// internal/policy/written_windows.go.
+func ClearWrittenTargets() error { return nil }
 
 // AcquireSingleton takes an advisory file lock so only one watchdog runs at a
 // time. The file handle is intentionally leaked for the process lifetime; the OS

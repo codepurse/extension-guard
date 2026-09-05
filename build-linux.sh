@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Builds the Extension Guard Linux artifacts into release-linux/:
+# Builds the Ward Linux artifacts into release-linux/:
 #   - guard               (CLI + systemd service + watchdog)
 #   - extension-guard-status    (Wails status window)
 #   - extension-ids.json  (config, copied next to the binaries)

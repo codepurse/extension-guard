@@ -96,7 +96,7 @@ already in the field and stay frozen regardless of what the product is called:
 
 | Identifier | Where | Breaks if changed |
 |---|---|---|
-| `AppId={{6B2C9E4A-…}}` | `installer/Extension-Guard.iss` | Installs side-by-side instead of upgrading |
+| `AppId={{6B2C9E4A-…}}` | `installer/Extension Guard.iss` | Installs side-by-side instead of upgrading |
 | `ServiceName = "ExtensionGuard"` | `internal/guardsvc/service.go` | Old watchdog resurrects the old service |
 | `SOFTWARE\ExtensionGuard` | `internal/scm/scm_windows.go` | Loses the password hash and trusted config |
 | `guard.exe`, `extension-guard-status.exe` | release assets | ≤1.0.1 updaters download these names verbatim |

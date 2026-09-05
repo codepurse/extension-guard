@@ -1,6 +1,6 @@
 # Extension Guard installer (Inno Setup)
 
-Builds `Extension-Guard-Setup.exe` - the double-click installer for the PC
+Builds `ExtensionGuard-Setup.exe` - the double-click installer for the desktop
 version. It shows a consent page, collects the uninstall password, installs +
 hardens + starts the guard service, and gates uninstall on that password.
 
@@ -12,13 +12,13 @@ hardens + starts the guard service, and gates uninstall on that password.
 ## Build
 
 ```sh
-ISCC.exe Extension-Guard.iss
+ISCC.exe ExtensionGuard.iss
 ```
 
 (If `ISCC.exe` isn't on PATH it's usually at
 `C:\Program Files (x86)\Inno Setup 6\ISCC.exe`.)
 
-Output: `output\Extension-Guard-Setup.exe`.
+Output: `output\ExtensionGuard-Setup.exe`.
 
 ## What the installer does
 

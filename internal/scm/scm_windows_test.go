@@ -108,3 +108,29 @@ func TestTrustedConfigStorage(t *testing.T) {
 		t.Fatal("expected no trusted config after delete")
 	}
 }
+
+// TestClearMissingValue covers the case that broke "Enable protection": the
+// state key exists (something else wrote a value into it) but the value being
+// cleared was never written. Clearing it has to succeed, because Resume clears
+// the pause value on every enable and a machine that has never been paused does
+// not have one - so an error here stopped the enable before it reached the
+// service install.
+func TestClearMissingValue(t *testing.T) {
+	root := registry.CURRENT_USER
+	t.Cleanup(func() { registry.DeleteKey(root, stateKeyPath) })
+
+	// Create the key via a different value, the way the real key comes to exist.
+	if err := setDisabledIn(root, false); err != nil {
+		t.Fatalf("seed key: %v", err)
+	}
+	if err := deleteValueIn(root, pausedValue); err != nil {
+		t.Fatalf("clearing a value that was never written should succeed, got: %v", err)
+	}
+	// And still succeed when the key itself is gone.
+	if err := registry.DeleteKey(root, stateKeyPath); err != nil {
+		t.Fatalf("delete key: %v", err)
+	}
+	if err := deleteValueIn(root, pausedValue); err != nil {
+		t.Fatalf("clearing with no key at all should succeed, got: %v", err)
+	}
+}

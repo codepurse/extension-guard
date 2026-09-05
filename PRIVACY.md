@@ -22,14 +22,6 @@ Everything Extension Guard needs lives locally and never leaves your computer:
   file on your own machine, readable by every user of that machine — including
   the person being filtered, deliberately — and **it is never sent anywhere**.
   See the *Activity log* section of the README for exactly what is recorded.
-- **The daily-usage ledger** (`C:\ProgramData\ExtensionGuard\usage.json`, or
-  `/var/lib/extension-guard/usage.json` on Linux) exists only if you set a daily
-  time limit. It records **how many seconds** each limited block was in use, per
-  day, for the last 14 days - a number per block, nothing else: no window titles,
-  no document names, no timestamps of individual sessions. It is readable by every
-  user of the machine, deliberately, so the person a limit applies to can see how
-  much of the day is left; only SYSTEM and administrators can change it. Like
-  everything else here, **it is never sent anywhere**.
 
 ## The only network activity
 
@@ -46,17 +38,21 @@ The app makes exactly one kind of outbound request, and only for updates:
 You can turn this off entirely by setting `"autoUpdate": "off"` in
 `extension-ids.json`, after which the app makes no network requests at all.
 
-## No content filtering or data access
+## What it blocks, and what it never reads
 
-Extension Guard does **not** read, filter, or transmit your browsing history or
-page content. The activity log records the guard's **own actions** — that a site
-was added to the block list, that a blocked application was closed — never which
-pages you visited or what was on them. A daily time limit counts how long an
-application you chose to limit was **running**, which is the minimum the limit
-needs in order to exist; it is not a record of what you did in that application,
-and nothing is counted for programs no limit covers. It only writes the browsers' enterprise "force-install" policy so
-the configured extensions cannot be removed. Any actual content filtering is done
-by those extensions, under their own privacy policies.
+Extension Guard installs extensions and keeps them installed. It does not watch.
+It never reads, records, or transmits your browsing history or the contents of
+any page — it has no mechanism to. Nothing here sits between your browser and the
+web: what it writes is enterprise policy, which the browser then honours on its
+own.
+
+The activity log records the guard's **own actions** — that an extension was
+locked or unlocked, that a browser launch was refused, that protection was
+paused — never which pages you visited or what was on them.
+
+Extensions that Extension Guard locks in place do their own filtering, under
+their own privacy policies. What they see, and what they do with it, is described
+by whoever publishes them and is not covered by this notice.
 
 ## Contact
 

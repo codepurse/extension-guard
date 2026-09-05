@@ -13,7 +13,7 @@ var errElevationCancelled = errors.New("elevation cancelled")
 // runElevatedAndWait runs the guard binary as root via pkexec (which shows a
 // PolicyKit authentication dialog), waits for it to finish, and returns its exit
 // code. A dismissed/unauthorized dialog surfaces as errElevationCancelled.
-func runElevatedAndWait(exe string, args []string) (int, error) {
+func runElevatedAndWait(exe string, args []string, showConsole bool) (int, error) {
 	cmd := exec.Command("pkexec", append([]string{exe}, args...)...)
 	err := cmd.Run()
 	if err == nil {

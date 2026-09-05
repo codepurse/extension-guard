@@ -64,8 +64,8 @@ the in-app updater's integrity check will fail. (build.ps1's stages —
 > against the version you pin — SignPath has renamed them across releases
 > (e.g. `github-artifact-id`). Their onboarding gives an exact snippet.
 
-To also sign `Extension-Guard-Setup.exe`, repeat the SignPath step against
-`release\Extension-Guard-Setup.exe` after the installer stage and before the
+To also sign `Extension Guard-Setup.exe`, repeat the SignPath step against
+`release\Extension Guard-Setup.exe` after the installer stage and before the
 manifest stage.
 
 ## Reputation note
