@@ -2,6 +2,8 @@
 
 Force-installs browser extensions on **Windows** and stops them being removed.
 
+![The Extension Guard status window: a dial reading Protected, a row per locked extension, and the two switches.](docs/images/status-window.gif)
+
 An extension cannot prevent its own uninstall. The Remove button is right there,
 and a filter somebody can switch off in two clicks is not a filter. Extension
 Guard runs as a privileged service *above* the browser, where enterprise-policy
